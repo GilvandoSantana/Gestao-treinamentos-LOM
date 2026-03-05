@@ -54,7 +54,17 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
             </div>
             <div className="min-w-0">
               <h3 className="text-lg font-bold text-white truncate">{employee.name}</h3>
-              <p className="text-white/70 text-sm truncate">{employee.role}</p>
+              <div className="flex items-center gap-2 text-white/70 text-sm truncate">
+                {employee.registration && (
+                  <>
+                    <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-mono border border-white/20">
+                      #{employee.registration}
+                    </span>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                <span>{employee.role}</span>
+              </div>
             </div>
           </div>
         </div>

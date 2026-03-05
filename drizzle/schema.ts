@@ -31,6 +31,7 @@ export type InsertUser = typeof users.$inferInsert;
 export const employees = mysqlTable("employees", {
   id: varchar("id", { length: 64 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
+  registration: varchar("registration", { length: 50 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

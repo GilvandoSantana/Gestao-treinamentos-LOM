@@ -8,6 +8,7 @@ export interface Training {
 export interface Employee {
   id: string;
   name: string;
+  registration?: string;
   role: string;
   trainings: Training[];
 }

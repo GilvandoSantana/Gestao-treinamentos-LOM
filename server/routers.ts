@@ -40,6 +40,7 @@ export const appRouter = router({
             z.object({
               id: z.string(),
               name: z.string(),
+              registration: z.string().optional(),
               role: z.string(),
               trainings: z.array(
                 z.object({
@@ -60,6 +61,7 @@ export const appRouter = router({
             await upsertEmployee({
               id: employee.id,
               name: employee.name,
+              registration: employee.registration,
               role: employee.role,
             });
 

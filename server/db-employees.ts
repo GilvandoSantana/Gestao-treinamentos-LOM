@@ -17,6 +17,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
     await db.insert(employees).values(employee).onDuplicateKeyUpdate({
       set: {
         name: employee.name,
+        registration: employee.registration,
         role: employee.role,
         updatedAt: new Date(),
       },

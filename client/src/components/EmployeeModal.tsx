@@ -18,6 +18,7 @@ interface EmployeeModalProps {
 
 export default function EmployeeModal({ isOpen, employee, onSave, onClose }: EmployeeModalProps) {
   const [name, setName] = useState('');
+  const [registration, setRegistration] = useState('');
   const [role, setRole] = useState('');
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
@@ -32,11 +33,13 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   useEffect(() => {
     if (employee) {
       setName(employee.name);
+      setRegistration(employee.registration || '');
       setRole(employee.role);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
     } else {
       setName('');
+      setRegistration('');
       setRole('');
       setShowCustomRole(false);
       setTrainings([]);
@@ -121,6 +124,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     onSave({
       id: employee?.id || Date.now().toString(),
       name: name.trim(),
+      registration: registration.trim() || undefined,
       role: role.trim(),
       trainings,
     });
@@ -153,18 +157,32 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
 
         {/* Form Body */}
         <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-6">
-          {/* Name */}
-          <div>
-            <label className="block text-foreground font-semibold mb-2 text-sm">
-              Nome do Colaborador
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-              placeholder="Digite o nome do colaborador"
-            />
+          {/* Name & Registration */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">
+                Nome do Colaborador
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                placeholder="Digite o nome"
+              />
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">
+                Matrícula
+              </label>
+              <input
+                type="text"
+                value={registration}
+                onChange={(e) => setRegistration(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                placeholder="Número da matrícula"
+              />
+            </div>
           </div>
 
           {/* Role */}
