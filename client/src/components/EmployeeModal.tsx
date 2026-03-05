@@ -202,7 +202,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
               <option value="Ensino Médio">Ensino Médio</option>
               <option value="Ensino Técnico">Ensino Técnico</option>
               <option value="Ensino Superior">Ensino Superior</option>
-              <option value="Pós-Graduação">Pós-Graduação</option>
             </select>
           </div>
 
