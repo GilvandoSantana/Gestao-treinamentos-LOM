@@ -50,22 +50,22 @@ export default function SyncStatus({ lastSyncTime, isSyncing, syncError }: SyncS
         {isSyncing ? (
           <>
             <Loader className="w-4 h-4 text-orange animate-spin" />
-            <span className="text-xs font-medium text-orange">Sincronizando...</span>
+            <span className="text-xs font-medium text-orange">Salvando alterações...</span>
           </>
         ) : syncError ? (
           <>
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-xs font-medium text-red-500">Erro na sincronização</span>
+            <AlertCircle className="w-4 h-4 text-orange" />
+            <span className="text-xs font-medium text-orange">Alterações locais</span>
           </>
         ) : lastSyncTime ? (
           <>
             <CheckCircle2 className="w-4 h-4 text-teal" />
-            <span className="text-xs font-medium text-teal">Sincronizado</span>
+            <span className="text-xs font-medium text-teal">Banco de dados atualizado</span>
           </>
         ) : (
           <>
-            <AlertCircle className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+            <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Sistema pronto</span>
           </>
         )}
       </div>
