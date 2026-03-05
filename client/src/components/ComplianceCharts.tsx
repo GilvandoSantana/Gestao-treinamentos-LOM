@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, GraduationCap, BarChart3 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { getStatistics } from '@/lib/training-utils';
 
@@ -31,7 +31,28 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
     },
   ];
 
+  // Data for education level distribution
+  const educationLevels = [
+    'Ensino Fundamental',
+    'Ensino Médio',
+    'Ensino Técnico',
+    'Ensino Superior'
+  ];
+
+  const educationData = educationLevels.map(level => {
+    const count = employees.filter(e => e.educationLevel === level).length;
+    return {
+      name: level,
+      value: count,
+      percentage: employees.length > 0 ? Math.round((count / employees.length) * 100) : 0
+    };
+  }).filter(item => item.value > 0);
+
+  // If no education data is set, show a placeholder for the chart
+  const hasEducationData = educationData.length > 0;
+
   const TRAINING_COLORS = ['#2d9f7f', '#fbbf24', '#ef4444'];
+  const EDUCATION_COLORS = ['#1e3a8a', '#e8772e', '#2d9f7f', '#6366f1', '#ec4899'];
 
   const renderCustomLabel = (entry: any) => {
     return `${entry.percentage}%`;
@@ -39,62 +60,108 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
 
   return (
     <div className="mb-8">
-      {/* Training Status Distribution with Toggle */}
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
         {/* Header with Toggle Button */}
-        <div className="p-6 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setShowChart(!showChart)}>
-          <h3 className="text-lg font-bold text-navy">Distribuição de Treinamentos</h3>
+        <div 
+          className="p-6 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors" 
+          onClick={() => setShowChart(!showChart)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-orange/10 rounded-lg">
+              <BarChart3 size={20} className="text-orange" />
+            </div>
+            <h3 className="text-lg font-bold text-navy">Indicadores e Estatísticas</h3>
+          </div>
           <ChevronDown
             size={24}
-            className={`text-orange-600 transition-transform duration-300 ${showChart ? 'rotate-180' : ''}`}
+            className={`text-orange transition-transform duration-300 ${showChart ? 'rotate-180' : ''}`}
           />
         </div>
 
         {/* Chart Content - Hidden by Default */}
         {showChart && (
-          <div className="px-6 pb-6 border-t border-gray-100">
-            <div className="flex flex-col items-center">
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={trainingStatusData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderCustomLabel}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {trainingStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={TRAINING_COLORS[index]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number, name: string, props: any) => [
-                      `${value} treinamento${value !== 1 ? 's' : ''} (${props.payload.percentage}%)`,
-                      props.payload.name,
-                    ]}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-4 w-full space-y-2">
-                {trainingStatusData.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: TRAINING_COLORS[index] }}
+          <div className="px-6 pb-8 border-t border-gray-100 animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-6">
+              
+              {/* Training Status Chart */}
+              <div className="flex flex-col items-center">
+                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Status de Treinamentos</h4>
+                <div className="w-full h-[250px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={trainingStatusData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={renderCustomLabel}
+                        outerRadius={80}
+                        innerRadius={40}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {trainingStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={TRAINING_COLORS[index % TRAINING_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                        formatter={(value: number, name: string, props: any) => [
+                          `${value} item${value !== 1 ? 's' : ''} (${props.payload.percentage}%)`,
+                          name,
+                        ]}
                       />
-                      <span className="text-gray-700">{item.name}</span>
-                    </div>
-                    <span className="font-semibold text-gray-900">
-                      {item.value} ({item.percentage}%)
-                    </span>
-                  </div>
-                ))}
+                      <Legend verticalAlign="bottom" height={36}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
+
+              {/* Education Level Chart */}
+              <div className="flex flex-col items-center">
+                <div className="flex items-center gap-2 mb-4">
+                  <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Nível de Escolaridade</h4>
+                </div>
+                {hasEducationData ? (
+                  <div className="w-full h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={educationData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={renderCustomLabel}
+                          outerRadius={80}
+                          innerRadius={40}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {educationData.map((entry, index) => (
+                            <Cell key={`cell-edu-${index}`} fill={EDUCATION_COLORS[index % EDUCATION_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                          formatter={(value: number, name: string, props: any) => [
+                            `${value} colaborador${value !== 1 ? 'es' : ''} (${props.payload.percentage}%)`,
+                            name,
+                          ]}
+                        />
+                        <Legend verticalAlign="bottom" height={36}/>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[250px] w-full bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <GraduationCap size={40} className="text-gray-300 mb-2" />
+                    <p className="text-gray-400 text-sm text-center px-4">
+                      Nenhum dado de escolaridade preenchido para gerar o gráfico.
+                    </p>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         )}
