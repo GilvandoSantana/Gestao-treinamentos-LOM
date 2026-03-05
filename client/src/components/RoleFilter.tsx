@@ -1,4 +1,4 @@
-'''import { X } from 'lucide-react';
+import { X } from 'lucide-react';
 import React from 'react';
 import type { Employee } from '@/lib/types';
 
@@ -58,4 +58,3 @@ export default function RoleFilter({ employees, selectedRole, onRoleChange }: Ro
     </div>
   );
 }
-'''
