@@ -36,7 +36,7 @@ export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing
                 <Shield size={28} className="text-white" />
               </div>
               <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-                Gestão de Treinamentos do Conjunto Mecanizado
+                Bem-vindo ao Gestão de Treinamentos LOM
               </h1>
             </div>
             <p className="text-white/70 text-base mt-2 max-w-lg">
