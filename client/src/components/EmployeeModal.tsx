@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, User, Shield, Paperclip, Loader2, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 
@@ -29,6 +30,8 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   const [showCustomTraining, setShowCustomTraining] = useState(false);
   const [completionDate, setCompletionDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [editingTraining, setEditingTraining] = useState<Training | null>(null);
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     setShowCustomTraining(false);
     setCompletionDate('');
     setExpirationDate('');
+    setDocumentUrl(null);
     setEditingTraining(null);
   };
 
@@ -78,6 +82,41 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('O arquivo é muito grande. O limite é 10MB.');
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha no upload');
+      }
+
+      const data = await response.json();
+      setDocumentUrl(data.url);
+      toast.success('Documento anexado com sucesso!');
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Erro ao fazer upload do documento.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const addTraining = () => {
     if (!trainingName.trim() || !completionDate || !expirationDate) {
       return;
@@ -88,7 +127,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
         prev
           .map((t) =>
             t.id === editingTraining.id
-              ? { ...t, name: trainingName, completionDate, expirationDate }
+              ? { ...t, name: trainingName, completionDate, expirationDate, documentUrl }
               : t
           )
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -99,6 +138,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
         name: trainingName,
         completionDate,
         expirationDate,
+        documentUrl,
       };
       setTrainings((prev) => [...prev, newTraining].sort((a, b) => a.name.localeCompare(b.name)));
     }
@@ -111,6 +151,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     setShowCustomTraining(!PREDEFINED_TRAININGS.includes(training.name as any));
     setCompletionDate(training.completionDate);
     setExpirationDate(training.expirationDate);
+    setDocumentUrl(training.documentUrl || null);
   };
 
   const removeTraining = (id: string) => {
@@ -292,11 +333,53 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-foreground font-semibold mb-2 text-sm">
+                  Anexar Certificado (PDF ou Imagem)
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className={`flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer transition-all ${documentUrl ? 'border-teal bg-teal/5 text-teal' : 'border-input hover:border-orange text-muted-foreground'}`}>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,image/*"
+                      onChange={handleFileUpload}
+                      disabled={isUploading}
+                    />
+                    {isUploading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>Enviando...</span>
+                      </>
+                    ) : documentUrl ? (
+                      <>
+                        <Paperclip size={18} />
+                        <span className="truncate">Documento Anexado</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={18} />
+                        <span>Selecionar Arquivo</span>
+                      </>
+                    )}
+                  </label>
+                  {documentUrl && (
+                    <button
+                      onClick={() => setDocumentUrl(null)}
+                      className="p-3 text-danger hover:bg-danger/10 rounded-lg transition-all"
+                      title="Remover anexo"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             <button
               onClick={addTraining}
-              disabled={!trainingName.trim() || !completionDate || !expirationDate}
+              disabled={!trainingName.trim() || !completionDate || !expirationDate || isUploading}
               className="mt-4 bg-orange hover:bg-orange-light text-white disabled:opacity-40 disabled:cursor-not-allowed px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all font-semibold text-sm w-full sm:w-auto justify-center"
             >
               <Plus size={18} />
@@ -324,6 +407,12 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                       <p className="text-xs text-muted-foreground">
                         Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
                       </p>
+                      {training.documentUrl && (
+                        <div className="flex items-center gap-1 mt-1 text-teal text-[10px] font-bold uppercase">
+                          <Paperclip size={10} />
+                          <span>Possui Anexo</span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0 ml-2">
                       <button

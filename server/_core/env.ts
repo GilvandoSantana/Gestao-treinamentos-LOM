@@ -7,4 +7,9 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  cloudinary: {
+    cloudName: "gestao-lom",
+    apiKey: "635626488584947",
+    apiSecret: "mpJ_7hJCWZGz2mPJ_p8uLAPHMko",
+  },
 };

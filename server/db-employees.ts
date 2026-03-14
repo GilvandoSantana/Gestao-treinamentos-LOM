@@ -92,6 +92,7 @@ export async function upsertTraining(training: InsertTraining): Promise<void> {
         name: training.name,
         completionDate: training.completionDate,
         expirationDate: training.expirationDate,
+        documentUrl: training.documentUrl,
         updatedAt: new Date(),
       },
     });

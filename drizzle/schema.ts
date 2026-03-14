@@ -50,6 +50,7 @@ export const trainings = mysqlTable("trainings", {
   name: varchar("name", { length: 255 }).notNull(),
   completionDate: varchar("completionDate", { length: 10 }).notNull(),
   expirationDate: varchar("expirationDate", { length: 10 }).notNull(),
+  documentUrl: text("documentUrl"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

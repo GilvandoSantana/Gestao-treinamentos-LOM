@@ -49,6 +49,7 @@ export const appRouter = router({
                   name: z.string(),
                   completionDate: z.string(),
                   expirationDate: z.string(),
+                  documentUrl: z.string().optional().nullable(),
                 })
               ),
             })
@@ -75,6 +76,7 @@ export const appRouter = router({
                 name: training.name,
                 completionDate: training.completionDate,
                 expirationDate: training.expirationDate,
+                documentUrl: training.documentUrl,
               });
             }
           }

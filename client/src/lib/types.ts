@@ -3,6 +3,7 @@ export interface Training {
   name: string;
   completionDate: string;
   expirationDate: string;
+  documentUrl?: string | null;
 }
 
 export interface Employee {

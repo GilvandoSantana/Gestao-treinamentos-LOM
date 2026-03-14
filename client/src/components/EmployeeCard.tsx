@@ -4,7 +4,7 @@
  * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, History, Paperclip, ExternalLink } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 
@@ -131,6 +131,18 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
                       </div>
                       <p className="text-xs font-bold mt-1.5">{statusInfo.label}</p>
                     </div>
+                    {training.documentUrl && (
+                      <a
+                        href={training.documentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-white/50 hover:bg-white p-2 rounded-lg transition-all text-teal shrink-0 self-center border border-teal/10 shadow-sm"
+                        title="Ver Certificado"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={16} />
+                      </a>
+                    )}
                   </div>
                 </div>
               );
