@@ -13,6 +13,7 @@ import { generateComprehensivePDF, generateFilteredPDF } from '@/lib/pdf-export'
 import * as XLSX from 'xlsx';
 import { seedEmployees } from '@/lib/seed-data';
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/_core/hooks/useAuth';
 
 import Header from '@/components/Header';
 import StatCards from '@/components/StatCards';
@@ -30,9 +31,11 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
-import PasswordModal from '@/components/PasswordModal';
 
 export default function Home() {
+  const { user, isAuthenticated, loading } = useAuth({ redirectOnUnauthenticated: true });
+  const isAdmin = user?.role === 'admin';
+  
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -50,10 +53,6 @@ export default function Home() {
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<any>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
 
@@ -65,18 +64,8 @@ export default function Home() {
   const listQuery = trpc.employees.list.useQuery(undefined, {
     refetchInterval: 5000, // Fetch from server every 5 seconds
     refetchOnWindowFocus: true,
+    enabled: isAuthenticated,
   });
-
-  // Check authentication on mount
-  useEffect(() => {
-    const auth = sessionStorage.getItem('training-manager-auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    } else {
-      setShowPasswordModal(true);
-      setPasswordModalReason('login');
-    }
-  }, []);
 
   // Load data on mount and set up auto-sync
   useEffect(() => {
@@ -102,6 +91,7 @@ export default function Home() {
     if (listQuery.data && listQuery.data.length > 0) {
       const serverEmployees = listQuery.data as Employee[];
       setEmployees(serverEmployees);
+      setIsLoading(false);
     }
   }, [listQuery.data]);
 
@@ -116,30 +106,20 @@ export default function Home() {
       }
 
       // Fallback to localStorage if server is empty
-      const keys = await new Promise<string[]>((resolve) => {
-        const result: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('training-manager:employee:')) {
-            result.push(key.replace('training-manager:', ''));
-          }
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('training-manager:employee:')) {
+          keys.push(key);
         }
-        resolve(result);
-      });
+      }
 
-      if (keys && keys.length > 0) {
+      if (keys.length > 0) {
         const employeeData: Employee[] = [];
         for (const key of keys) {
-          const value = localStorage.getItem('training-manager:' + key);
+          const value = localStorage.getItem(key);
           if (value) {
             const employee: Employee = JSON.parse(value);
-            if (employee.trainings) {
-              employee.trainings = employee.trainings.map((t) => ({
-                ...t,
-                completionDate:
-                  t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-              }));
-            }
             employeeData.push(employee);
           }
         }
@@ -153,12 +133,11 @@ export default function Home() {
   };
 
   const syncToServer = async () => {
-    if (employees.length === 0) return;
+    if (employees.length === 0 || !isAdmin) return;
     
     try {
       setIsSyncing(true);
       setSyncError(null);
-      // Sync employees to server every 5 seconds
       await syncMutation.mutateAsync({ employees });
       setLastSyncTime(new Date());
     } catch (error) {
@@ -170,6 +149,10 @@ export default function Home() {
   };
 
   const handleExcelImport = async (importedEmployees: Employee[]) => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem importar dados.');
+      return;
+    }
     try {
       setIsSyncing(true);
       const mergedEmployees = [...employees];
@@ -201,17 +184,33 @@ export default function Home() {
   };
 
   const saveEmployee = async (employeeData: Employee) => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem salvar alterações.');
+      return;
+    }
     try {
       localStorage.setItem(
         `training-manager:employee:${employeeData.id}`,
         JSON.stringify(employeeData)
       );
-      await loadData();
+      
+      // Update local state immediately
+      setEmployees(prev => {
+        const index = prev.findIndex(e => e.id === employeeData.id);
+        if (index >= 0) {
+          const newEmployees = [...prev];
+          newEmployees[index] = employeeData;
+          return newEmployees;
+        }
+        return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
+      });
+
       setShowModal(false);
       setEditingEmployee(null);
       toast.success(
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
+      
       // Trigger immediate sync
       try {
         await syncMutation.mutateAsync({ employees: [employeeData] });
@@ -227,54 +226,14 @@ export default function Home() {
     }
   };
 
-  const handleDeleteClick = (employeeId: string) => {
-    // Apenas abrir o DeleteConfirmModal, não o PasswordModal
-    setDeleteConfirmId(employeeId);
-    setShowDeleteConfirm(true);
-  };
-
-  const handlePasswordSuccess = () => {
-    setShowPasswordModal(false);
-    if (passwordModalReason === 'login') {
-      setIsAuthenticated(true);
-      sessionStorage.setItem('training-manager-auth', 'true');
-    } else if (passwordModalReason === 'delete' && deleteConfirmId) {
-      // Executar a exclusão confirmada
-      deleteEmployeeConfirmed();
-    }
-  };
-
-  const handlePasswordCancel = () => {
-    setShowPasswordModal(false);
-    if (passwordModalReason === 'delete') {
-      setDeleteConfirmId(null);
-      setShowDeleteConfirm(false);
-    }
-  };
-
   const deleteEmployee = async () => {
-    // Fechar DeleteConfirmModal e abrir PasswordModal
-    // Não limpar deleteConfirmId aqui, pois ele é necessário para deleteEmployeeConfirmed
-    if (deleteConfirmId) {
-      // Fechar o DeleteConfirmModal
-      setShowDeleteConfirm(false);
-      // Setar o motivo da senha como delete
-      setPasswordModalReason('delete');
-      // Aguardar um pouco para que o modal seja fechado antes de abrir o de senha
-      setTimeout(() => {
-        setShowPasswordModal(true);
-      }, 100);
-    }
-  };
-
-  const deleteEmployeeConfirmed = async () => {
-    if (!deleteConfirmId) return;
+    if (!deleteConfirmId || !isAdmin) return;
 
     try {
       await deleteMutation.mutateAsync({ id: deleteConfirmId });
       
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
-      await listQuery.refetch();
+      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
       
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
@@ -282,89 +241,18 @@ export default function Home() {
       setLastSyncTime(new Date());
       setSyncError(null);
     } catch (error) {
-      toast.error('Erro ao excluir colaborador.');
+      toast.error('Erro ao excluir colaborador');
       console.error(error);
     }
   };
 
-  const exportData = async () => {
-    try {
-      setIsSyncing(true);
-      
-      // Debug: log dos dados disponíveis
-      console.log('exportData chamada');
-      console.log('listQuery.data:', listQuery.data);
-      console.log('employees state:', employees);
-      
-      // Forçar recarregamento dos dados do servidor antes de exportar
-      if (listQuery.data && listQuery.data.length > 0) {
-        setEmployees(listQuery.data as Employee[]);
-      }
-      
-      // Usar os dados mais recentes (que podem ter sido atualizados acima)
-      const dataToExport = listQuery.data && listQuery.data.length > 0 ? (listQuery.data as Employee[]) : employees;
-      console.log('dataToExport:', dataToExport);
-      
-      // Preparar dados para Excel - Uma linha por treinamento
-      const excelData: any[] = [];
-      console.log('Processando', dataToExport.length, 'colaboradores');
-      console.log('Primeiro colaborador:', dataToExport[0]);
-      
-      dataToExport.forEach(emp => {
-        if (emp.trainings && emp.trainings.length > 0) {
-          // Se tem treinamentos, cria uma linha para cada um
-          emp.trainings.forEach(training => {
-            excelData.push({
-              'Nome': emp.name || '',
-              'Função': emp.role || '',
-              'Treinamento': training.name || '',
-              'Data de Realização': training.completionDate ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
-              'Validade': training.expirationDate ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
-            });
-          });
-        } else {
-          // Se não tem treinamentos, cria uma linha vazia para o colaborador
-          excelData.push({
-            'Nome': emp.name || '',
-            'Função': emp.role || '',
-            'Treinamento': '',
-            'Data de Realização': '',
-            'Validade': '',
-          });
-        }
-      });
-
-      // Criar workbook e worksheet
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
-      
-      // Ajustar largura das colunas
-      const colWidths = [
-        { wch: 25 }, // Nome
-        { wch: 20 }, // Função
-        { wch: 30 }, // Treinamento
-        { wch: 18 }, // Data de Realização
-        { wch: 15 }, // Validade
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Gerar arquivo Excel
-      const fileName = `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`;
-      console.log('Gerando arquivo:', fileName, 'com', excelData.length, 'linhas');
-      console.log('Primeiras linhas do Excel:', excelData.slice(0, 3));
-      XLSX.writeFile(wb, fileName);
-      
-      toast.success('Dados exportados para Excel com sucesso!');
-    } catch (error) {
-      toast.error('Erro ao exportar dados para Excel.');
-      console.error('Erro na exportação:', error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const downloadFile = (blob: Blob) => {
+  const exportData = () => {
+    const data = {
+      employees,
+      exportDate: new Date().toISOString(),
+      version: '1.0'
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -373,10 +261,14 @@ export default function Home() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast.success('Arquivo baixado com sucesso!');
+    toast.success('Backup gerado com sucesso!');
   };
 
   const importData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem importar dados.');
+      return;
+    }
     const file = event?.target?.files?.[0];
     if (!file) return;
 
@@ -387,19 +279,12 @@ export default function Home() {
         const importedData = JSON.parse(e.target?.result as string);
 
         if (!importedData.employees || !Array.isArray(importedData.employees)) {
-          toast.error('Arquivo inválido. Por favor, selecione um arquivo de backup válido.');
+          toast.error('Arquivo inválido.');
           setIsSyncing(false);
           return;
         }
 
         for (const employee of importedData.employees) {
-          if (employee.trainings) {
-            employee.trainings = employee.trainings.map((t: any) => ({
-              ...t,
-              completionDate:
-                t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-            }));
-          }
           localStorage.setItem(
             `training-manager:employee:${employee.id}`,
             JSON.stringify(employee)
@@ -407,27 +292,16 @@ export default function Home() {
         }
 
         await loadData();
-        toast.success(
-          `Dados importados com sucesso! ${importedData.employees.length} colaborador(es) carregado(s).`
-        );
-        // Trigger immediate sync
-        try {
-          await syncMutation.mutateAsync({ employees });
-        } catch (err) {
-          console.error('Erro ao sincronizar imediatamente:', err);
-        }
+        toast.success(`Dados importados com sucesso!`);
+        await syncMutation.mutateAsync({ employees: importedData.employees });
       } catch (error) {
-        toast.error('Erro ao importar dados. Verifique se o arquivo está correto.');
+        toast.error('Erro ao importar dados.');
         console.error(error);
       }
       setIsSyncing(false);
     };
     reader.readAsText(file);
     if (event.target) event.target.value = '';
-  };
-
-  const triggerFileImport = () => {
-    fileInputRef.current?.click();
   };
 
   const handleExportPDF = async () => {
@@ -447,8 +321,7 @@ export default function Home() {
     try {
       setIsSyncing(true);
       await generateFilteredPDF(employees, filterType);
-      const filterLabel = filterType === 'all' ? 'Todos' : filterType === 'valid' ? 'Validos' : filterType === 'expiring' ? 'Proximos a Vencer' : 'Vencidos';
-      toast.success(`Relatorio de ${filterLabel} gerado com sucesso!`);
+      toast.success(`Relatorio gerado com sucesso!`);
     } catch (error) {
       console.error('Erro ao gerar PDF filtrado:', error);
       toast.error('Erro ao gerar relatorio PDF');
@@ -458,6 +331,10 @@ export default function Home() {
   };
 
   const openModal = (employee: Employee | null = null) => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem realizar esta ação.');
+      return;
+    }
     setEditingEmployee(employee);
     setShowModal(true);
   };
@@ -465,32 +342,16 @@ export default function Home() {
   const stats = getStatistics(employees);
   let filteredEmployees = getFilteredEmployees(employees, filter, searchQuery);
   
-  // Apply role filter
   if (selectedRole) {
     filteredEmployees = filteredEmployees.filter(emp => emp.role === selectedRole);
   }
 
-  // Render password modal first (even if loading)
-  if (showPasswordModal) {
-    return (
-      <>
-        <PasswordModal
-          isOpen={showPasswordModal}
-          title={passwordModalReason === 'login' ? 'Acesso ao Sistema' : 'Confirmar Exclusão'}
-          description={passwordModalReason === 'login' ? 'Digite a senha para acessar o sistema' : 'Digite a senha para confirmar a exclusão do colaborador'}
-          onSuccess={handlePasswordSuccess}
-          onCancel={handlePasswordCancel}
-        />
-      </>
-    );
-  }
-
-  if (isLoading) {
+  if (loading || (isAuthenticated && isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-navy/20 border-t-orange rounded-full animate-spin" />
-          <p className="text-muted-foreground font-medium">Carregando...</p>
+          <p className="text-muted-foreground font-medium">Carregando Gestão LOM...</p>
         </div>
       </div>
     );
@@ -499,7 +360,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container py-6 md:py-8">
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -508,32 +368,26 @@ export default function Home() {
           className="hidden"
         />
 
-        {/* Header with hero */}
         <Header
+          isAdmin={isAdmin}
           onNewEmployee={() => openModal()}
           onExport={exportData}
-          onImport={triggerFileImport}
+          onImport={() => fileInputRef.current?.click()}
           onExportPDF={handleExportPDF}
           onExcelImport={() => setShowExcelImport(true)}
           isSyncing={isSyncing}
           employeeCount={employees.length}
         />
 
-        {/* Sync Status */}
         <div className="mb-6">
           <SyncStatus lastSyncTime={lastSyncTime} isSyncing={isSyncing} syncError={syncError} />
         </div>
 
-        {/* Statistics */}
         <StatCards stats={stats} />
-
-        {/* Compliance Charts */}
         <ComplianceCharts employees={employees} />
-
-        {/* Expiring Notifications */}
+        <TrainingNotifications employees={employees} />
         <ExpiringNotifications employees={employees} />
 
-        {/* Advanced Search */}
         <AdvancedSearch
           searchTerm={searchQuery}
           onSearchChange={setSearchQuery}
@@ -541,18 +395,13 @@ export default function Home() {
           onSearchByChange={setSearchBy}
         />
 
-        {/* Email History Panel */}
         <div className="mb-6">
           <EmailHistoryPanel />
         </div>
 
-        {/* Role Filter */}
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-
-        {/* Filters */}
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} />
 
-        {/* Employee Cards */}
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : (
@@ -562,6 +411,7 @@ export default function Home() {
                 key={employee.id}
                 employee={employee}
                 index={index}
+                isAdmin={isAdmin}
                 onEdit={(emp) => openModal(emp)}
                 onDelete={(id) => {
                   setDeleteConfirmId(id);
@@ -576,15 +426,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* Footer */}
         <div className="mt-12 pb-8 text-center">
           <p className="text-muted-foreground text-xs font-medium">
-            Gestão de Treinamentos
+            Gestão de Treinamentos LOM - {user?.email} ({user?.role})
           </p>
         </div>
       </div>
 
-      {/* Employee Modal */}
       <EmployeeModal
         isOpen={showModal}
         employee={editingEmployee}
@@ -595,7 +443,6 @@ export default function Home() {
         }}
       />
 
-      {/* Delete Confirmation */}
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
         onConfirm={deleteEmployee}
@@ -605,14 +452,12 @@ export default function Home() {
         }}
       />
 
-      {/* Excel Import Modal */}
       <ExcelImportModal
         isOpen={showExcelImport}
         onClose={() => setShowExcelImport(false)}
         onImport={handleExcelImport}
       />
 
-      {/* Audit History Modal */}
       {selectedEmployeeForAudit && (
         <AuditHistory
           isOpen={showAuditHistory}
@@ -620,13 +465,9 @@ export default function Home() {
             setShowAuditHistory(false);
             setSelectedEmployeeForAudit(null);
           }}
-          auditLogs={auditLogs}
-          employeeName={selectedEmployeeForAudit.name}
+          employee={selectedEmployeeForAudit}
         />
       )}
-
-      {/* Training Notifications */}
-      <TrainingNotifications employees={employees} />
     </div>
   );
 }

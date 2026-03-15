@@ -12,9 +12,10 @@ interface HeaderProps {
   onExportPDF: () => void;
   isSyncing: boolean;
   employeeCount: number;
+  isAdmin?: boolean;
 }
 
-export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing, employeeCount }: HeaderProps) {
+export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing, employeeCount, isAdmin = false }: HeaderProps) {
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
       {/* Background Image */}
@@ -48,13 +49,15 @@ export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing
           </div>
 
           <div className="flex flex-wrap gap-2.5">
-            <button
-              onClick={onNewEmployee}
-              className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-bold text-sm order-first"
-            >
-              <Plus size={18} />
-              Novo Colaborador
-            </button>
+            {isAdmin && (
+              <button
+                onClick={onNewEmployee}
+                className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-bold text-sm order-first"
+              >
+                <Plus size={18} />
+                Novo Colaborador
+              </button>
+            )}
 
             <button
               onClick={onExportPDF}

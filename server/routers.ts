@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, adminProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining } from "./db-employees";
 import { getDb } from "./db";
@@ -22,7 +22,7 @@ export const appRouter = router({
   }),
 
   employees: router({
-    delete: publicProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
@@ -33,7 +33,7 @@ export const appRouter = router({
           throw error;
         }
       }),
-    sync: publicProcedure
+    sync: adminProcedure
       .input(
         z.object({
           employees: z.array(
@@ -101,7 +101,7 @@ export const appRouter = router({
   }),
 
   trainings: router({
-    delete: publicProcedure
+    delete: adminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
