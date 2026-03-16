@@ -117,6 +117,9 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   };
 
   const removeTraining = (id: string) => {
+    // Se o treinamento já existe no banco (não é um ID temporário de timestamp)
+    // poderíamos chamar uma mutação aqui, mas o design atual sincroniza o objeto Employee inteiro.
+    // Portanto, apenas remover da lista local e o saveEmployee cuidará do resto.
     setTrainings((prev) => prev.filter((t) => t.id !== id));
     if (editingTraining?.id === id) {
       resetTrainingForm();

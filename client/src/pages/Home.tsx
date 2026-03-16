@@ -202,19 +202,38 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
+      console.log('Salvando colaborador:', employeeData);
+      
+      // Atualizar o estado local imediatamente para refletir as mudanças na UI
+      setEmployees(prev => {
+        const index = prev.findIndex(e => e.id === employeeData.id);
+        if (index >= 0) {
+          const newEmployees = [...prev];
+          newEmployees[index] = employeeData;
+          return newEmployees;
+        } else {
+          return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
+        }
+      });
+
       localStorage.setItem(
         `training-manager:employee:${employeeData.id}`,
         JSON.stringify(employeeData)
       );
-      await loadData();
+      
       setShowModal(false);
       setEditingEmployee(null);
       toast.success(
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
-      // Trigger immediate sync
+      
+      // Trigger immediate sync com a lista completa de colaboradores
       try {
-        await syncMutation.mutateAsync({ employees: [employeeData] });
+        // Precisamos pegar a lista atualizada
+        setEmployees(currentEmployees => {
+          syncMutation.mutate({ employees: currentEmployees });
+          return currentEmployees;
+        });
         setLastSyncTime(new Date());
         setSyncError(null);
       } catch (err) {
@@ -271,10 +290,12 @@ export default function Home() {
     if (!deleteConfirmId) return;
 
     try {
+      // Atualizar o estado local imediatamente
+      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
+      
       await deleteMutation.mutateAsync({ id: deleteConfirmId });
       
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
-      await listQuery.refetch();
       
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
@@ -282,8 +303,10 @@ export default function Home() {
       setLastSyncTime(new Date());
       setSyncError(null);
     } catch (error) {
-      toast.error('Erro ao excluir colaborador.');
+      toast.error('Erro ao excluir colaborador');
       console.error(error);
+      // Recarregar dados em caso de erro para restaurar o estado
+      await listQuery.refetch();
     }
   };
 
@@ -512,9 +535,7 @@ export default function Home() {
         <Header
           onNewEmployee={() => openModal()}
           onExport={exportData}
-          onImport={triggerFileImport}
           onExportPDF={handleExportPDF}
-          onExcelImport={() => setShowExcelImport(true)}
           isSyncing={isSyncing}
           employeeCount={employees.length}
         />

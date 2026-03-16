@@ -10,7 +10,7 @@ interface PasswordModalProps {
   onCancel?: () => void;
 }
 
-const CORRECT_PASSWORD = 'SCM2026@lom';
+const CORRECT_PASSWORD = 'SCM2026lom@';
 
 export default function PasswordModal({
   isOpen,
@@ -29,11 +29,15 @@ export default function PasswordModal({
     // Simulate a small delay for better UX
     await new Promise(resolve => setTimeout(resolve, 300));
 
+    console.log('Password attempt:', password);
+    console.log('Correct password:', CORRECT_PASSWORD);
     if (password === CORRECT_PASSWORD) {
+      console.log('Password correct!');
       toast.success('Autenticação bem-sucedida!');
       setPassword('');
       onSuccess();
     } else {
+      console.log('Password incorrect!');
       toast.error('Senha incorreta. Tente novamente.');
       setPassword('');
     }

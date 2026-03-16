@@ -53,6 +53,9 @@ async function startServer() {
   app.post("/api/seed/employees", async (req, res) => {
     try {
       const db = await getDb();
+      if (!db) {
+        return res.status(500).json({ error: "Database not available" });
+      }
       const { employees: employeeTable } = await import("../../drizzle/schema");
       
       const employeesList = [

@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -70,6 +70,11 @@ export const appRouter = router({
             });
 
             // Upsert trainings
+            const currentTrainingIds = employee.trainings.map(t => t.id);
+            
+            // First, remove trainings that are no longer in the list
+            await deleteTrainingsExcept(employee.id, currentTrainingIds);
+
             for (const training of employee.trainings) {
               await upsertTraining({
                 id: training.id,
