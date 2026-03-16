@@ -65,12 +65,23 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
                 )}
                 <span>{employee.role}</span>
               </div>
-              {employee.educationLevel && (
-                <p className="text-white/50 text-[10px] mt-0.5 flex items-center gap-1">
-                  <span className="w-1 h-1 rounded-full bg-white/30" />
-                  {employee.educationLevel}
-                </p>
-              )}
+              <div className="flex items-center gap-2 text-white/50 text-[10px] mt-0.5">
+                {employee.educationLevel && (
+                  <>
+                    <p className="flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-white/30" />
+                      {employee.educationLevel}
+                    </p>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                {employee.age && (
+                  <p className="flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-white/30" />
+                    {employee.age} anos
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

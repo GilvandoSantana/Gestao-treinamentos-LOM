@@ -42,6 +42,7 @@ export const appRouter = router({
               name: z.string(),
               registration: z.string().optional(),
               educationLevel: z.string().optional(),
+              age: z.number().optional(),
               role: z.string(),
               trainings: z.array(
                 z.object({
@@ -64,6 +65,7 @@ export const appRouter = router({
               name: employee.name,
               registration: employee.registration,
               educationLevel: employee.educationLevel,
+              age: employee.age,
               role: employee.role,
             });
 

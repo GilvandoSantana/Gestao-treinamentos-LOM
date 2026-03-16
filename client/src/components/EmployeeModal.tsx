@@ -20,6 +20,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   const [name, setName] = useState('');
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
+  const [age, setAge] = useState<number | undefined>(undefined);
   const [role, setRole] = useState('');
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
@@ -36,6 +37,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       setName(employee.name);
       setRegistration(employee.registration || '');
       setEducationLevel(employee.educationLevel || '');
+      setAge(employee.age || undefined);
       setRole(employee.role);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
@@ -43,6 +45,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       setName('');
       setRegistration('');
       setEducationLevel('');
+      setAge(undefined);
       setRole('');
       setShowCustomRole(false);
       setTrainings([]);
@@ -129,6 +132,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       name: name.trim(),
       registration: registration.trim() || undefined,
       educationLevel: educationLevel || undefined,
+      age: age || undefined,
       role: role.trim(),
       trainings,
     });
@@ -189,20 +193,34 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
             </div>
           </div>
 
-          {/* Education Level */}
-          <div>
-            <label className="block text-foreground font-semibold mb-2 text-sm">Nível de Escolaridade</label>
-            <select
-              value={educationLevel}
-              onChange={(e) => setEducationLevel(e.target.value)}
-              className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-            >
-              <option value="">Selecione a escolaridade</option>
-              <option value="Ensino Fundamental">Ensino Fundamental</option>
-              <option value="Ensino Médio">Ensino Médio</option>
-              <option value="Ensino Técnico">Ensino Técnico</option>
-              <option value="Ensino Superior">Ensino Superior</option>
-            </select>
+          {/* Education Level & Age */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Nível de Escolaridade</label>
+              <select
+                value={educationLevel}
+                onChange={(e) => setEducationLevel(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+              >
+                <option value="">Selecione a escolaridade</option>
+                <option value="Ensino Fundamental">Ensino Fundamental</option>
+                <option value="Ensino Médio">Ensino Médio</option>
+                <option value="Ensino Técnico">Ensino Técnico</option>
+                <option value="Ensino Superior">Ensino Superior</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Idade</label>
+              <input
+                type="number"
+                value={age || ''}
+                onChange={(e) => setAge(e.target.value ? parseInt(e.target.value) : undefined)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                placeholder="Digite a idade"
+                min="1"
+                max="120"
+              />
+            </div>
           </div>
 
           {/* Role */}
