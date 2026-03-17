@@ -20,6 +20,7 @@ import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
 import SyncStatus from '@/components/SyncStatus';
 import EmployeeCard from '@/components/EmployeeCard';
+import EmployeeTable from '@/components/EmployeeTable';
 import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
@@ -56,6 +57,7 @@ export default function Home() {
   const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<any>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -538,6 +540,8 @@ export default function Home() {
           onExportPDF={handleExportPDF}
           isSyncing={isSyncing}
           employeeCount={employees.length}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
 
         {/* Sync Status */}
@@ -573,10 +577,10 @@ export default function Home() {
         {/* Filters */}
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} />
 
-        {/* Employee Cards */}
+        {/* Employee Cards or Table */}
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
-        ) : (
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredEmployees.map((employee, index) => (
               <EmployeeCard
@@ -595,6 +599,19 @@ export default function Home() {
               />
             ))}
           </div>
+        ) : (
+          <EmployeeTable
+            employees={filteredEmployees}
+            onEdit={(emp) => openModal(emp)}
+            onDelete={(id) => {
+              setDeleteConfirmId(id);
+              setShowDeleteConfirm(true);
+            }}
+            onViewAudit={(emp) => {
+              setSelectedEmployeeForAudit(emp);
+              setShowAuditHistory(true);
+            }}
+          />
         )}
 
         {/* Footer */}

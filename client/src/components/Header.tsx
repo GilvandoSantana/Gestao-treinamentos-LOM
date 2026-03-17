@@ -3,7 +3,7 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Shield, FileText } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 
 interface HeaderProps {
@@ -12,9 +12,19 @@ interface HeaderProps {
   onExportPDF: () => void;
   isSyncing: boolean;
   employeeCount: number;
+  viewMode?: 'grid' | 'table';
+  onViewModeChange?: (mode: 'grid' | 'table') => void;
 }
 
-export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing, employeeCount }: HeaderProps) {
+export default function Header({ 
+  onNewEmployee, 
+  onExport, 
+  onExportPDF, 
+  isSyncing, 
+  employeeCount,
+  viewMode = 'grid',
+  onViewModeChange
+}: HeaderProps) {
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
       {/* Background Image */}
@@ -48,9 +58,27 @@ export default function Header({ onNewEmployee, onExport, onExportPDF, isSyncing
           </div>
 
           <div className="flex flex-wrap gap-2.5">
+            {onViewModeChange && (
+              <div className="bg-white/10 p-1 rounded-xl flex gap-1 border border-white/10 mr-2">
+                <button
+                  onClick={() => onViewModeChange('grid')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-orange text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                  title="Visualização em Cartões"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+                <button
+                  onClick={() => onViewModeChange('table')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-orange text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                  title="Visualização em Tabela"
+                >
+                  <List size={18} />
+                </button>
+              </div>
+            )}
             <button
               onClick={onNewEmployee}
-              className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-bold text-sm order-first"
+              className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl shadow-lg shadow-orange/20 transition-all duration-200 flex items-center gap-2 font-bold text-sm"
             >
               <Plus size={18} />
               Novo Colaborador
