@@ -10,7 +10,7 @@ interface PasswordModalProps {
   onCancel?: () => void;
 }
 
-const CORRECT_PASSWORD = 'SCM2026lom@';
+const CORRECT_PASSWORD = 'SCM2026@lom';
 
 export default function PasswordModal({
   isOpen,
