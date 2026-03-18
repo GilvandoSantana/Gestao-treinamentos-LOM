@@ -13,6 +13,7 @@ interface EmployeeTableProps {
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
   onViewAudit?: (employee: Employee) => void;
+  isAdmin?: boolean;
 }
 
 const statusBadgeMap: Record<string, string> = {
@@ -31,7 +32,7 @@ const statusDotMap: Record<string, string> = {
   none: 'bg-muted-foreground',
 };
 
-export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit }: EmployeeTableProps) {
+export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
@@ -84,13 +85,15 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => onEdit(employee)}
-                          className="p-2 text-navy hover:bg-navy/10 rounded-lg transition-all"
-                          title="Editar"
-                        >
-                          <Edit2 size={16} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => onEdit(employee)}
+                            className="p-2 text-navy hover:bg-navy/10 rounded-lg transition-all animate-in fade-in zoom-in duration-300"
+                            title="Editar"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
                         {onViewAudit && (
                           <button
                             onClick={() => onViewAudit(employee)}
@@ -100,13 +103,15 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                             <History size={16} />
                           </button>
                         )}
-                        <button
-                          onClick={() => onDelete(employee.id)}
-                          className="p-2 text-danger hover:bg-danger/10 rounded-lg transition-all"
-                          title="Excluir"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => onDelete(employee.id)}
+                            className="p-2 text-danger hover:bg-danger/10 rounded-lg transition-all animate-in fade-in zoom-in duration-300"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

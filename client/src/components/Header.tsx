@@ -3,7 +3,7 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Shield, FileText, LayoutGrid, List } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 
 interface HeaderProps {
@@ -14,6 +14,9 @@ interface HeaderProps {
   employeeCount: number;
   viewMode?: 'grid' | 'table';
   onViewModeChange?: (mode: 'grid' | 'table') => void;
+  isAdmin: boolean;
+  onAdminLogin: () => void;
+  onAdminLogout: () => void;
 }
 
 export default function Header({ 
@@ -23,7 +26,10 @@ export default function Header({
   isSyncing, 
   employeeCount,
   viewMode = 'grid',
-  onViewModeChange
+  onViewModeChange,
+  isAdmin,
+  onAdminLogin,
+  onAdminLogout
 }: HeaderProps) {
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
@@ -57,7 +63,31 @@ export default function Header({
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2.5 items-center">
+            {/* Admin Toggle Button */}
+            <button
+              onClick={isAdmin ? onAdminLogout : onAdminLogin}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                isAdmin 
+                ? 'bg-teal hover:bg-teal-light text-white shadow-teal/20' 
+                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+              }`}
+            >
+              {isAdmin ? (
+                <>
+                  <Unlock size={18} />
+                  Modo ADM Ativo
+                </>
+              ) : (
+                <>
+                  <Lock size={18} />
+                  Login ADM
+                </>
+              )}
+            </button>
+
+            <div className="h-8 w-px bg-white/10 mx-1 hidden sm:block" />
+
             {onViewModeChange && (
               <div className="bg-white/10 p-1 rounded-xl flex gap-1 border border-white/10 mr-2">
                 <button
@@ -76,13 +106,15 @@ export default function Header({
                 </button>
               </div>
             )}
-            <button
-              onClick={onNewEmployee}
-              className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl shadow-lg shadow-orange/20 transition-all duration-200 flex items-center gap-2 font-bold text-sm"
-            >
-              <Plus size={18} />
-              Novo Colaborador
-            </button>
+            {isAdmin && (
+              <button
+                onClick={onNewEmployee}
+                className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl shadow-lg shadow-orange/20 transition-all duration-200 flex items-center gap-2 font-bold text-sm animate-in fade-in zoom-in duration-300"
+              >
+                <Plus size={18} />
+                Novo Colaborador
+              </button>
+            )}
 
             <button
               onClick={onExportPDF}

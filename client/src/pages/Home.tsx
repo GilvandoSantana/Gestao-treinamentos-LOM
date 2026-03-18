@@ -74,16 +74,11 @@ export default function Home() {
     const auth = sessionStorage.getItem('training-manager-auth');
     if (auth === 'true') {
       setIsAuthenticated(true);
-    } else {
-      setShowPasswordModal(true);
-      setPasswordModalReason('login');
     }
   }, []);
 
   // Load data on mount and set up auto-sync
   useEffect(() => {
-    if (!isAuthenticated) return;
-
     seedEmployees();
     loadData();
 
@@ -97,7 +92,7 @@ export default function Home() {
         clearInterval(syncIntervalRef.current);
       }
     };
-  }, [isAuthenticated]);
+  }, []);
 
   // Update local state when server data changes
   useEffect(() => {
@@ -487,20 +482,16 @@ export default function Home() {
     filteredEmployees = filteredEmployees.filter(emp => emp.role === selectedRole);
   }
 
-  // Render password modal first (even if loading)
-  if (showPasswordModal) {
-    return (
-      <>
-        <PasswordModal
-          isOpen={showPasswordModal}
-          title={passwordModalReason === 'login' ? 'Acesso ao Sistema' : 'Confirmar Exclusão'}
-          description={passwordModalReason === 'login' ? 'Digite a senha para acessar o sistema' : 'Digite a senha para confirmar a exclusão do colaborador'}
-          onSuccess={handlePasswordSuccess}
-          onCancel={handlePasswordCancel}
-        />
-      </>
-    );
-  }
+  // Render password modal as an overlay
+  const renderPasswordModal = showPasswordModal && (
+    <PasswordModal
+      isOpen={showPasswordModal}
+      title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
+      description={passwordModalReason === 'login' ? 'Digite a senha para habilitar edições' : 'Digite a senha para confirmar a exclusão do colaborador'}
+      onSuccess={handlePasswordSuccess}
+      onCancel={handlePasswordCancel}
+    />
+  );
 
   if (isLoading) {
     return (
@@ -515,6 +506,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      {renderPasswordModal}
       <div className="container py-6 md:py-8">
         {/* Hidden file input */}
         <input
@@ -534,6 +526,16 @@ export default function Home() {
           employeeCount={employees.length}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          isAdmin={isAuthenticated}
+          onAdminLogin={() => {
+            setPasswordModalReason('login');
+            setShowPasswordModal(true);
+          }}
+          onAdminLogout={() => {
+            setIsAuthenticated(false);
+            sessionStorage.removeItem('training-manager-auth');
+            toast.info('Modo administrativo desativado.');
+          }}
         />
 
         {/* Sync Status */}
@@ -588,6 +590,7 @@ export default function Home() {
                   setSelectedEmployeeForAudit(emp);
                   setShowAuditHistory(true);
                 }}
+                isAdmin={isAuthenticated}
               />
             ))}
           </div>
@@ -603,6 +606,7 @@ export default function Home() {
               setSelectedEmployeeForAudit(emp);
               setShowAuditHistory(true);
             }}
+            isAdmin={isAuthenticated}
           />
         )}
 

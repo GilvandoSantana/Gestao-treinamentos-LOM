@@ -15,6 +15,7 @@ interface EmployeeCardProps {
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
   onViewAudit?: (employee: Employee) => void;
+  isAdmin?: boolean;
 }
 
 const statusBorderMap = {
@@ -38,7 +39,7 @@ const statusDotMap = {
   unknown: 'bg-muted-foreground',
 };
 
-export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit }: EmployeeCardProps) {
+export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeCardProps) {
   const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const worstStatus = getWorstStatus(employee);
 
@@ -88,13 +89,15 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <button
-            onClick={() => onEdit(employee)}
-            className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-          >
-            <Edit2 size={14} />
-            Editar
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => onEdit(employee)}
+              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+            >
+              <Edit2 size={14} />
+              Editar
+            </button>
+          )}
           {onViewAudit && (
             <button
               onClick={() => onViewAudit(employee)}
@@ -104,13 +107,15 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
               Historico
             </button>
           )}
-          <button
-            onClick={() => onDelete(employee.id)}
-            className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-          >
-            <Trash2 size={14} />
-            Excluir
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => onDelete(employee.id)}
+              className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+            >
+              <Trash2 size={14} />
+              Excluir
+            </button>
+          )}
         </div>
       </div>
 
