@@ -4,7 +4,8 @@
  * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 
@@ -38,6 +39,7 @@ const statusDotMap = {
 };
 
 export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit }: EmployeeCardProps) {
+  const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const worstStatus = getWorstStatus(employee);
 
   return (
@@ -115,37 +117,54 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
       {/* Trainings */}
       <div className="p-4">
         {employee.trainings && employee.trainings.length > 0 ? (
-          <div className="space-y-2.5">
-            {employee.trainings.map((training) => {
-              const statusInfo = getTrainingStatus(training.expirationDate);
-              return (
-                <div
-                  key={training.id}
-                  className={`rounded-lg p-3 border ${statusBgMap[statusInfo.status]} transition-all duration-200`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${statusDotMap[statusInfo.status]}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Shield size={13} className="shrink-0 opacity-60" />
-                        <h4 className="font-semibold text-sm truncate">{training.name}</h4>
+          <div>
+            <button
+              onClick={() => setIsTrainingsExpanded(!isTrainingsExpanded)}
+              className="w-full flex items-center justify-between gap-2 mb-3 p-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Shield size={16} className="text-orange" />
+                <span className="font-semibold text-foreground text-sm">Treinamentos ({employee.trainings.length})</span>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`text-muted-foreground transition-transform duration-300 ${isTrainingsExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isTrainingsExpanded && (
+              <div className="space-y-2.5">
+                {employee.trainings.map((training) => {
+                  const statusInfo = getTrainingStatus(training.expirationDate);
+                  return (
+                    <div
+                      key={training.id}
+                      className={`rounded-lg p-3 border ${statusBgMap[statusInfo.status]} transition-all duration-200`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${statusDotMap[statusInfo.status]}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Shield size={13} className="shrink-0 opacity-60" />
+                            <h4 className="font-semibold text-sm truncate">{training.name}</h4>
+                          </div>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 text-xs opacity-80">
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold mt-1.5">{statusInfo.label}</p>
+                        </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 text-xs opacity-80">
-                        <span className="flex items-center gap-1">
-                          <Calendar size={11} />
-                          Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar size={11} />
-                          Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold mt-1.5">{statusInfo.label}</p>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-muted-foreground text-sm text-center py-6">
