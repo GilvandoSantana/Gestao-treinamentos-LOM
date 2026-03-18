@@ -7,6 +7,8 @@ import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTra
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
+import { uploadCertificateToSupabase, deleteCertificateFromSupabase } from "./supabase-storage";
 
 export const appRouter = router({
   system: systemRouter,
@@ -153,6 +155,92 @@ export const appRouter = router({
         return [];
       }
     }),
+  }),
+
+  certificates: router({
+    upload: publicProcedure
+      .input(
+        z.object({
+          trainingId: z.string(),
+          employeeId: z.string(),
+          fileName: z.string(),
+          fileData: z.string().or(z.instanceof(Buffer)),
+          mimeType: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const fileBuffer = typeof input.fileData === "string" 
+            ? Buffer.from(input.fileData, "base64")
+            : input.fileData;
+
+          // Upload to Supabase
+          const uploadResult = await uploadCertificateToSupabase(
+            fileBuffer,
+            input.fileName,
+            input.mimeType || "application/octet-stream"
+          );
+
+          // Save to database
+          const certificate = await uploadCertificate({
+            trainingId: input.trainingId,
+            employeeId: input.employeeId,
+            fileName: input.fileName,
+            fileUrl: uploadResult.url,
+            fileSize: uploadResult.size,
+            mimeType: input.mimeType || "application/octet-stream",
+          });
+
+          return certificate;
+        } catch (error) {
+          console.error("Certificate upload error:", error);
+          throw error;
+        }
+      }),
+
+    getByTraining: publicProcedure
+      .input(z.object({ trainingId: z.string() }))
+      .query(async ({ input }) => {
+        try {
+          return await getCertificatesByTrainingId(input.trainingId);
+        } catch (error) {
+          console.error("Error fetching certificates by training:", error);
+          return [];
+        }
+      }),
+
+    getByEmployee: publicProcedure
+      .input(z.object({ employeeId: z.string() }))
+      .query(async ({ input }) => {
+        try {
+          return await getCertificatesByEmployeeId(input.employeeId);
+        } catch (error) {
+          console.error("Error fetching certificates by employee:", error);
+          return [];
+        }
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const certificate = await getCertificateById(input.id);
+          if (!certificate) {
+            throw new Error("Certificate not found");
+          }
+
+          // Delete from Supabase
+          await deleteCertificateFromSupabase(certificate.fileUrl);
+
+          // Delete from database
+          await deleteCertificate(input.id);
+
+          return { success: true };
+        } catch (error) {
+          console.error("Certificate deletion error:", error);
+          throw error;
+        }
+      }),
   }),
 });
 

@@ -15,6 +15,19 @@ export interface Employee {
   trainings: Training[];
 }
 
+export interface Certificate {
+  id: string;
+  trainingId: string;
+  employeeId: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number;
+  mimeType?: string;
+  uploadedAt: string | Date;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
 export interface TrainingStatus {
   status: 'expired' | 'expiring' | 'valid' | 'unknown';
   label: string;

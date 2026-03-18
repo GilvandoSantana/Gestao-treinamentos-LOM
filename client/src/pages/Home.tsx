@@ -19,7 +19,7 @@ import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
 import SyncStatus from '@/components/SyncStatus';
-import EmployeeCard from '@/components/EmployeeCard';
+import EmployeeCard from '@/components/EmployeeCardWithCertificates';
 import EmployeeTable from '@/components/EmployeeTable';
 import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';

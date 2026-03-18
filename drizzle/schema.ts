@@ -71,6 +71,26 @@ export const auditLogs = mysqlTable("auditLogs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+/**
+ * Certificates table for storing certificate uploads
+ */
+export const certificates = mysqlTable("certificates", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  trainingId: varchar("trainingId", { length: 64 }).notNull(),
+  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  fileSize: int("fileSize"),
+  mimeType: varchar("mimeType", { length: 100 }),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Certificate = typeof certificates.$inferSelect;
+export type InsertCertificate = typeof certificates.$inferInsert;
+
 /**
  * Email notification tracking table
  */
