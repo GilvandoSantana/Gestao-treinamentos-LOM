@@ -74,9 +74,26 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
 
   const hasAgeData = ageData.length > 0;
 
+  // Data for role distribution
+  const roleCounts: Record<string, number> = {};
+  employees.forEach(e => {
+    if (e.role) {
+      roleCounts[e.role] = (roleCounts[e.role] || 0) + 1;
+    }
+  });
+
+  const roleData = Object.entries(roleCounts).map(([name, value]) => ({
+    name,
+    value,
+    percentage: employees.length > 0 ? Math.round((value / employees.length) * 100) : 0
+  })).sort((a, b) => b.value - a.value);
+
+  const hasRoleData = roleData.length > 0;
+
   const TRAINING_COLORS = ['#2d9f7f', '#fbbf24', '#ef4444'];
   const EDUCATION_COLORS = ['#1e3a8a', '#e8772e', '#2d9f7f', '#6366f1', '#ec4899'];
   const AGE_COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444'];
+  const ROLE_COLORS = ['#1e3a8a', '#e8772e', '#2d9f7f', '#6366f1', '#ec4899', '#f59e0b', '#ef4444', '#06b6d4'];
 
   const renderCustomLabel = (entry: any) => {
     return `${entry.percentage}%`;
@@ -105,7 +122,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
         {/* Chart Content - Hidden by Default */}
         {showChart && (
           <div className="px-6 pb-8 border-t border-gray-100 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-12 mt-6">
               
               {/* Training Status Chart */}
               <div className="flex flex-col items-center">
@@ -224,6 +241,49 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                     <GraduationCap size={40} className="text-gray-300 mb-2" />
                     <p className="text-gray-400 text-sm text-center px-4">
                       Nenhum dado de idade preenchido para gerar o gráfico.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Role Distribution Chart */}
+              <div className="flex flex-col items-center">
+                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Distribuição por Função</h4>
+                {hasRoleData ? (
+                  <div className="w-full h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={roleData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={renderCustomLabel}
+                          outerRadius={80}
+                          innerRadius={40}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {roleData.map((entry, index) => (
+                            <Cell key={`cell-role-${index}`} fill={ROLE_COLORS[index % ROLE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                          formatter={(value: number, name: string, props: any) => [
+                            `${value} colaborador${value !== 1 ? 'es' : ''} (${props.payload.percentage}%)`,
+                            name,
+                          ]}
+                        />
+                        <Legend verticalAlign="bottom" height={36}/>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[250px] w-full bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <BarChart3 size={40} className="text-gray-300 mb-2" />
+                    <p className="text-gray-400 text-sm text-center px-4">
+                      Nenhum dado de função preenchido para gerar o gráfico.
                     </p>
                   </div>
                 )}
