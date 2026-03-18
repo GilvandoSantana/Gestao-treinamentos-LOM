@@ -274,17 +274,9 @@ export default function Home() {
   };
 
   const deleteEmployee = async () => {
-    // Fechar DeleteConfirmModal e abrir PasswordModal
-    // Não limpar deleteConfirmId aqui, pois ele é necessário para deleteEmployeeConfirmed
+    // Agora a exclusão é direta após a confirmação no DeleteConfirmModal
     if (deleteConfirmId) {
-      // Fechar o DeleteConfirmModal
-      setShowDeleteConfirm(false);
-      // Setar o motivo da senha como delete
-      setPasswordModalReason('delete');
-      // Aguardar um pouco para que o modal seja fechado antes de abrir o de senha
-      setTimeout(() => {
-        setShowPasswordModal(true);
-      }, 100);
+      await deleteEmployeeConfirmed();
     }
   };
 
