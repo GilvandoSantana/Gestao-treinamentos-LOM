@@ -4,16 +4,24 @@
  * Navy header, form with predefined selects and custom input fallback.
  */
 
-import { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, AlertCircle } from 'lucide-react';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
+import { trpc } from '@/lib/trpc';
+import { toast } from 'sonner';
 
 interface EmployeeModalProps {
   isOpen: boolean;
   employee: Employee | null;
   onSave: (employee: Employee) => void;
   onClose: () => void;
+}
+
+interface PendingCertificate {
+  trainingId: string;
+  file: File;
+  base64: string;
 }
 
 export default function EmployeeModal({ isOpen, employee, onSave, onClose }: EmployeeModalProps) {
@@ -31,6 +39,14 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   const [completionDate, setCompletionDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [editingTraining, setEditingTraining] = useState<Training | null>(null);
+  
+  // Certificate upload state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingCertificates, setPendingCertificates] = useState<PendingCertificate[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const uploadMutation = trpc.certificates.upload.useMutation();
 
   useEffect(() => {
     if (employee) {
@@ -51,6 +67,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       setTrainings([]);
     }
     resetTrainingForm();
+    setPendingCertificates([]);
   }, [employee, isOpen]);
 
   const resetTrainingForm = () => {
@@ -59,6 +76,10 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     setCompletionDate('');
     setExpirationDate('');
     setEditingTraining(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRoleSelect = (value: string) => {
@@ -81,9 +102,56 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     }
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('O arquivo deve ter menos de 10MB');
+        return;
+      }
+
+      const allowedTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Formato não suportado. Use: PDF, JPG, PNG, DOC, DOCX');
+        return;
+      }
+
+      setSelectedFile(file);
+    }
+  };
+
   const addTraining = () => {
     if (!trainingName.trim() || !completionDate || !expirationDate) {
       return;
+    }
+
+    const trainingId = editingTraining ? editingTraining.id : Date.now().toString();
+
+    // Se houver um arquivo selecionado, adicione-o aos certificados pendentes
+    if (selectedFile) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const fileData = reader.result as string;
+        const base64Data = fileData.split(',')[1];
+        
+        setPendingCertificates(prev => {
+          // Remover certificado anterior para o mesmo treinamento se existir
+          const filtered = prev.filter(p => p.trainingId !== trainingId);
+          return [...filtered, {
+            trainingId,
+            file: selectedFile,
+            base64: base64Data
+          }];
+        });
+      };
+      reader.readAsDataURL(selectedFile);
     }
 
     if (editingTraining) {
@@ -98,7 +166,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       );
     } else {
       const newTraining: Training = {
-        id: Date.now().toString(),
+        id: trainingId,
         name: trainingName,
         completionDate,
         expirationDate,
@@ -114,31 +182,68 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     setShowCustomTraining(!PREDEFINED_TRAININGS.includes(training.name as any));
     setCompletionDate(training.completionDate);
     setExpirationDate(training.expirationDate);
+    
+    // Verificar se há um certificado pendente para este treinamento
+    const pending = pendingCertificates.find(p => p.trainingId === training.id);
+    if (pending) {
+      setSelectedFile(pending.file);
+    } else {
+      setSelectedFile(null);
+    }
   };
 
   const removeTraining = (id: string) => {
-    // Se o treinamento já existe no banco (não é um ID temporário de timestamp)
-    // poderíamos chamar uma mutação aqui, mas o design atual sincroniza o objeto Employee inteiro.
-    // Portanto, apenas remover da lista local e o saveEmployee cuidará do resto.
     setTrainings((prev) => prev.filter((t) => t.id !== id));
+    setPendingCertificates(prev => prev.filter(p => p.trainingId !== id));
     if (editingTraining?.id === id) {
       resetTrainingForm();
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) return;
     if (!role.trim()) return;
 
-    onSave({
-      id: employee?.id || Date.now().toString(),
-      name: name.trim(),
-      registration: registration.trim() || undefined,
-      educationLevel: educationLevel || undefined,
-      age: age || undefined,
-      role: role.trim(),
-      trainings,
-    });
+    setIsUploading(true);
+    const employeeId = employee?.id || Date.now().toString();
+
+    try {
+      // 1. Salvar o colaborador primeiro (isso garante que ele exista no banco)
+      onSave({
+        id: employeeId,
+        name: name.trim(),
+        registration: registration.trim() || undefined,
+        educationLevel: educationLevel || undefined,
+        age: age || undefined,
+        role: role.trim(),
+        trainings,
+      });
+
+      // 2. Fazer upload dos certificados pendentes
+      if (pendingCertificates.length > 0) {
+        toast.info(`Enviando ${pendingCertificates.length} certificado(s)...`);
+        
+        for (const pending of pendingCertificates) {
+          try {
+            await uploadMutation.mutateAsync({
+              trainingId: pending.trainingId,
+              employeeId: employeeId,
+              fileName: pending.file.name,
+              fileData: pending.base64,
+              mimeType: pending.file.type,
+            });
+          } catch (err) {
+            console.error(`Erro ao enviar certificado para ${pending.trainingId}:`, err);
+            toast.error(`Falha ao enviar certificado: ${pending.file.name}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+      toast.error('Erro ao processar o cadastro');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -160,7 +265,8 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
           </div>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-lg transition-all"
+            disabled={isUploading}
+            className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-lg transition-all disabled:opacity-50"
           >
             <X size={22} />
           </button>
@@ -313,6 +419,43 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                   />
                 </div>
               </div>
+
+              {/* Certificate Upload Area */}
+              <div>
+                <label className="block text-foreground font-semibold mb-2 text-sm">
+                  Certificado (Opcional)
+                </label>
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-input rounded-lg p-6 text-center cursor-pointer hover:border-orange hover:bg-orange/5 transition-colors"
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleFileSelect}
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    className="hidden"
+                  />
+
+                  {selectedFile ? (
+                    <div className="flex flex-col items-center">
+                      <File className="text-orange mb-2" size={28} />
+                      <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(selectedFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <Upload className="text-muted-foreground mb-2" size={28} />
+                      <p className="text-sm font-medium text-foreground">Clique para adicionar certificado</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PDF, JPG, PNG, DOC, DOCX (Max 10MB)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <button
@@ -332,38 +475,49 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                 Treinamentos Cadastrados ({trainings.length})
               </h3>
               <div className="space-y-2">
-                {trainings.map((training) => (
-                  <div
-                    key={training.id}
-                    className="flex justify-between items-start bg-muted p-3 rounded-lg group/item"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground text-sm truncate">{training.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                      </p>
+                {trainings.map((training) => {
+                  const hasPendingCert = pendingCertificates.some(p => p.trainingId === training.id);
+                  return (
+                    <div
+                      key={training.id}
+                      className="flex justify-between items-start bg-muted p-3 rounded-lg group/item"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-foreground text-sm truncate">{training.name}</p>
+                          {hasPendingCert && (
+                            <span className="bg-orange/10 text-orange text-[10px] px-1.5 py-0.5 rounded border border-orange/20 flex items-center gap-1">
+                              <File size={10} />
+                              Certificado pronto
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={() => editTrainingItem(training)}
+                          className="text-navy hover:bg-navy/10 p-2 rounded-lg transition-all"
+                          title="Editar"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          onClick={() => removeTraining(training.id)}
+                          className="text-danger hover:bg-danger/10 p-2 rounded-lg transition-all"
+                          title="Remover"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 shrink-0 ml-2">
-                      <button
-                        onClick={() => editTrainingItem(training)}
-                        className="text-navy hover:bg-navy/10 p-2 rounded-lg transition-all"
-                        title="Editar"
-                      >
-                        <Edit2 size={15} />
-                      </button>
-                      <button
-                        onClick={() => removeTraining(training.id)}
-                        className="text-danger hover:bg-danger/10 p-2 rounded-lg transition-all"
-                        title="Remover"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -373,14 +527,22 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
         <div className="flex gap-3 p-5 border-t border-border shrink-0 bg-card">
           <button
             onClick={handleSave}
-            disabled={!name.trim() || !role.trim()}
-            className="flex-1 bg-navy hover:bg-navy-light disabled:opacity-40 disabled:cursor-not-allowed text-white py-3 rounded-xl font-bold transition-all text-sm"
+            disabled={!name.trim() || !role.trim() || isUploading}
+            className="flex-1 bg-navy hover:bg-navy-light disabled:opacity-40 disabled:cursor-not-allowed text-white py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2"
           >
-            {employee ? 'Salvar Alterações' : 'Cadastrar Colaborador'}
+            {isUploading ? (
+              <>
+                <Loader size={18} className="animate-spin" />
+                Processando...
+              </>
+            ) : (
+              employee ? 'Salvar Alterações' : 'Cadastrar Colaborador'
+            )}
           </button>
           <button
             onClick={onClose}
-            className="flex-1 bg-muted hover:bg-warm-gray-dark text-foreground py-3 rounded-xl font-bold transition-all text-sm"
+            disabled={isUploading}
+            className="flex-1 bg-muted hover:bg-warm-gray-dark text-foreground py-3 rounded-xl font-bold transition-all text-sm disabled:opacity-50"
           >
             Cancelar
           </button>
