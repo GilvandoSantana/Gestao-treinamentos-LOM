@@ -1,13 +1,12 @@
 /**
  * EmployeeCardWithCertificates Component
- * Extended EmployeeCard with certificate upload and listing functionality
+ * Extended EmployeeCard with certificate listing functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown, Upload, FileText } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown, FileText } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
-import CertificateUploadModal from './CertificateUploadModal';
 import CertificatesList from './CertificatesList';
 
 interface EmployeeCardWithCertificatesProps {
@@ -50,21 +49,11 @@ export default function EmployeeCardWithCertificates({
 }: EmployeeCardWithCertificatesProps) {
   const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedTrainingForUpload, setSelectedTrainingForUpload] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
   const [certificatesRefresh, setCertificatesRefresh] = useState(0);
 
   const worstStatus = getWorstStatus(employee);
 
-  const handleUploadClick = (trainingId: string, trainingName: string) => {
-    setSelectedTrainingForUpload({ id: trainingId, name: trainingName });
-    setShowUploadModal(true);
-  };
-
-  const handleUploadSuccess = () => {
+  const handleCertificatesChange = () => {
     setCertificatesRefresh(prev => prev + 1);
   };
 
@@ -208,15 +197,6 @@ export default function EmployeeCardWithCertificates({
                               <div className="flex gap-2 mt-3">
                                 <button
                                   onClick={() =>
-                                    handleUploadClick(training.id, training.name)
-                                  }
-                                  className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                                >
-                                  <Upload size={12} />
-                                  Upload Certificado
-                                </button>
-                                <button
-                                  onClick={() =>
                                     setExpandedTrainingId(
                                       isExpanded ? null : training.id
                                     )
@@ -224,7 +204,7 @@ export default function EmployeeCardWithCertificates({
                                   className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                                 >
                                   <FileText size={12} />
-                                  Ver Certificados
+                                  {isExpanded ? 'Ocultar Certificados' : 'Ver Certificados'}
                                 </button>
                               </div>
 
@@ -234,7 +214,7 @@ export default function EmployeeCardWithCertificates({
                                   <CertificatesList
                                     trainingId={training.id}
                                     employeeId={employee.id}
-                                    onCertificatesChange={handleUploadSuccess}
+                                    onCertificatesChange={handleCertificatesChange}
                                   />
                                 </div>
                               )}
@@ -254,21 +234,6 @@ export default function EmployeeCardWithCertificates({
           )}
         </div>
       </div>
-
-      {/* Upload Modal */}
-      {selectedTrainingForUpload && (
-        <CertificateUploadModal
-          isOpen={showUploadModal}
-          trainingId={selectedTrainingForUpload.id}
-          employeeId={employee.id}
-          trainingName={selectedTrainingForUpload.name}
-          onClose={() => {
-            setShowUploadModal(false);
-            setSelectedTrainingForUpload(null);
-          }}
-          onSuccess={handleUploadSuccess}
-        />
-      )}
     </>
   );
 }
