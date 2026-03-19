@@ -1,13 +1,14 @@
 /**
  * EmployeeCardWithCertificates Component
- * Extended EmployeeCard with certificate listing functionality
+ * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown, FileText } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown, FileText, CreditCard } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
+import { generateBadgePDF } from './BadgeGenerator';
 
 interface EmployeeCardWithCertificatesProps {
   employee: Employee;
@@ -55,6 +56,10 @@ export default function EmployeeCardWithCertificates({
 
   const handleCertificatesChange = () => {
     setCertificatesRefresh(prev => prev + 1);
+  };
+
+  const handleGenerateBadge = () => {
+    generateBadgePDF(employee);
   };
 
   return (
@@ -113,6 +118,14 @@ export default function EmployeeCardWithCertificates({
                 Editar
               </button>
             )}
+            <button
+              onClick={handleGenerateBadge}
+              className="bg-orange/80 hover:bg-orange text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
+              title="Gerar Crachá"
+            >
+              <CreditCard size={14} />
+              Crachá
+            </button>
             {onViewAudit && (
               <button
                 onClick={() => onViewAudit(employee)}
