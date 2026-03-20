@@ -119,8 +119,13 @@ export async function uploadPhotoToSupabase(
       throw new Error("Supabase is not configured");
     }
 
+    // Determine extension from mimeType
+    let ext = 'jpg';
+    if (mimeType === 'image/png') ext = 'png';
+    else if (mimeType === 'image/jpeg') ext = 'jpeg';
+
     // Use employeeId as the filename to avoid database changes
-    const filePath = `photos/${employeeId}.jpg`;
+    const filePath = `photos/${employeeId}.${ext}`;
 
     const { data, error } = await supabase.storage
       .from(PHOTOS_BUCKET)
@@ -140,7 +145,7 @@ export async function uploadPhotoToSupabase(
     return {
       path: filePath,
       url: publicUrlData.publicUrl,
-      fileName: `${employeeId}.jpg`,
+      fileName: `${employeeId}.${ext}`,
       size: file.length,
     };
   } catch (error) {
@@ -153,23 +158,29 @@ export async function getPhotoUrl(employeeId: string): Promise<string | null> {
   try {
     if (!supabaseUrl || !supabaseAnonKey) return null;
     
-    const filePath = `photos/${employeeId}.jpg`;
+    // Try common image extensions
+    const extensions = ['jpg', 'jpeg', 'png'];
     
-    // Check if file exists
-    const { data: list, error: listError } = await supabase.storage
-      .from(PHOTOS_BUCKET)
-      .list('photos', {
-        limit: 1,
-        search: `${employeeId}.jpg`
-      });
+    for (const ext of extensions) {
+      const filePath = `photos/${employeeId}.${ext}`;
+      
+      // Check if file exists
+      const { data: list, error: listError } = await supabase.storage
+        .from(PHOTOS_BUCKET)
+        .list('photos', {
+          limit: 1,
+          search: `${employeeId}.${ext}`
+        });
 
-    if (listError || !list || list.length === 0) return null;
+      if (!listError && list && list.length > 0) {
+        const { data } = supabase.storage
+          .from(PHOTOS_BUCKET)
+          .getPublicUrl(filePath);
+        return data.publicUrl;
+      }
+    }
 
-    const { data } = supabase.storage
-      .from(PHOTOS_BUCKET)
-      .getPublicUrl(filePath);
-
-    return data.publicUrl;
+    return null;
   } catch (error) {
     return null;
   }

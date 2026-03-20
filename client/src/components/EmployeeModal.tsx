@@ -337,11 +337,11 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                 ref={photoInputRef}
                 type="file"
                 onChange={handlePhotoSelect}
-                accept="image/*"
+                accept="image/jpeg,image/jpg,image/png"
                 className="hidden"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Clique para adicionar foto (JPG, PNG)</p>
+            <p className="text-xs text-muted-foreground mt-2">Clique para adicionar foto (JPG, JPEG, PNG)</p>
           </div>
 
           {/* Name & Registration */}
