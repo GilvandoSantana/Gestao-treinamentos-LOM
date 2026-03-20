@@ -125,7 +125,7 @@ export async function uploadPhotoToSupabase(
     else if (mimeType === 'image/jpeg') ext = 'jpeg';
 
     // Use employeeId as the filename to avoid database changes
-    const filePath = `photos/${employeeId}.${ext}`;
+    const filePath = `${employeeId}.${ext}`;
 
     const { data, error } = await supabase.storage
       .from(PHOTOS_BUCKET)
@@ -162,12 +162,12 @@ export async function getPhotoUrl(employeeId: string): Promise<string | null> {
     const extensions = ['jpg', 'jpeg', 'png'];
     
     for (const ext of extensions) {
-      const filePath = `photos/${employeeId}.${ext}`;
+      const filePath = `${employeeId}.${ext}`;
       
       // Check if file exists
       const { data: list, error: listError } = await supabase.storage
         .from(PHOTOS_BUCKET)
-        .list('photos', {
+        .list('', {
           limit: 1,
           search: `${employeeId}.${ext}`
         });
