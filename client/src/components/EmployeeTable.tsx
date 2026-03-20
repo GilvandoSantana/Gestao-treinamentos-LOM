@@ -3,7 +3,7 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -94,15 +94,7 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                             <Edit2 size={16} />
                           </button>
                         )}
-                        {onViewAudit && (
-                          <button
-                            onClick={() => onViewAudit(employee)}
-                            className="p-2 text-navy hover:bg-navy/10 rounded-lg transition-all"
-                            title="Histórico"
-                          >
-                            <History size={16} />
-                          </button>
-                        )}
+
                         {isAdmin && (
                           <button
                             onClick={() => onDelete(employee.id)}

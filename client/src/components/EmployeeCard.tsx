@@ -4,7 +4,7 @@
  * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History, ChevronDown } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -98,15 +98,7 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
               Editar
             </button>
           )}
-          {onViewAudit && (
-            <button
-              onClick={() => onViewAudit(employee)}
-              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-            >
-              <History size={14} />
-              Historico
-            </button>
-          )}
+
           {isAdmin && (
             <button
               onClick={() => onDelete(employee.id)}
