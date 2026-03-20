@@ -569,7 +569,7 @@ export default function Home() {
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
 
         {/* Filters */}
-        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} />
+        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
         {/* Employee Cards or Table */}
         {filteredEmployees.length === 0 ? (

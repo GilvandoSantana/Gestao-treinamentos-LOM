@@ -10,6 +10,7 @@ interface FilterBarProps {
   filter: FilterType;
   onFilterChange: (filter: FilterType) => void;
   onPrintFilter?: (filter: FilterType) => void;
+  isAdmin?: boolean;
 }
 
 const filters: { key: FilterType; label: string; activeClass: string }[] = [
@@ -19,7 +20,7 @@ const filters: { key: FilterType; label: string; activeClass: string }[] = [
   { key: 'expired', label: 'Vencidos', activeClass: 'bg-danger text-white' },
 ];
 
-export default function FilterBar({ filter, onFilterChange, onPrintFilter }: FilterBarProps) {
+export default function FilterBar({ filter, onFilterChange, onPrintFilter, isAdmin = false }: FilterBarProps) {
   return (
     <div className="bg-card rounded-xl shadow-sm p-3 mb-8 animate-fade-in-up" style={{ animationDelay: '320ms' }}>
       <div className="flex items-center gap-3 flex-wrap justify-between">
@@ -43,8 +44,8 @@ export default function FilterBar({ filter, onFilterChange, onPrintFilter }: Fil
           ))}
         </div>
         
-        {/* Print button */}
-        {onPrintFilter && (
+        {/* Print button - Only for Admin */}
+        {onPrintFilter && isAdmin && (
           <button
             onClick={() => onPrintFilter(filter)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700 transition-all duration-200 shadow-sm"

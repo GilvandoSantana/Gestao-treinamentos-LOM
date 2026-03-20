@@ -116,25 +116,29 @@ export default function Header({
               </button>
             )}
 
-            <button
-              onClick={onExportPDF}
-              disabled={isSyncing}
-              className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
-              title="Exportar relatório em PDF"
-            >
-              <FileText size={18} />
-              PDF
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={onExportPDF}
+                  disabled={isSyncing}
+                  className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
+                  title="Exportar relatório em PDF"
+                >
+                  <FileText size={18} />
+                  PDF
+                </button>
 
-            <button
-              onClick={onExport}
-              disabled={isSyncing}
-              className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
-              title="Exportar dados para Excel"
-            >
-              <Download size={18} />
-              Excel
-            </button>
+                <button
+                  onClick={onExport}
+                  disabled={isSyncing}
+                  className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
+                  title="Exportar dados para Excel"
+                >
+                  <Download size={18} />
+                  Excel
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
