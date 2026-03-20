@@ -17,6 +17,7 @@ interface EmployeeModalProps {
   employee: Employee | null;
   onSave: (employee: Employee) => void;
   onClose: () => void;
+  isAdmin?: boolean;
 }
 
 interface PendingCertificate {
@@ -25,7 +26,7 @@ interface PendingCertificate {
   base64: string;
 }
 
-export default function EmployeeModal({ isOpen, employee, onSave, onClose }: EmployeeModalProps) {
+export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdmin = false }: EmployeeModalProps) {
   const [name, setName] = useState('');
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
@@ -490,42 +491,44 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
                 </div>
               </div>
 
-              {/* Certificate Upload Area */}
-              <div>
-                <label className="block text-foreground font-semibold mb-2 text-sm">
-                  Certificado (Opcional)
-                </label>
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-input rounded-lg p-6 text-center cursor-pointer hover:border-orange hover:bg-orange/5 transition-colors"
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileSelect}
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    className="hidden"
-                  />
+              {/* Certificate Upload Area - Restricted to Admin */}
+              {isAdmin && (
+                <div>
+                  <label className="block text-foreground font-semibold mb-2 text-sm">
+                    Certificado (Opcional)
+                  </label>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-input rounded-lg p-6 text-center cursor-pointer hover:border-orange hover:bg-orange/5 transition-colors"
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileSelect}
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      className="hidden"
+                    />
 
-                  {selectedFile ? (
-                    <div className="flex flex-col items-center">
-                      <File className="text-orange mb-2" size={28} />
-                      <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {(selectedFile.size / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <Upload className="text-muted-foreground mb-2" size={28} />
-                      <p className="text-sm font-medium text-foreground">Clique para adicionar certificado</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PDF, JPG, PNG, DOC, DOCX (Max 10MB)
-                      </p>
-                    </div>
-                  )}
+                    {selectedFile ? (
+                      <div className="flex flex-col items-center">
+                        <File className="text-orange mb-2" size={28} />
+                        <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <Upload className="text-muted-foreground mb-2" size={28} />
+                        <p className="text-sm font-medium text-foreground">Clique para adicionar certificado</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          PDF, JPG, PNG, DOC, DOCX (Max 10MB)
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <button

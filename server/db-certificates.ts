@@ -10,17 +10,12 @@ export async function uploadCertificate(data: InsertCertificate): Promise<Certif
     throw new Error("Database connection failed");
   }
 
-  const certificateData: InsertCertificate = {
-    ...data,
-    id: uuidv4(),
-  };
-
-  await db.insert(certificates).values(certificateData);
+  await db.insert(certificates).values(data);
   
   const result = await db
     .select()
     .from(certificates)
-    .where(eq(certificates.id, certificateData.id));
+    .where(eq(certificates.id, data.id!));
 
   if (!result.length) {
     throw new Error("Failed to retrieve uploaded certificate");

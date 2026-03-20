@@ -3,10 +3,12 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
+import CertificatesList from './CertificatesList';
+import { generateBadgePDF } from './BadgeGenerator';
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -34,9 +36,15 @@ const statusDotMap: Record<string, string> = {
 
 export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
+    setExpandedTrainingId(null);
+  };
+
+  const handleGenerateBadge = (employee: Employee) => {
+    generateBadgePDF(employee);
   };
 
   return (
@@ -113,35 +121,68 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     <tr className="bg-muted/10">
                       <td colSpan={6} className="p-0">
                         <div className="p-4 border-t border-border/50 animate-fade-in">
-                          <h4 className="text-sm font-bold text-navy mb-3 flex items-center gap-2">
-                            <Shield size={16} className="text-orange" />
-                            Treinamentos de {employee.name}
-                          </h4>
-                          
-                          {employee.trainings && employee.trainings.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                              {employee.trainings.map((training) => {
-                                const statusInfo = getTrainingStatus(training.expirationDate);
-                                return (
-                                  <div 
-                                    key={training.id}
-                                    className={`p-3 rounded-lg border bg-card flex flex-col gap-1 ${statusBadgeMap[statusInfo.status]}`}
-                                  >
-                                    <div className="font-bold text-sm truncate">{training.name}</div>
-                                    <div className="text-[10px] opacity-80">
-                                      Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                                    </div>
-                                    <div className="text-[10px] font-bold">
-                                      Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                                    </div>
-                                    <div className="text-[10px] mt-1 uppercase tracking-wider">{statusInfo.label}</div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground italic">Nenhum treinamento cadastrado.</p>
-                          )}
+	                          <div className="flex items-center justify-between mb-3">
+	                            <h4 className="text-sm font-bold text-navy flex items-center gap-2">
+	                              <Shield size={16} className="text-orange" />
+	                              Treinamentos de {employee.name}
+	                            </h4>
+	                            {isAdmin && (
+	                              <button
+	                                onClick={() => handleGenerateBadge(employee)}
+	                                className="text-xs bg-orange/10 hover:bg-orange/20 text-orange px-2 py-1 rounded flex items-center gap-1.5 transition-colors font-medium"
+	                                title="Gerar Crachá"
+	                              >
+	                                <CreditCard size={14} />
+	                                Crachá
+	                              </button>
+	                            )}
+	                          </div>
+	                          
+	                          {employee.trainings && employee.trainings.length > 0 ? (
+	                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+	                              {employee.trainings.map((training) => {
+	                                const statusInfo = getTrainingStatus(training.expirationDate);
+	                                const isTrainingExpanded = expandedTrainingId === training.id;
+	                                return (
+	                                  <div 
+	                                    key={training.id}
+	                                    className={`p-3 rounded-lg border bg-card flex flex-col gap-1 ${statusBadgeMap[statusInfo.status]}`}
+	                                  >
+	                                    <div className="font-bold text-sm truncate">{training.name}</div>
+	                                    <div className="text-[10px] opacity-80">
+	                                      Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+	                                    </div>
+	                                    <div className="text-[10px] font-bold">
+	                                      Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+	                                    </div>
+	                                    <div className="text-[10px] mt-1 uppercase tracking-wider">{statusInfo.label}</div>
+	                                    
+	                                    <div className="mt-2 pt-2 border-t border-current/10">
+	                                      <button
+	                                        onClick={() => setExpandedTrainingId(isTrainingExpanded ? null : training.id)}
+	                                        className="text-[10px] bg-white/50 hover:bg-white/80 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+	                                      >
+	                                        <FileText size={10} />
+	                                        {isTrainingExpanded ? 'Ocultar Certificados' : 'Ver Certificados'}
+	                                      </button>
+	                                      
+	                                      {isTrainingExpanded && (
+	                                        <div className="mt-2">
+	                                          <CertificatesList
+	                                            trainingId={training.id}
+	                                            employeeId={employee.id}
+	                                            isAdmin={isAdmin}
+	                                          />
+	                                        </div>
+	                                      )}
+	                                    </div>
+	                                  </div>
+	                                );
+	                              })}
+	                            </div>
+	                          ) : (
+	                            <p className="text-sm text-muted-foreground italic">Nenhum treinamento cadastrado.</p>
+	                          )}
                         </div>
                       </td>
                     </tr>

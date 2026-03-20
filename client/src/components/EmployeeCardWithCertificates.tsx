@@ -122,14 +122,16 @@ export default function EmployeeCardWithCertificates({
                 Editar
               </button>
             )}
-            <button
-              onClick={handleGenerateBadge}
-              className="bg-orange/80 hover:bg-orange text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-              title="Gerar Crachá"
-            >
-              <CreditCard size={14} />
-              Crachá
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleGenerateBadge}
+                className="bg-orange/80 hover:bg-orange text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+                title="Gerar Crachá"
+              >
+                <CreditCard size={14} />
+                Crachá
+              </button>
+            )}
             {isAdmin && (
               <button
                 onClick={() => onDelete(employee.id)}
@@ -223,6 +225,7 @@ export default function EmployeeCardWithCertificates({
                                     trainingId={training.id}
                                     employeeId={employee.id}
                                     onCertificatesChange={handleCertificatesChange}
+                                    isAdmin={isAdmin}
                                   />
                                 </div>
                               )}

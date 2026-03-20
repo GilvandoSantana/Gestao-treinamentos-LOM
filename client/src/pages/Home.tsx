@@ -627,6 +627,7 @@ export default function Home() {
           setShowModal(false);
           setEditingEmployee(null);
         }}
+        isAdmin={isAuthenticated}
       />
 
       {/* Delete Confirmation */}

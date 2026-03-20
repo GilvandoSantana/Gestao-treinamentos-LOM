@@ -182,10 +182,10 @@ export const generateBadgePDF = async (employee: Employee) => {
   doc.setTextColor('#666666');
   
   doc.saveGraphicsState();
-  doc.advancedAPI(doc => {
-    doc.setCurrentTransformationMatrix(1, 0, 0, 1, 105, 140);
-    doc.setCurrentTransformationMatrix(0, -1, 1, 0, 0, 0);
-  });
+  // @ts-ignore - jspdf types might not include these internal methods
+  doc.setCurrentTransformationMatrix(1, 0, 0, 1, 105, 140);
+  // @ts-ignore
+  doc.setCurrentTransformationMatrix(0, -1, 1, 0, 0, 0);
   doc.text(employee.name, 0, 0);
   doc.text(employee.name, 60, 0);
   doc.restoreGraphicsState();

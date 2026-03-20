@@ -22,8 +22,8 @@ export interface Certificate {
   employeeId: string;
   fileName: string;
   fileUrl: string;
-  fileSize?: number;
-  mimeType?: string;
+  fileSize?: number | null;
+  mimeType?: string | null;
   uploadedAt: string | Date;
   createdAt: string | Date;
   updatedAt: string | Date;

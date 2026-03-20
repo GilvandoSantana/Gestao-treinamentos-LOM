@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -209,6 +210,7 @@ export const appRouter = router({
 
           // Save to database
           const certificate = await uploadCertificate({
+            id: uuidv4(),
             trainingId: input.trainingId,
             employeeId: input.employeeId,
             fileName: input.fileName,

@@ -13,12 +13,14 @@ interface CertificatesListProps {
   trainingId: string;
   employeeId?: string;
   onCertificatesChange?: () => void;
+  isAdmin?: boolean;
 }
 
 export default function CertificatesList({
   trainingId,
   employeeId,
   onCertificatesChange,
+  isAdmin = false,
 }: CertificatesListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const deleteMutation = trpc.certificates.delete.useMutation();
@@ -107,27 +109,29 @@ export default function CertificatesList({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-            <button
-              onClick={() => handleDownload(cert)}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              title="Download certificate"
-            >
-              <Download size={18} />
-            </button>
-            <button
-              onClick={() => handleDelete(cert.id)}
-              disabled={deletingId === cert.id}
-              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-              title="Delete certificate"
-            >
-              {deletingId === cert.id ? (
-                <Loader size={18} className="animate-spin" />
-              ) : (
-                <Trash2 size={18} />
-              )}
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+              <button
+                onClick={() => handleDownload(cert)}
+                className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Download certificate"
+              >
+                <Download size={18} />
+              </button>
+              <button
+                onClick={() => handleDelete(cert.id)}
+                disabled={deletingId === cert.id}
+                className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                title="Delete certificate"
+              >
+                {deletingId === cert.id ? (
+                  <Loader size={18} className="animate-spin" />
+                ) : (
+                  <Trash2 size={18} />
+                )}
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>
