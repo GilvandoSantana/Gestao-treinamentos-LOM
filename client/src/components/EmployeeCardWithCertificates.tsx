@@ -72,8 +72,12 @@ export default function EmployeeCardWithCertificates({
         <div className="bg-gradient-to-r from-navy to-navy-light p-4">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="bg-white/15 p-2 rounded-lg shrink-0">
-                <User size={20} className="text-white" />
+              <div className="bg-white/15 w-12 h-12 rounded-lg shrink-0 overflow-hidden flex items-center justify-center border border-white/20">
+                {employee.photoUrl ? (
+                  <img src={employee.photoUrl} alt={employee.name} className="w-full h-full object-cover" />
+                ) : (
+                  <User size={24} className="text-white" />
+                )}
               </div>
               <div className="min-w-0">
                 <h3 className="text-lg font-bold text-white truncate">{employee.name}</h3>

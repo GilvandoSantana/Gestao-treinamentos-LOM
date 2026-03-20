@@ -2,10 +2,11 @@
  * Design: Industrial Blueprint — Neo-Industrial
  * EmployeeModal: Full-featured modal for adding/editing employees and their trainings.
  * Navy header, form with predefined selects and custom input fallback.
+ * Includes photo upload for employee profile.
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, AlertCircle } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, Camera } from 'lucide-react';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -40,6 +41,11 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   const [expirationDate, setExpirationDate] = useState('');
   const [editingTraining, setEditingTraining] = useState<Training | null>(null);
   
+  // Photo upload state
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
   // Certificate upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pendingCertificates, setPendingCertificates] = useState<PendingCertificate[]>([]);
@@ -47,6 +53,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const uploadMutation = trpc.certificates.upload.useMutation();
+  const uploadPhotoMutation = trpc.employees.uploadPhoto.useMutation();
 
   useEffect(() => {
     if (employee) {
@@ -55,6 +62,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       setEducationLevel(employee.educationLevel || '');
       setAge(employee.age || undefined);
       setRole(employee.role);
+      setPhotoPreview(employee.photoUrl || null);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
     } else {
@@ -63,11 +71,13 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
       setEducationLevel('');
       setAge(undefined);
       setRole('');
+      setPhotoPreview(null);
       setShowCustomRole(false);
       setTrainings([]);
     }
     resetTrainingForm();
     setPendingCertificates([]);
+    setSelectedPhoto(null);
   }, [employee, isOpen]);
 
   const resetTrainingForm = () => {
@@ -99,6 +109,26 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     } else {
       setShowCustomTraining(false);
       setTrainingName(value);
+    }
+  };
+
+  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('A foto deve ter menos de 5MB');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        toast.error('Selecione um arquivo de imagem válido');
+        return;
+      }
+      setSelectedPhoto(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -134,7 +164,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
 
     const trainingId = editingTraining ? editingTraining.id : Date.now().toString();
 
-    // Se houver um arquivo selecionado, adicione-o aos certificados pendentes
     if (selectedFile) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -142,7 +171,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
         const base64Data = fileData.split(',')[1];
         
         setPendingCertificates(prev => {
-          // Remover certificado anterior para o mesmo treinamento se existir
           const filtered = prev.filter(p => p.trainingId !== trainingId);
           return [...filtered, {
             trainingId,
@@ -183,7 +211,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     setCompletionDate(training.completionDate);
     setExpirationDate(training.expirationDate);
     
-    // Verificar se há um certificado pendente para este treinamento
     const pending = pendingCertificates.find(p => p.trainingId === training.id);
     if (pending) {
       setSelectedFile(pending.file);
@@ -208,7 +235,23 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
     const employeeId = employee?.id || Date.now().toString();
 
     try {
-      // 1. Salvar o colaborador primeiro (isso garante que ele exista no banco)
+      // 1. Upload photo if selected
+      if (selectedPhoto) {
+        toast.info('Enviando foto do colaborador...');
+        const reader = new FileReader();
+        const photoBase64 = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(selectedPhoto);
+        });
+
+        await uploadPhotoMutation.mutateAsync({
+          employeeId: employeeId,
+          fileData: photoBase64,
+          mimeType: selectedPhoto.type,
+        });
+      }
+
+      // 2. Save employee
       onSave({
         id: employeeId,
         name: name.trim(),
@@ -219,7 +262,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
         trainings,
       });
 
-      // 2. Fazer upload dos certificados pendentes
+      // 3. Upload pending certificates
       if (pendingCertificates.length > 0) {
         toast.info(`Enviando ${pendingCertificates.length} certificado(s)...`);
         
@@ -274,6 +317,33 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose }: Emp
 
         {/* Form Body */}
         <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-6">
+          {/* Photo Upload Section */}
+          <div className="flex flex-col items-center mb-6">
+            <div 
+              className="relative group cursor-pointer"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <div className="w-32 h-32 rounded-full border-4 border-muted overflow-hidden bg-muted flex items-center justify-center transition-all group-hover:border-orange">
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={64} className="text-muted-foreground" />
+                )}
+              </div>
+              <div className="absolute bottom-0 right-0 bg-orange text-white p-2 rounded-full shadow-lg transition-transform group-hover:scale-110">
+                <Camera size={20} />
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                onChange={handlePhotoSelect}
+                accept="image/*"
+                className="hidden"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Clique para adicionar foto (JPG, PNG)</p>
+          </div>
+
           {/* Name & Registration */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

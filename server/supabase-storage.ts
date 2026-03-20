@@ -12,6 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const BUCKET_NAME = "certificates";
+const PHOTOS_BUCKET = "photos";
 
 export interface UploadResult {
   path: string;
@@ -105,5 +106,71 @@ export async function getCertificateUrl(filePath: string): Promise<string> {
   } catch (error) {
     console.error("Error getting certificate URL from Supabase:", error);
     throw error;
+  }
+}
+
+export async function uploadPhotoToSupabase(
+  file: Buffer | Uint8Array,
+  employeeId: string,
+  mimeType: string = "image/jpeg"
+): Promise<UploadResult> {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Supabase is not configured");
+    }
+
+    // Use employeeId as the filename to avoid database changes
+    const filePath = `photos/${employeeId}.jpg`;
+
+    const { data, error } = await supabase.storage
+      .from(PHOTOS_BUCKET)
+      .upload(filePath, file, {
+        contentType: mimeType,
+        upsert: true, // Overwrite if exists
+      });
+
+    if (error) {
+      throw new Error(`Supabase photo upload error: ${error.message}`);
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(PHOTOS_BUCKET)
+      .getPublicUrl(filePath);
+
+    return {
+      path: filePath,
+      url: publicUrlData.publicUrl,
+      fileName: `${employeeId}.jpg`,
+      size: file.length,
+    };
+  } catch (error) {
+    console.error("Error uploading photo to Supabase:", error);
+    throw error;
+  }
+}
+
+export async function getPhotoUrl(employeeId: string): Promise<string | null> {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) return null;
+    
+    const filePath = `photos/${employeeId}.jpg`;
+    
+    // Check if file exists
+    const { data: list, error: listError } = await supabase.storage
+      .from(PHOTOS_BUCKET)
+      .list('photos', {
+        limit: 1,
+        search: `${employeeId}.jpg`
+      });
+
+    if (listError || !list || list.length === 0) return null;
+
+    const { data } = supabase.storage
+      .from(PHOTOS_BUCKET)
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  } catch (error) {
+    return null;
   }
 }

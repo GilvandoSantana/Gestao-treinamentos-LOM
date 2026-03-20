@@ -8,7 +8,7 @@ import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
-import { uploadCertificateToSupabase, deleteCertificateFromSupabase } from "./supabase-storage";
+import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
 
 export const appRouter = router({
   system: systemRouter,
@@ -98,13 +98,39 @@ export const appRouter = router({
       const result = [];
       for (const emp of employeeList) {
         const trainings = await getTrainingsByEmployeeId(emp.id);
+        // Get photo URL from Supabase Storage without database column
+        const photoUrl = await getPhotoUrl(emp.id);
         result.push({
           ...emp,
+          photoUrl,
           trainings,
         });
       }
       return result;
     }),
+
+    uploadPhoto: publicProcedure
+      .input(
+        z.object({
+          employeeId: z.string(),
+          fileData: z.string(),
+          mimeType: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const fileBuffer = Buffer.from(input.fileData, "base64");
+          const uploadResult = await uploadPhotoToSupabase(
+            fileBuffer,
+            input.employeeId,
+            input.mimeType || "image/jpeg"
+          );
+          return { url: uploadResult.url };
+        } catch (error) {
+          console.error("Photo upload error:", error);
+          throw error;
+        }
+      }),
   }),
 
   trainings: router({

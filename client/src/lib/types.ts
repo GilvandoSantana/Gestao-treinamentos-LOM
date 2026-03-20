@@ -12,6 +12,7 @@ export interface Employee {
   educationLevel?: string;
   age?: number;
   role: string;
+  photoUrl?: string | null;
   trainings: Training[];
 }
 
