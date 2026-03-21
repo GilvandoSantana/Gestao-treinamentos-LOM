@@ -170,7 +170,7 @@ export const generateBadgePDF = async (employee: Employee) => {
     doc.setFont('helvetica', 'bold');
     doc.text('Superior/Gestor do contrato', 10, 135);
     doc.setFont('helvetica', 'normal');
-    doc.text('AGILDO SENA DA SILVA JUNIOR', 10, 147);
+    doc.text('AGILDO SENA DA SILVA JUNIOR', 10, 140);
 
 
     // --- BACK SIDE (Right Half) ---
