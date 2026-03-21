@@ -168,10 +168,6 @@ export const generateBadgePDF = async (employee: Employee) => {
     doc.text(employee.role, 10, 127);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.text('Funções transitórias', 10, 135);
-
-    doc.setFont('helvetica', 'bold');
     doc.text('Superior/Gestor do contrato', 10, 143);
     doc.setFont('helvetica', 'normal');
     doc.text('AGILDO SENA DA SILVA JUNIOR', 10, 147);
