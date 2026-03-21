@@ -47,6 +47,7 @@ export const appRouter = router({
               educationLevel: z.string().optional(),
               age: z.number().optional(),
               role: z.string(),
+              phone: z.string().optional(),
               trainings: z.array(
                 z.object({
                   id: z.string(),
@@ -70,6 +71,7 @@ export const appRouter = router({
               educationLevel: employee.educationLevel,
               age: employee.age,
               role: employee.role,
+              phone: employee.phone,
             });
 
             // Upsert trainings

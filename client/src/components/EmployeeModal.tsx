@@ -32,6 +32,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [educationLevel, setEducationLevel] = useState('');
   const [age, setAge] = useState<number | undefined>(undefined);
   const [role, setRole] = useState('');
+  const [phone, setPhone] = useState('');
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
@@ -63,6 +64,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setEducationLevel(employee.educationLevel || '');
       setAge(employee.age || undefined);
       setRole(employee.role);
+      setPhone(employee.phone || '');
       setPhotoPreview(employee.photoUrl || null);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
@@ -72,6 +74,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setEducationLevel('');
       setAge(undefined);
       setRole('');
+      setPhone('');
       setPhotoPreview(null);
       setShowCustomRole(false);
       setTrainings([]);
@@ -260,6 +263,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
         educationLevel: educationLevel || undefined,
         age: age || undefined,
         role: role.trim(),
+        phone: phone.trim() || undefined,
         trainings,
       });
 
@@ -403,31 +407,43 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
             </div>
           </div>
 
-          {/* Role */}
-          <div>
-            <label className="block text-foreground font-semibold mb-2 text-sm">Função</label>
-            <select
-              value={showCustomRole ? 'CUSTOM' : role}
-              onChange={(e) => handleRoleSelect(e.target.value)}
-              className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors mb-2"
-            >
-              <option value="">Selecione uma função</option>
-              {PREDEFINED_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-              <option value="CUSTOM">Digitar função personalizada</option>
-            </select>
-            {showCustomRole && (
+          {/* Role & Phone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Função</label>
+              <select
+                value={showCustomRole ? 'CUSTOM' : role}
+                onChange={(e) => handleRoleSelect(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors mb-2"
+              >
+                <option value="">Selecione uma função</option>
+                {PREDEFINED_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                <option value="CUSTOM">Digitar função personalizada</option>
+              </select>
+              {showCustomRole && (
+                <input
+                  type="text"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                  placeholder="Digite a função personalizada"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Celular</label>
               <input
-                type="text"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                placeholder="Digite a função personalizada"
+                placeholder="(XX) XXXXX-XXXX"
               />
-            )}
+            </div>
           </div>
 
           {/* Add Training Section */}
