@@ -8,8 +8,26 @@ export interface Training {
 export interface Employee {
   id: string;
   name: string;
+  registration?: string;
+  educationLevel?: string;
+  age?: number;
   role: string;
+  phone?: string;
+  photoUrl?: string | null;
   trainings: Training[];
+}
+
+export interface Certificate {
+  id: string;
+  trainingId: string;
+  employeeId: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number | null;
+  mimeType?: string | null;
+  uploadedAt: string | Date;
+  createdAt: string | Date;
+  updatedAt: string | Date;
 }
 
 export interface TrainingStatus {

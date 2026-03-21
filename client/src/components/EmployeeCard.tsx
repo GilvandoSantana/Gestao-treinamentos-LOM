@@ -4,7 +4,8 @@
  * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, History } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 
@@ -14,6 +15,7 @@ interface EmployeeCardProps {
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
   onViewAudit?: (employee: Employee) => void;
+  isAdmin?: boolean;
 }
 
 const statusBorderMap = {
@@ -37,7 +39,8 @@ const statusDotMap = {
   unknown: 'bg-muted-foreground',
 };
 
-export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit }: EmployeeCardProps) {
+export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeCardProps) {
+  const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const worstStatus = getWorstStatus(employee);
 
   return (
@@ -54,71 +57,111 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
             </div>
             <div className="min-w-0">
               <h3 className="text-lg font-bold text-white truncate">{employee.name}</h3>
-              <p className="text-white/70 text-sm truncate">{employee.role}</p>
+              <div className="flex items-center gap-2 text-white/70 text-sm truncate">
+                {employee.registration && (
+                  <>
+                    <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-mono border border-white/20">
+                      #{employee.registration}
+                    </span>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                <span>{employee.role}</span>
+              </div>
+              <div className="flex items-center gap-2 text-white/50 text-[10px] mt-0.5">
+                {employee.educationLevel && (
+                  <>
+                    <p className="flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-white/30" />
+                      {employee.educationLevel}
+                    </p>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                {employee.age && (
+                  <p className="flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-white/30" />
+                    {employee.age} anos
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
-          <button
-            onClick={() => onEdit(employee)}
-            className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-          >
-            <Edit2 size={14} />
-            Editar
-          </button>
-          {onViewAudit && (
+          {isAdmin && (
             <button
-              onClick={() => onViewAudit(employee)}
-              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
+              onClick={() => onEdit(employee)}
+              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
             >
-              <History size={14} />
-              Historico
+              <Edit2 size={14} />
+              Editar
             </button>
           )}
-          <button
-            onClick={() => onDelete(employee.id)}
-            className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium"
-          >
-            <Trash2 size={14} />
-            Excluir
-          </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => onDelete(employee.id)}
+              className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+            >
+              <Trash2 size={14} />
+              Excluir
+            </button>
+          )}
         </div>
       </div>
 
       {/* Trainings */}
       <div className="p-4">
         {employee.trainings && employee.trainings.length > 0 ? (
-          <div className="space-y-2.5">
-            {employee.trainings.map((training) => {
-              const statusInfo = getTrainingStatus(training.expirationDate);
-              return (
-                <div
-                  key={training.id}
-                  className={`rounded-lg p-3 border ${statusBgMap[statusInfo.status]} transition-all duration-200`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${statusDotMap[statusInfo.status]}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Shield size={13} className="shrink-0 opacity-60" />
-                        <h4 className="font-semibold text-sm truncate">{training.name}</h4>
+          <div>
+            <button
+              onClick={() => setIsTrainingsExpanded(!isTrainingsExpanded)}
+              className="w-full flex items-center justify-between gap-2 mb-3 p-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Shield size={16} className="text-orange" />
+                <span className="font-semibold text-foreground text-sm">Treinamentos ({employee.trainings.length})</span>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`text-muted-foreground transition-transform duration-300 ${isTrainingsExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isTrainingsExpanded && (
+              <div className="space-y-2.5">
+                {employee.trainings.map((training) => {
+                  const statusInfo = getTrainingStatus(training.expirationDate);
+                  return (
+                    <div
+                      key={training.id}
+                      className={`rounded-lg p-3 border ${statusBgMap[statusInfo.status]} transition-all duration-200`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${statusDotMap[statusInfo.status]}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Shield size={13} className="shrink-0 opacity-60" />
+                            <h4 className="font-semibold text-sm truncate">{training.name}</h4>
+                          </div>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 text-xs opacity-80">
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold mt-1.5">{statusInfo.label}</p>
+                        </div>
                       </div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 text-xs opacity-80">
-                        <span className="flex items-center gap-1">
-                          <Calendar size={11} />
-                          Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar size={11} />
-                          Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold mt-1.5">{statusInfo.label}</p>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-muted-foreground text-sm text-center py-6">

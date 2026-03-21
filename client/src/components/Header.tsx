@@ -3,21 +3,34 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Upload, Shield, FileText } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock } from 'lucide-react';
+import HERO_IMAGE from '../assets/hero-banner.webp';
 
 interface HeaderProps {
   onNewEmployee: () => void;
   onExport: () => void;
-  onImport: () => void;
   onExportPDF: () => void;
-  onExcelImport: () => void;
   isSyncing: boolean;
   employeeCount: number;
+  viewMode?: 'grid' | 'table';
+  onViewModeChange?: (mode: 'grid' | 'table') => void;
+  isAdmin: boolean;
+  onAdminLogin: () => void;
+  onAdminLogout: () => void;
 }
 
-const HERO_IMAGE = 'https://private-us-east-1.manuscdn.com/sessionFile/0sxYxMlkBINnWNXBvTncJN/sandbox/GjMkiOLADQ2vFWSdbJgtvK-img-1_1771348556000_na1fn_aGVyby1iYW5uZXI.jpg?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvMHN4WXhNbGtCSU5uV05YQnZUbmNKTi9zYW5kYm94L0dqTWtpT0xBRFEydkZXU2RiSmd0dkstaW1nLTFfMTc3MTM0ODU1NjAwMF9uYTFmbl9hR1Z5YnkxaVlXNXVaWEkuanBnP3gtb3NzLXByb2Nlc3M9aW1hZ2UvcmVzaXplLHdfMTkyMCxoXzE5MjAvZm9ybWF0LHdlYnAvcXVhbGl0eSxxXzgwIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzk4NzYxNjAwfX19XX0_&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=e-BPZiMwj5eq4SfRADsAIH2sR1zY3DocWIco-kfjdltyLzLXztqW-PUDVYs63SrcEnJEaOtjZoLBSYe8FrrpZZDBbx4bABbITOoHWlO2jAdeKcKq1mBobJSdX8OsF5LbId6lpMIy3cEAXySccYx46Uvtatu0Un514z6WM-FgWh-ub9tsYkg5zf-otk3gKXhwo6ZKijEFbOZkn4zcXbDtnhgfEGQ1S~X6uFRNZHfWwpXn0VNqxqM1lMNWAfwSy7DeqNS4mm4an86TtKBvXjcFlOLuZy5i~CXV4YV9ICmLv77mgd5vtHvYHyYWky~F9dHNIHAxg2N7E1A5weQHlQ1FsA__';
-
-export default function Header({ onNewEmployee, onExport, onImport, onExportPDF, onExcelImport, isSyncing, employeeCount }: HeaderProps) {
+export default function Header({ 
+  onNewEmployee, 
+  onExport, 
+  onExportPDF, 
+  isSyncing, 
+  employeeCount,
+  viewMode = 'grid',
+  onViewModeChange,
+  isAdmin,
+  onAdminLogin,
+  onAdminLogout
+}: HeaderProps) {
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
       {/* Background Image */}
@@ -39,7 +52,7 @@ export default function Header({ onNewEmployee, onExport, onImport, onExportPDF,
                 <Shield size={28} className="text-white" />
               </div>
               <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-                Gestão de Treinamentos do Conjunto Mecanizado
+                Bem-vindo ao Gestão de Treinamentos LOM
               </h1>
             </div>
             <p className="text-white/70 text-base mt-2 max-w-lg">
@@ -50,35 +63,82 @@ export default function Header({ onNewEmployee, onExport, onImport, onExportPDF,
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2.5">
-
+          <div className="flex flex-wrap gap-2.5 items-center">
+            {/* Admin Toggle Button */}
             <button
-              onClick={onExportPDF}
-              disabled={isSyncing}
-              className="bg-orange hover:bg-orange-light disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
-              title="Exportar relatório em PDF"
+              onClick={isAdmin ? onAdminLogout : onAdminLogin}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg ${
+                isAdmin 
+                ? 'bg-teal hover:bg-teal-light text-white shadow-teal/20' 
+                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+              }`}
             >
-              <FileText size={18} />
-              PDF
+              {isAdmin ? (
+                <>
+                  <Unlock size={18} />
+                  Modo ADM Ativo
+                </>
+              ) : (
+                <>
+                  <Lock size={18} />
+                  Login ADM
+                </>
+              )}
             </button>
 
-            <button
-              onClick={onExcelImport}
-              disabled={isSyncing}
-              className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
-              title="Importar dados do Excel"
-            >
-              <Upload size={18} />
-              Excel
-            </button>
+            <div className="h-8 w-px bg-white/10 mx-1 hidden sm:block" />
 
-            <button
-              onClick={onNewEmployee}
-              className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-bold text-sm"
-            >
-              <Plus size={18} />
-              Novo Colaborador
-            </button>
+            {onViewModeChange && (
+              <div className="bg-white/10 p-1 rounded-xl flex gap-1 border border-white/10 mr-2">
+                <button
+                  onClick={() => onViewModeChange('grid')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-orange text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                  title="Visualização em Cartões"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+                <button
+                  onClick={() => onViewModeChange('table')}
+                  className={`p-2 rounded-lg transition-all ${viewMode === 'table' ? 'bg-orange text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+                  title="Visualização em Tabela"
+                >
+                  <List size={18} />
+                </button>
+              </div>
+            )}
+            {isAdmin && (
+              <button
+                onClick={onNewEmployee}
+                className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl shadow-lg shadow-orange/20 transition-all duration-200 flex items-center gap-2 font-bold text-sm animate-in fade-in zoom-in duration-300"
+              >
+                <Plus size={18} />
+                Novo Colaborador
+              </button>
+            )}
+
+            {isAdmin && (
+              <>
+                <button
+                  onClick={onExportPDF}
+                  disabled={isSyncing}
+                  className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
+                  title="Exportar relatório em PDF"
+                >
+                  <FileText size={18} />
+                  PDF
+                </button>
+
+                <button
+                  onClick={onExport}
+                  disabled={isSyncing}
+                  className="bg-white/15 hover:bg-white/25 border border-white/20 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl font-semibold text-sm"
+                  title="Exportar dados para Excel"
+                >
+                  <Download size={18} />
+                  Excel
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
