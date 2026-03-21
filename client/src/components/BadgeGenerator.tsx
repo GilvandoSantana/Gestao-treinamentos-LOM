@@ -1,10 +1,11 @@
 /**
  * BadgeGenerator Component
  * Generates a PDF badge (front and back) for an employee based on the Mosaic template.
- * Supports employee photo.
+ * Supports employee photo and a real QR Code pointing to the site.
  */
 
 import { jsPDF } from 'jspdf';
+import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus } from '@/lib/training-utils';
 
@@ -26,39 +27,21 @@ const loadImage = (url: string): Promise<string> => {
   });
 };
 
-const drawQRCodePlaceholder = (doc: jsPDF, x: number, y: number, size: number) => {
-  doc.setFillColor(0, 0, 0);
-  doc.rect(x, y, size, size, 'F');
-  doc.setFillColor(255, 255, 255);
-  doc.rect(x + 2, y + 2, size - 4, size - 4, 'F');
-  
-  doc.setFillColor(0, 0, 0);
-  for (let i = 0; i < 5; i++) {
-    for (let j = 0; j < 5; j++) {
-      if (Math.random() > 0.5) {
-        doc.rect(x + 3 + (i * (size - 6) / 5), y + 3 + (j * (size - 6) / 5), (size - 6) / 5, (size - 6) / 5, 'F');
-      }
-    }
+// Helper to generate QR Code as Data URL
+const generateQRCode = async (text: string): Promise<string> => {
+  try {
+    return await QRCode.toDataURL(text, {
+      margin: 1,
+      width: 200,
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+    });
+  } catch (err) {
+    console.error('Error generating QR Code:', err);
+    return '';
   }
-  
-  const markerSize = size * 0.2;
-  doc.rect(x + 2, y + 2, markerSize, markerSize, 'F');
-  doc.setFillColor(255, 255, 255);
-  doc.rect(x + 3, y + 3, markerSize - 2, markerSize - 2, 'F');
-  doc.setFillColor(0, 0, 0);
-  doc.rect(x + 4, y + 4, markerSize - 4, markerSize - 4, 'F');
-  
-  doc.rect(x + size - markerSize - 2, y + 2, markerSize, markerSize, 'F');
-  doc.setFillColor(255, 255, 255);
-  doc.rect(x + size - markerSize - 1, y + 3, markerSize - 2, markerSize - 2, 'F');
-  doc.setFillColor(0, 0, 0);
-  doc.rect(x + size - markerSize, y + 4, markerSize - 4, markerSize - 4, 'F');
-  
-  doc.rect(x + 2, y + size - markerSize - 2, markerSize, markerSize, 'F');
-  doc.setFillColor(255, 255, 255);
-  doc.rect(x + 3, y + size - markerSize - 1, markerSize - 2, markerSize - 2, 'F');
-  doc.setFillColor(0, 0, 0);
-  doc.rect(x + 4, y + size - markerSize, markerSize - 4, markerSize - 4, 'F');
 };
 
 export const generateBadgePDF = async (employee: Employee) => {
@@ -73,6 +56,7 @@ export const generateBadgePDF = async (employee: Employee) => {
   const grayBg = '#f2f2f2';
   const grayBorder = '#cccccc';
   const red = '#ff0000';
+  const siteUrl = "https://gestao-treinamentos-lom.up.railway.app";
 
   // --- FRONT SIDE (Left Half) ---
   doc.setFillColor(white);
@@ -83,7 +67,7 @@ export const generateBadgePDF = async (employee: Employee) => {
   doc.rect(2, 2, 96, 146, 'S');
 
   // Stratos Logo
-  const stratosLogoBase64 = "iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAACO09lbAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAA...[CONTEÚDO_BASE64_TRUNCADO]...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KoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKQjzv/wey9pBDelRAYgAAAABJRU5ErkJggg==";
+  const stratosLogoBase64 = "iVBORw0KGgoAAAANSUhEUgAAAlgAAAGQCAYAAACO09lbAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAA...[CONTEÚDO_BASE64_TRUNCADO]...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oiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKoiiKQjzv/wey9pBDelRAYgAAAABJRU5ErkJggg==";
   doc.addImage(stratosLogoBase64, 'PNG', 10, 5, 40, 25);
 
   // Photo Area
@@ -109,9 +93,19 @@ export const generateBadgePDF = async (employee: Employee) => {
     doc.text('FOTO', 27.5, 52, { align: 'center' });
   }
 
-  // Real QRCode - pointing to employee info
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Employee:${employee.id}|Name:${employee.name}|Reg:${employee.registration || 'N/A'}`;
-  doc.addImage(qrCodeUrl, 'PNG', 10, 80, 35, 35);
+  // Real QR Code for the site
+  try {
+    const qrCodeDataUrl = await generateQRCode(siteUrl);
+    if (qrCodeDataUrl) {
+      doc.addImage(qrCodeDataUrl, 'PNG', 10, 80, 35, 35);
+    }
+  } catch (error) {
+    console.error('Error adding QR Code to PDF:', error);
+    doc.setFillColor(grayBg);
+    doc.rect(10, 80, 35, 35, 'F');
+    doc.setDrawColor(grayBorder);
+    doc.rect(10, 80, 35, 35, 'S');
+  }
 
   let yInfo = 35;
   doc.setTextColor(black);
