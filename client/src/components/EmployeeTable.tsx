@@ -3,7 +3,13 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -126,16 +132,34 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 	                              <Shield size={16} className="text-orange" />
 	                              Treinamentos de {employee.name}
 	                            </h4>
-	                            {isAdmin && (
-	                              <button
-	                                onClick={() => handleGenerateBadge(employee)}
-	                                className="text-xs bg-orange/10 hover:bg-orange/20 text-orange px-2 py-1 rounded flex items-center gap-1.5 transition-colors font-medium"
-	                                title="Gerar Crachá"
-	                              >
-	                                <CreditCard size={14} />
-	                                Crachá
-	                              </button>
-	                            )}
+		                            {isAdmin && (
+		                              <DropdownMenu>
+		                                <DropdownMenuTrigger asChild>
+		                                  <button
+		                                    className="text-xs bg-orange/10 hover:bg-orange/20 text-orange px-2 py-1 rounded flex items-center gap-1.5 transition-colors font-medium"
+		                                    title="Opções de Crachá"
+		                                  >
+		                                    <CreditCard size={14} />
+		                                    Crachás
+		                                    <ChevronDown size={12} />
+		                                  </button>
+		                                </DropdownMenuTrigger>
+		                                <DropdownMenuContent align="end">
+		                                  <DropdownMenuItem onClick={() => handleGenerateBadge(employee)}>
+		                                    <CreditCard className="mr-2 h-4 w-4" />
+		                                    <span>Crachá Padrão</span>
+		                                  </DropdownMenuItem>
+		                                  <DropdownMenuItem onClick={() => {}}>
+		                                    <Lock className="mr-2 h-4 w-4" />
+		                                    <span>Crachá de Bloqueio</span>
+		                                  </DropdownMenuItem>
+		                                  <DropdownMenuItem onClick={() => {}}>
+		                                    <Droplets className="mr-2 h-4 w-4" />
+		                                    <span>Crachá de Água</span>
+		                                  </DropdownMenuItem>
+		                                </DropdownMenuContent>
+		                              </DropdownMenu>
+		                            )}
 	                          </div>
 	                          
 	                          {employee.trainings && employee.trainings.length > 0 ? (
