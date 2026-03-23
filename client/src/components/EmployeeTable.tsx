@@ -16,6 +16,7 @@ import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
+import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -56,6 +57,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 
   const handleGenerateLockBadge = (employee: Employee) => {
     generateBadgeLockPDF(employee);
+  };
+
+  const handleGenerateWaterBadge = (employee: Employee) => {
+    generateBadgeWaterPDF(employee);
   };
 
   return (
@@ -158,10 +163,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 			                                    <Lock className="mr-2 h-4 w-4" />
 			                                    <span>Crachá de Bloqueio</span>
 			                                  </DropdownMenuItem>
-		                                  <DropdownMenuItem onClick={() => {}}>
-		                                    <Droplets className="mr-2 h-4 w-4" />
-		                                    <span>Crachá de Água</span>
-		                                  </DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleGenerateWaterBadge(employee)}>
+			                                    <Droplets className="mr-2 h-4 w-4" />
+			                                    <span>Crachá de Água</span>
+			                                  </DropdownMenuItem>
 		                                </DropdownMenuContent>
 		                              </DropdownMenu>
 		                            )}

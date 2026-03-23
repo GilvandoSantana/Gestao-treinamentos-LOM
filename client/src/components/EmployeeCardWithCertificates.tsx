@@ -16,6 +16,7 @@ import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
+import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
 
 interface EmployeeCardWithCertificatesProps {
   employee: Employee;
@@ -71,6 +72,10 @@ export default function EmployeeCardWithCertificates({
 
   const handleGenerateLockBadge = () => {
     generateBadgeLockPDF(employee);
+  };
+
+  const handleGenerateWaterBadge = () => {
+    generateBadgeWaterPDF(employee);
   };
 
   return (
@@ -154,10 +159,10 @@ export default function EmployeeCardWithCertificates({
                     <Lock className="mr-2 h-4 w-4" />
                     <span>Crachá de Bloqueio</span>
                   </DropdownMenuItem>
-	                  <DropdownMenuItem onClick={() => {}}>
-	                    <Droplets className="mr-2 h-4 w-4" />
-	                    <span>Crachá de Água</span>
-	                  </DropdownMenuItem>
+<DropdownMenuItem onClick={handleGenerateWaterBadge}>
+                    <Droplets className="mr-2 h-4 w-4" />
+                    <span>Crachá de Água</span>
+                  </DropdownMenuItem>
 	                </DropdownMenuContent>
 	              </DropdownMenu>
 	            )}
