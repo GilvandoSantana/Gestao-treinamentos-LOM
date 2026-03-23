@@ -225,18 +225,17 @@ export default function Home() {
       );
       
       // Trigger immediate sync com a lista completa de colaboradores
-      try {
-        // Precisamos pegar a lista atualizada
-        setEmployees(currentEmployees => {
-          syncMutation.mutate({ employees: currentEmployees });
-          return currentEmployees;
-        });
-        setLastSyncTime(new Date());
-        setSyncError(null);
-      } catch (err) {
-        console.error('Erro ao sincronizar imediatamente:', err);
-        setSyncError('Falha na sincronização');
-      }
+      setEmployees(currentEmployees => {
+        // Garante que o employee atualizado está na lista antes de sincronizar
+        const updated = currentEmployees.some(e => e.id === employeeData.id)
+          ? currentEmployees.map(e => e.id === employeeData.id ? employeeData : e)
+          : [...currentEmployees, employeeData];
+
+        syncMutation.mutate({ employees: updated });
+        return updated;
+      });
+      setLastSyncTime(new Date());
+      setSyncError(null);
     } catch (error) {
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
