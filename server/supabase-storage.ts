@@ -157,30 +157,22 @@ export async function uploadPhotoToSupabase(
 export async function getPhotoUrl(employeeId: string): Promise<string | null> {
   try {
     if (!supabaseUrl || !supabaseAnonKey) return null;
-    
-    // Try common image extensions
-    const extensions = ['jpg', 'jpeg', 'png'];
-    
-    for (const ext of extensions) {
-      const filePath = `${employeeId}.${ext}`;
-      
-      // Check if file exists
-      const { data: list, error: listError } = await supabase.storage
-        .from(PHOTOS_BUCKET)
-        .list('', {
-          limit: 1,
-          search: `${employeeId}.${ext}`
-        });
 
-      if (!listError && list && list.length > 0) {
-        const { data } = supabase.storage
-          .from(PHOTOS_BUCKET)
-          .getPublicUrl(filePath);
-        return data.publicUrl;
-      }
-    }
+    // List files once with the employeeId prefix instead of checking each extension separately
+    const { data: list, error } = await supabase.storage
+      .from(PHOTOS_BUCKET)
+      .list('', { limit: 5, search: employeeId });
 
-    return null;
+    if (error || !list || list.length === 0) return null;
+
+    const match = list.find(f => f.name.startsWith(employeeId));
+    if (!match) return null;
+
+    const { data } = supabase.storage
+      .from(PHOTOS_BUCKET)
+      .getPublicUrl(match.name);
+
+    return data.publicUrl;
   } catch (error) {
     return null;
   }
