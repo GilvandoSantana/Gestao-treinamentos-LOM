@@ -98,17 +98,16 @@ export const appRouter = router({
       }),
     list: publicProcedure.query(async () => {
       const employeeList = await getAllEmployees();
-      const result = [];
-      for (const emp of employeeList) {
-        const trainings = await getTrainingsByEmployeeId(emp.id);
-        // Get photo URL from Supabase Storage without database column
-        const photoUrl = await getPhotoUrl(emp.id);
-        result.push({
-          ...emp,
-          photoUrl,
-          trainings,
-        });
-      }
+      // Run all per-employee queries in parallel instead of sequentially (fixes N+1 slowness)
+      const result = await Promise.all(
+        employeeList.map(async (emp) => {
+          const [trainings, photoUrl] = await Promise.all([
+            getTrainingsByEmployeeId(emp.id),
+            getPhotoUrl(emp.id),
+          ]);
+          return { ...emp, photoUrl, trainings };
+        })
+      );
       return result;
     }),
 
