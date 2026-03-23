@@ -1,7 +1,7 @@
 /**
  * BadgeWaterGenerator Component
  * Generates a PDF water bottle badge (front) for an employee based on the provided template.
- * Dimensions: 50mm x 100mm (Portrait)
+ * Dimensions: 55mm x 85mm (Portrait)
  */
 
 import { jsPDF } from 'jspdf';
@@ -42,7 +42,7 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: [50, 100]
+      format: [55, 85]
     });
 
     const black = '#000000';
@@ -51,15 +51,15 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
 
     // --- FRONT SIDE ---
     doc.setFillColor(white);
-    doc.rect(0, 0, 50, 100, 'F');
+    doc.rect(0, 0, 55, 85, 'F');
     
     // Border
     doc.setDrawColor(black);
     doc.setLineWidth(0.3);
-    doc.rect(1, 1, 48, 98, 'S');
+    doc.rect(1, 1, 53, 83, 'S');
 
     // Slot for lanyard
-    doc.ellipse(25, 5, 6, 2, 'S');
+    doc.ellipse(27.5, 5, 6, 2, 'S');
 
     // Logo Area
     doc.setFont('helvetica', 'bold');
@@ -70,12 +70,12 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
 
     // Yellow Header Section
     doc.setFillColor(yellow);
-    doc.rect(1, 15, 48, 15, 'F');
+    doc.rect(1, 15, 53, 15, 'F');
     
     doc.setTextColor(black);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('GARRAFA DE USO INDIVIDUAL', 25, 23, { align: 'center' });
+    doc.text('GARRAFA DE USO INDIVIDUAL', 27.5, 23, { align: 'center' });
 
     // ESTA GARRAFA PERTENCE A:
     doc.setTextColor(black);
@@ -84,7 +84,7 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
     doc.text('PERTENCE A:', 5, 46);
 
     // Photo Area
-    const photoX = 30;
+    const photoX = 35;
     const photoY = 38;
     const photoW = 15;
     const photoH = 18;
@@ -106,10 +106,10 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
 
     // Bottom Info Grid
     doc.setLineWidth(0.2);
-    doc.line(1, 60, 49, 60);
-    doc.line(1, 70, 49, 70);
-    doc.line(1, 80, 49, 80);
-    doc.line(25, 70, 25, 90);
+    doc.line(1, 60, 54, 60);
+    doc.line(1, 68, 54, 68);
+    doc.line(1, 76, 54, 76);
+    doc.line(27.5, 68, 27.5, 84);
 
     doc.setFontSize(6);
     // Row 1: Nome
@@ -120,25 +120,25 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
 
     // Row 2: Matricula | Gerencia
     doc.setFont('helvetica', 'bold');
-    doc.text('Matricula:', 3, 74);
+    doc.text('Matricula:', 3, 72);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.registration || '', 13, 74);
+    doc.text(employee.registration || '', 13, 72);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Gerência:', 27, 74);
+    doc.text('Gerência:', 29.5, 72);
     doc.setFont('helvetica', 'normal');
-    doc.text('MANUTENÇÃO', 37, 74);
+    doc.text('MANUTENÇÃO', 39.5, 72);
 
     // Row 3: Empresa | Fone
     doc.setFont('helvetica', 'bold');
-    doc.text('Empresa:', 3, 84);
+    doc.text('Empresa:', 3, 80);
     doc.setFont('helvetica', 'normal');
-    doc.text('Support Mining', 13, 84);
+    doc.text('Support Mining', 13, 80);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Fone:', 27, 84);
+    doc.text('Fone:', 29.5, 80);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.phone || '', 33, 84);
+    doc.text(employee.phone || '', 35.5, 80);
 
     doc.save(`cracha-agua-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
     toast.success('Crachá de água gerado com sucesso!', { id: toastId });

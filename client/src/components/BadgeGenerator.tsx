@@ -1,7 +1,7 @@
 /**
  * BadgeGenerator Component
  * Generates a PDF badge (front and back) for an employee based on the Mosaic template.
- * Dimensions: 50mm x 100mm (Portrait)
+ * Dimensions: 55mm x 85mm (Portrait)
  */
 
 import { jsPDF } from 'jspdf';
@@ -61,7 +61,7 @@ export const generateBadgePDF = async (employee: Employee) => {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: [50, 100]
+      format: [55, 85]
     });
 
     const black = '#000000';
@@ -73,26 +73,26 @@ export const generateBadgePDF = async (employee: Employee) => {
 
     // --- FRONT SIDE ---
     doc.setFillColor(white);
-    doc.rect(0, 0, 50, 100, 'F');
+    doc.rect(0, 0, 55, 85, 'F');
     
     doc.setDrawColor(black);
     doc.setLineWidth(0.3);
-    doc.rect(1, 1, 48, 98, 'S');
+    doc.rect(1, 1, 53, 83, 'S');
 
     // Slot for lanyard
-    doc.ellipse(25, 5, 6, 2, 'S');
+    doc.ellipse(27.5, 5, 6, 2, 'S');
 
     // Logo Area
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
-    doc.text('SUPPORT+MINING', 25, 12, { align: 'center' });
+    doc.text('SUPPORT+MINING', 27.5, 12, { align: 'center' });
     doc.setFontSize(5);
-    doc.text('ENGENHARIA', 25, 14, { align: 'center' });
+    doc.text('ENGENHARIA', 27.5, 14, { align: 'center' });
 
     // Photo Area
     const photoW = 25;
     const photoH = 30;
-    const photoX = (50 - photoW) / 2;
+    const photoX = (55 - photoW) / 2;
     const photoY = 18;
 
     if (employee.photoUrl) {
@@ -103,13 +103,13 @@ export const generateBadgePDF = async (employee: Employee) => {
         doc.setFillColor(grayBg);
         doc.rect(photoX, photoY, photoW, photoH, 'F');
         doc.setFontSize(6);
-        doc.text('SEM FOTO', 25, photoY + 15, { align: 'center' });
+        doc.text('SEM FOTO', 27.5, photoY + 15, { align: 'center' });
       }
     } else {
       doc.setFillColor(grayBg);
       doc.rect(photoX, photoY, photoW, photoH, 'F');
       doc.setFontSize(6);
-      doc.text('FOTO', 25, photoY + 15, { align: 'center' });
+      doc.text('FOTO', 27.5, photoY + 15, { align: 'center' });
     }
 
     // Info Section
@@ -126,38 +126,38 @@ export const generateBadgePDF = async (employee: Employee) => {
     doc.setFont('helvetica', 'bold');
     doc.text('Nome', 5, yInfo);
     doc.setFont('helvetica', 'normal');
-    const splitName = doc.splitTextToSize(employee.name, 40);
+    const splitName = doc.splitTextToSize(employee.name, 45);
     doc.text(splitName, 5, yInfo + 3);
     
     yInfo += 8 + (splitName.length - 1) * 3;
     doc.setFont('helvetica', 'bold');
     doc.text('Função', 5, yInfo);
     doc.setFont('helvetica', 'normal');
-    const splitRole = doc.splitTextToSize(employee.role, 40);
+    const splitRole = doc.splitTextToSize(employee.role, 45);
     doc.text(splitRole, 5, yInfo + 3);
 
     // QR Code
     try {
       const qrCodeDataUrl = await generateQRCode(siteUrl);
       if (qrCodeDataUrl) {
-        doc.addImage(qrCodeDataUrl, 'PNG', 32, 82, 15, 15);
+        doc.addImage(qrCodeDataUrl, 'PNG', 37, 68, 15, 15);
       }
     } catch (error) {}
 
     // --- BACK SIDE ---
-    doc.addPage([50, 100], 'portrait');
+    doc.addPage([55, 85], 'portrait');
     doc.setFillColor(white);
-    doc.rect(0, 0, 50, 100, 'F');
+    doc.rect(0, 0, 55, 85, 'F');
     doc.setDrawColor(black);
-    doc.rect(1, 1, 48, 98, 'S');
+    doc.rect(1, 1, 53, 83, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('QUALIFICAÇÕES', 25, 8, { align: 'center' });
+    doc.text('QUALIFICAÇÕES', 27.5, 8, { align: 'center' });
 
     const tableX = 3;
     let currentY = 12;
-    const col1Width = 30;
+    const col1Width = 35;
     const col2Width = 14;
     const rowHeight = 6;
 
@@ -177,7 +177,7 @@ export const generateBadgePDF = async (employee: Employee) => {
       });
 
       sortedTrainings.forEach((training) => {
-        if (currentY > 90) return;
+        if (currentY > 75) return;
 
         const status = getTrainingStatus(training.expirationDate);
         const isExpired = status.status === 'expired';
