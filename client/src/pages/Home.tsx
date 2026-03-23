@@ -5,7 +5,7 @@
  * Palette: navy (#1a2332), orange (#e8772e), teal (#2d9f7f), warm gray (#f4f1ed)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics } from '@/lib/training-utils';
@@ -41,7 +41,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Prevents server data from overwriting a just-saved employee before the DB reflects it
+  const isSavingRef = useRef(false);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -62,11 +63,12 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // tRPC mutations and queries
+  const upsertOneMutation = trpc.employees.upsertOne.useMutation();
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
   const listQuery = trpc.employees.list.useQuery(undefined, {
-    refetchInterval: 5000, // Fetch from server every 5 seconds
-    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // Fetch from server every 30 seconds
+    refetchOnWindowFocus: false,
   });
 
   // Check authentication on mount
@@ -94,60 +96,14 @@ export default function Home() {
     };
   }, []);
 
-  // Update local state when server data changes
+  // Update local state when server data changes — skip if a save is in progress
   useEffect(() => {
+    if (isSavingRef.current) return;
     if (listQuery.data && listQuery.data.length > 0) {
-      const serverEmployees = listQuery.data as Employee[];
-      setEmployees(serverEmployees);
+      setEmployees(listQuery.data as Employee[]);
+      setIsLoading(false);
     }
   }, [listQuery.data]);
-
-  const loadData = async () => {
-    try {
-      // Try to load from server first
-      if (listQuery.data && listQuery.data.length > 0) {
-        const serverEmployees = listQuery.data as Employee[];
-        setEmployees(serverEmployees);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fallback to localStorage if server is empty
-      const keys = await new Promise<string[]>((resolve) => {
-        const result: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('training-manager:employee:')) {
-            result.push(key.replace('training-manager:', ''));
-          }
-        }
-        resolve(result);
-      });
-
-      if (keys && keys.length > 0) {
-        const employeeData: Employee[] = [];
-        for (const key of keys) {
-          const value = localStorage.getItem('training-manager:' + key);
-          if (value) {
-            const employee: Employee = JSON.parse(value);
-            if (employee.trainings) {
-              employee.trainings = employee.trainings.map((t) => ({
-                ...t,
-                completionDate:
-                  t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-              }));
-            }
-            employeeData.push(employee);
-          }
-        }
-        employeeData.sort((a, b) => a.name.localeCompare(b.name));
-        setEmployees(employeeData);
-      }
-    } catch (error) {
-      console.log('Nenhum dado anterior encontrado');
-    }
-    setIsLoading(false);
-  };
 
   const syncToServer = async () => {
     if (employees.length === 0) return;
@@ -199,19 +155,19 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
-      // Build the updated list directly — avoids stale closure bug where phone/fields go NULL
-      const updatedEmployees = (() => {
-        const index = employees.findIndex(e => e.id === employeeData.id);
-        if (index >= 0) {
-          const list = [...employees];
-          list[index] = employeeData;
-          return list;
-        }
-        return [...employees, employeeData].sort((a, b) => a.name.localeCompare(b.name));
-      })();
+      // Block listQuery from overwriting our local state during save
+      isSavingRef.current = true;
 
-      // Update local state
-      setEmployees(updatedEmployees);
+      // Update local state immediately for a responsive UI
+      setEmployees(prev => {
+        const index = prev.findIndex(e => e.id === employeeData.id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = employeeData;
+          return updated;
+        }
+        return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
+      });
 
       localStorage.setItem(
         `training-manager:employee:${employeeData.id}`,
@@ -224,16 +180,29 @@ export default function Home() {
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
 
-      // Sync immediately with the already-updated list (phone and all fields included)
+      // Save only this employee to the server (avoids overwriting other employees' data)
       try {
-        await syncMutation.mutateAsync({ employees: updatedEmployees });
+        await upsertOneMutation.mutateAsync({
+          id: employeeData.id,
+          name: employeeData.name,
+          registration: employeeData.registration,
+          educationLevel: employeeData.educationLevel,
+          age: employeeData.age,
+          role: employeeData.role,
+          phone: employeeData.phone,
+          trainings: employeeData.trainings,
+        });
         setLastSyncTime(new Date());
         setSyncError(null);
       } catch (err) {
         console.error('Erro ao sincronizar imediatamente:', err);
         setSyncError('Falha na sincronização');
+      } finally {
+        // Release the guard after a short delay so listQuery can resume
+        setTimeout(() => { isSavingRef.current = false; }, 3000);
       }
     } catch (error) {
+      isSavingRef.current = false;
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
     }
@@ -470,13 +439,15 @@ export default function Home() {
     setShowModal(true);
   };
 
-  const stats = getStatistics(employees);
-  let filteredEmployees = getFilteredEmployees(employees, filter, searchQuery);
-  
-  // Apply role filter
-  if (selectedRole) {
-    filteredEmployees = filteredEmployees.filter(emp => emp.role === selectedRole);
-  }
+  const stats = useMemo(() => getStatistics(employees), [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    let result = getFilteredEmployees(employees, filter, searchQuery);
+    if (selectedRole) {
+      result = result.filter(emp => emp.role === selectedRole);
+    }
+    return result;
+  }, [employees, filter, searchQuery, selectedRole]);
 
   // Render password modal as an overlay
   const renderPasswordModal = showPasswordModal && (
