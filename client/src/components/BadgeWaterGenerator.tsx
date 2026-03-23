@@ -1,7 +1,7 @@
 /**
  * BadgeWaterGenerator Component
  * Generates a PDF water bottle badge (front) for an employee based on the provided template.
- * Fields: Photo, Name, Registration, and Phone.
+ * Dimensions: 50mm x 100mm (Portrait)
  */
 
 import { jsPDF } from 'jspdf';
@@ -39,57 +39,55 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
   const toastId = toast.loading(`Gerando crachá de água para ${employee.name}...`);
   
   try {
-    // Dimensões padrão de crachá (usando o mesmo formato do BadgeLockGenerator)
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: [100, 120] // Ajustado para um formato mais vertical conforme a imagem
+      format: [50, 100]
     });
 
     const black = '#000000';
     const white = '#ffffff';
-    const yellow = '#f1b40f'; // Amarelo vibrante conforme a imagem
+    const yellow = '#f1b40f';
 
     // --- FRONT SIDE ---
     doc.setFillColor(white);
-    doc.rect(0, 0, 100, 120, 'F');
+    doc.rect(0, 0, 50, 100, 'F');
     
     // Border
     doc.setDrawColor(black);
-    doc.setLineWidth(0.5);
-    doc.rect(2, 2, 96, 116, 'S');
+    doc.setLineWidth(0.3);
+    doc.rect(1, 1, 48, 98, 'S');
 
-    // Top Logo Area (Support Mining Logo)
-    // Usando texto estilizado para representar a logo conforme a imagem
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('SUPPORT+MINING', 10, 10);
-    doc.setFontSize(6);
-    doc.text('ENGENHARIA', 10, 13);
-    
     // Slot for lanyard
-    doc.ellipse(50, 10, 8, 3, 'S');
+    doc.ellipse(25, 5, 6, 2, 'S');
+
+    // Logo Area
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.text('SUPPORT+MINING', 5, 10);
+    doc.setFontSize(4);
+    doc.text('ENGENHARIA', 5, 12);
 
     // Yellow Header Section
     doc.setFillColor(yellow);
-    doc.rect(2, 20, 96, 25, 'F');
+    doc.rect(1, 15, 48, 15, 'F');
     
     doc.setTextColor(black);
-    doc.setFontSize(16);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('GARRAFA DE USO INDIVIDUAL', 50, 35, { align: 'center' });
+    doc.text('GARRAFA DE USO INDIVIDUAL', 25, 23, { align: 'center' });
 
     // ESTA GARRAFA PERTENCE A:
     doc.setTextColor(black);
-    doc.setFontSize(16);
-    doc.text('ESTA GARRAFA', 10, 65);
-    doc.text('PERTENCE A:', 10, 75);
+    doc.setFontSize(8);
+    doc.text('ESTA GARRAFA', 5, 42);
+    doc.text('PERTENCE A:', 5, 46);
 
     // Photo Area
-    const photoX = 58;
-    const photoY = 50;
-    const photoW = 35;
-    const photoH = 40;
+    const photoX = 30;
+    const photoY = 38;
+    const photoW = 15;
+    const photoH = 18;
 
     if (employee.photoUrl) {
       try {
@@ -97,52 +95,50 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
         doc.addImage(photoBase64, 'JPEG', photoX, photoY, photoW, photoH);
       } catch (error) {
         doc.rect(photoX, photoY, photoW, photoH, 'S');
-        doc.setFontSize(6);
+        doc.setFontSize(4);
         doc.text('SEM FOTO', photoX + photoW/2, photoY + photoH/2, { align: 'center' });
       }
     } else {
       doc.rect(photoX, photoY, photoW, photoH, 'S');
-      doc.setFontSize(6);
+      doc.setFontSize(4);
       doc.text('FOTO', photoX + photoW/2, photoY + photoH/2, { align: 'center' });
     }
 
     // Bottom Info Grid
-    doc.setLineWidth(0.3);
-    // Horizontal lines
-    doc.line(2, 95, 98, 95);
-    doc.line(2, 103, 98, 103);
-    doc.line(2, 111, 98, 111);
-    // Vertical lines
-    doc.line(50, 103, 50, 118);
+    doc.setLineWidth(0.2);
+    doc.line(1, 60, 49, 60);
+    doc.line(1, 70, 49, 70);
+    doc.line(1, 80, 49, 80);
+    doc.line(25, 70, 25, 90);
 
-    doc.setFontSize(10);
+    doc.setFontSize(6);
     // Row 1: Nome
     doc.setFont('helvetica', 'bold');
-    doc.text('Nome:', 4, 100);
+    doc.text('Nome:', 3, 64);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.name, 16, 100);
+    doc.text(employee.name, 10, 64);
 
     // Row 2: Matricula | Gerencia
     doc.setFont('helvetica', 'bold');
-    doc.text('Matricula:', 4, 108);
+    doc.text('Matricula:', 3, 74);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.registration || '', 22, 108);
+    doc.text(employee.registration || '', 13, 74);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Gerência:', 52, 108);
+    doc.text('Gerência:', 27, 74);
     doc.setFont('helvetica', 'normal');
-    doc.text('MANUTENÇÃO', 70, 108);
+    doc.text('MANUTENÇÃO', 37, 74);
 
     // Row 3: Empresa | Fone
     doc.setFont('helvetica', 'bold');
-    doc.text('Empresa:', 4, 116);
+    doc.text('Empresa:', 3, 84);
     doc.setFont('helvetica', 'normal');
-    doc.text('Support Mining', 22, 116);
+    doc.text('Support Mining', 13, 84);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Fone:', 52, 116);
+    doc.text('Fone:', 27, 84);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.phone || '', 63, 116);
+    doc.text(employee.phone || '', 33, 84);
 
     doc.save(`cracha-agua-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
     toast.success('Crachá de água gerado com sucesso!', { id: toastId });

@@ -1,10 +1,10 @@
 /**
  * BadgeLockGenerator Component
  * Generates a PDF lock badge (front and back) for an employee based on the provided template.
- * Fields: Photo, Name, Registration, and Phone.
+ * Dimensions: 50mm x 100mm (Portrait)
  */
 
-import { jsPDF } from 'jspdf';
+import { jsPDF } from 'jsPDF';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -39,66 +39,62 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
   const toastId = toast.loading(`Gerando crachá de bloqueio para ${employee.name}...`);
   
   try {
-    // Dimensões baseadas na imagem (proporção aproximada de um crachá padrão)
-    // Usaremos 100x70mm para cada face (frente e verso lado a lado ou em páginas separadas)
-    // Para manter o padrão do BadgeGenerator.tsx, usaremos 200x150mm total (landscape)
     const doc = new jsPDF({
-      orientation: 'landscape',
+      orientation: 'portrait',
       unit: 'mm',
-      format: [200, 150]
+      format: [50, 100]
     });
 
     const black = '#000000';
     const white = '#ffffff';
     const red = '#ff0000';
 
-    // --- FRONT SIDE (Left Half: 0 to 100mm) ---
+    // --- FRONT SIDE ---
     doc.setFillColor(white);
-    doc.rect(0, 0, 100, 150, 'F');
+    doc.rect(0, 0, 50, 100, 'F');
     
     // Border
     doc.setDrawColor(black);
-    doc.setLineWidth(0.5);
-    doc.rect(2, 2, 96, 146, 'S');
+    doc.setLineWidth(0.3);
+    doc.rect(1, 1, 48, 98, 'S');
 
-    // Top Logo Area (Placeholder for Support Mining Logo)
-    // Based on the image, there's a logo at the top left
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('SUPPORT+MINING', 10, 10);
-    doc.setFontSize(6);
-    doc.text('ENGENHARIA', 10, 13);
-    
     // Slot for lanyard
-    doc.ellipse(50, 10, 8, 3, 'S');
+    doc.ellipse(25, 5, 6, 2, 'S');
 
-    // PERIGO Section (Black background with red oval and white text)
+    // Logo Area
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.text('SUPPORT+MINING', 5, 10);
+    doc.setFontSize(4);
+    doc.text('ENGENHARIA', 5, 12);
+
+    // PERIGO Section
     doc.setFillColor(black);
-    doc.roundedRect(5, 20, 90, 30, 3, 3, 'F');
+    doc.roundedRect(3, 15, 44, 15, 2, 2, 'F');
     
     doc.setFillColor(red);
-    doc.ellipse(50, 35, 35, 10, 'F');
+    doc.ellipse(25, 22.5, 18, 5, 'F');
     
     doc.setTextColor(white);
-    doc.setFontSize(24);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('PERIGO', 50, 38, { align: 'center' });
+    doc.text('PERIGO', 25, 24, { align: 'center' });
 
     // IDENTIFICAÇÃO DE BLOQUEIO
     doc.setTextColor(black);
-    doc.setFontSize(14);
-    doc.text('IDENTIFICAÇÃO DE BLOQUEIO', 50, 60, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text('IDENTIFICAÇÃO DE BLOQUEIO', 25, 35, { align: 'center' });
 
     // ESTA ETIQUETA PERTENCE A:
-    doc.setFontSize(16);
-    doc.text('ESTA ETIQUETA', 10, 75);
-    doc.text('PERTENCE A:', 10, 85);
+    doc.setFontSize(8);
+    doc.text('ESTA ETIQUETA', 5, 42);
+    doc.text('PERTENCE A:', 5, 46);
 
     // Photo Area
-    const photoX = 65;
-    const photoY = 70;
-    const photoW = 25;
-    const photoH = 30;
+    const photoX = 30;
+    const photoY = 38;
+    const photoW = 15;
+    const photoH = 18;
 
     if (employee.photoUrl) {
       try {
@@ -106,83 +102,76 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
         doc.addImage(photoBase64, 'JPEG', photoX, photoY, photoW, photoH);
       } catch (error) {
         doc.rect(photoX, photoY, photoW, photoH, 'S');
-        doc.setFontSize(6);
+        doc.setFontSize(4);
         doc.text('SEM FOTO', photoX + photoW/2, photoY + photoH/2, { align: 'center' });
       }
     } else {
       doc.rect(photoX, photoY, photoW, photoH, 'S');
-      doc.setFontSize(6);
+      doc.setFontSize(4);
       doc.text('FOTO', photoX + photoW/2, photoY + photoH/2, { align: 'center' });
     }
 
     // Bottom Info Grid
-    doc.setLineWidth(0.3);
-    // Horizontal lines
-    doc.line(2, 105, 98, 105);
-    doc.line(2, 118, 98, 118);
-    doc.line(2, 131, 98, 131);
-    // Vertical lines
-    doc.line(50, 118, 50, 148);
+    doc.setLineWidth(0.2);
+    doc.line(1, 60, 49, 60);
+    doc.line(1, 70, 49, 70);
+    doc.line(1, 80, 49, 80);
+    doc.line(25, 70, 25, 90);
 
-    doc.setFontSize(10);
+    doc.setFontSize(6);
     // Row 1: Nome
     doc.setFont('helvetica', 'bold');
-    doc.text('Nome:', 4, 111);
+    doc.text('Nome:', 3, 64);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.name.toUpperCase(), 16, 111);
+    doc.text(employee.name.toUpperCase(), 10, 64);
 
     // Row 2: Matricula | Gerencia
     doc.setFont('helvetica', 'bold');
-    doc.text('Matricula:', 4, 125);
+    doc.text('Matricula:', 3, 74);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.registration || '', 22, 125);
+    doc.text(employee.registration || '', 13, 74);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Gerência:', 52, 125);
+    doc.text('Gerência:', 27, 74);
     doc.setFont('helvetica', 'normal');
-    doc.text('MANUTENÇÃO', 70, 125);
+    doc.text('MANUTENÇÃO', 37, 74);
 
     // Row 3: Empresa | Fone
     doc.setFont('helvetica', 'bold');
-    doc.text('Empresa:', 4, 140);
+    doc.text('Empresa:', 3, 84);
     doc.setFont('helvetica', 'normal');
-    doc.text('Support Mining', 22, 140);
+    doc.text('Support Mining', 13, 84);
     
     doc.setFont('helvetica', 'bold');
-    doc.text('Fone:', 52, 140);
+    doc.text('Fone:', 27, 84);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.phone || '', 63, 140);
+    doc.text(employee.phone || '', 33, 84);
 
 
-    // --- BACK SIDE (Right Half: 100 to 200mm) ---
+    // --- BACK SIDE ---
+    doc.addPage([50, 100], 'portrait');
     doc.setFillColor(white);
-    doc.rect(100, 0, 100, 150, 'F');
-    
-    // Border
+    doc.rect(0, 0, 50, 100, 'F');
     doc.setDrawColor(black);
-    doc.setLineWidth(0.5);
-    doc.rect(102, 2, 96, 146, 'S');
-
-    // Top empty area with line
-    doc.line(102, 30, 198, 30);
+    doc.rect(1, 1, 48, 98, 'S');
 
     // Red Warning Box
     doc.setFillColor(red);
-    doc.rect(102, 60, 96, 45, 'F');
+    doc.rect(1, 30, 48, 30, 'F');
     
     doc.setTextColor(white);
-    doc.setFontSize(14);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     const warningText = 'SOMENTE A PESSOA QUE COLOCOU ESTA ETIQUETA PODERÁ FAZER A RETIRADA.';
-    const splitWarning = doc.splitTextToSize(warningText, 80);
-    doc.text(splitWarning, 150, 75, { align: 'center' });
+    const splitWarning = doc.splitTextToSize(warningText, 40);
+    doc.text(splitWarning, 25, 40, { align: 'center' });
 
     // Emergency Info
     doc.setTextColor(red);
-    doc.setFontSize(14);
-    doc.text('Ramal de Emergência', 150, 120, { align: 'center' });
-    doc.setFontSize(28);
-    doc.text('193', 150, 135, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text('Ramal de Emergência', 25, 75, { align: 'center' });
+    doc.setFontSize(18);
+    doc.text('193', 25, 85, { align: 'center' });
 
     doc.save(`cracha-bloqueio-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
     toast.success('Crachá de bloqueio gerado com sucesso!', { id: toastId });
