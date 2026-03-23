@@ -25,6 +25,58 @@ export const appRouter = router({
   }),
 
   employees: router({
+    upsertOne: publicProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          registration: z.string().optional(),
+          educationLevel: z.string().optional(),
+          age: z.number().optional(),
+          role: z.string(),
+          phone: z.string().optional(),
+          trainings: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              completionDate: z.string(),
+              expirationDate: z.string(),
+            })
+          ),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          await upsertEmployee({
+            id: input.id,
+            name: input.name,
+            registration: input.registration,
+            educationLevel: input.educationLevel,
+            age: input.age,
+            role: input.role,
+            phone: input.phone,
+          });
+
+          const currentTrainingIds = input.trainings.map(t => t.id);
+          await deleteTrainingsExcept(input.id, currentTrainingIds);
+
+          for (const training of input.trainings) {
+            await upsertTraining({
+              id: training.id,
+              employeeId: input.id,
+              name: training.name,
+              completionDate: training.completionDate,
+              expirationDate: training.expirationDate,
+            });
+          }
+
+          return { success: true };
+        } catch (error) {
+          console.error("UpsertOne error:", error);
+          throw error;
+        }
+      }),
+
     delete: publicProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
@@ -98,7 +150,7 @@ export const appRouter = router({
       }),
     list: publicProcedure.query(async () => {
       const employeeList = await getAllEmployees();
-      // Run all per-employee queries in parallel instead of sequentially (fixes N+1 slowness)
+      // Busca trainings e foto em paralelo para cada colaborador (muito mais rápido)
       const result = await Promise.all(
         employeeList.map(async (emp) => {
           const [trainings, photoUrl] = await Promise.all([
