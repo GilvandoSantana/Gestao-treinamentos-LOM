@@ -1,7 +1,5 @@
 /*
- * Design: Industrial Blueprint — Neo-Industrial
- * Home: Main page orchestrating the training management dashboard.
- * Uses tRPC + backend database for multi-device synchronization every 5 seconds.
+ * Home: Página principal do sistema de gestão de treinamentos.
  * Palette: navy (#1a2332), orange (#e8772e), teal (#2d9f7f), warm gray (#f4f1ed)
  */
 
@@ -41,7 +39,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  // Prevents server data from overwriting a just-saved employee before the DB reflects it
+
+  // Impede que o listQuery sobrescreva dados logo após um save
   const isSavingRef = useRef(false);
 
   // Modal state
@@ -52,51 +51,68 @@ export default function Home() {
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
-  const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<any>(null);
+  const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // tRPC mutations and queries
+  // tRPC mutations e queries
   const upsertOneMutation = trpc.employees.upsertOne.useMutation();
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
   const listQuery = trpc.employees.list.useQuery(undefined, {
-    refetchInterval: 30000, // Fetch from server every 30 seconds
+    refetchInterval: 30000, // Busca do servidor a cada 30 segundos
     refetchOnWindowFocus: false,
   });
 
-  // Check authentication on mount
+  // Verifica autenticação ao montar
   useEffect(() => {
     const auth = sessionStorage.getItem('training-manager-auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
+    if (auth === 'true') setIsAuthenticated(true);
   }, []);
 
-  // Load data on mount and set up auto-sync
+  // Carrega dados iniciais do localStorage enquanto o servidor responde
   useEffect(() => {
     seedEmployees();
-    loadData();
 
-    // Set up auto-sync every 5 seconds
-    syncIntervalRef.current = setInterval(() => {
-      syncToServer();
-    }, 5000);
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('training-manager:employee:')) {
+        keys.push(key.replace('training-manager:', ''));
       }
-    };
+    }
+
+    if (keys.length > 0) {
+      const employeeData: Employee[] = [];
+      for (const key of keys) {
+        const value = localStorage.getItem('training-manager:' + key);
+        if (value) {
+          try {
+            const employee: Employee = JSON.parse(value);
+            if (employee.trainings) {
+              employee.trainings = employee.trainings.map((t) => ({
+                ...t,
+                completionDate:
+                  t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
+              }));
+            }
+            employeeData.push(employee);
+          } catch {}
+        }
+      }
+      employeeData.sort((a, b) => a.name.localeCompare(b.name));
+      setEmployees(employeeData);
+    }
+
+    setIsLoading(false);
   }, []);
 
-  // Update local state when server data changes — skip if a save is in progress
+  // Atualiza estado local quando o servidor responde — ignorado durante saves
   useEffect(() => {
     if (isSavingRef.current) return;
     if (listQuery.data && listQuery.data.length > 0) {
@@ -104,23 +120,6 @@ export default function Home() {
       setIsLoading(false);
     }
   }, [listQuery.data]);
-
-  const syncToServer = async () => {
-    if (employees.length === 0) return;
-    
-    try {
-      setIsSyncing(true);
-      setSyncError(null);
-      // Sync employees to server every 5 seconds
-      await syncMutation.mutateAsync({ employees });
-      setLastSyncTime(new Date());
-    } catch (error) {
-      console.error('Erro ao sincronizar:', error);
-      setSyncError('Falha na sincronização');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const handleExcelImport = async (importedEmployees: Employee[]) => {
     try {
@@ -155,10 +154,10 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
-      // Block listQuery from overwriting our local state during save
+      // Bloqueia o listQuery de sobrescrever enquanto salvamos
       isSavingRef.current = true;
 
-      // Update local state immediately for a responsive UI
+      // Atualiza estado local imediatamente para UI responsiva
       setEmployees(prev => {
         const index = prev.findIndex(e => e.id === employeeData.id);
         if (index >= 0) {
@@ -180,7 +179,7 @@ export default function Home() {
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
 
-      // Save only this employee to the server (avoids overwriting other employees' data)
+      // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
       try {
         await upsertOneMutation.mutateAsync({
           id: employeeData.id,
@@ -195,10 +194,10 @@ export default function Home() {
         setLastSyncTime(new Date());
         setSyncError(null);
       } catch (err) {
-        console.error('Erro ao sincronizar imediatamente:', err);
+        console.error('Erro ao sincronizar:', err);
         setSyncError('Falha na sincronização');
       } finally {
-        // Release the guard after a short delay so listQuery can resume
+        // Libera o bloqueio após 3s para o listQuery voltar a funcionar
         setTimeout(() => { isSavingRef.current = false; }, 3000);
       }
     } catch (error) {
@@ -208,19 +207,12 @@ export default function Home() {
     }
   };
 
-  const handleDeleteClick = (employeeId: string) => {
-    // Apenas abrir o DeleteConfirmModal, não o PasswordModal
-    setDeleteConfirmId(employeeId);
-    setShowDeleteConfirm(true);
-  };
-
   const handlePasswordSuccess = () => {
     setShowPasswordModal(false);
     if (passwordModalReason === 'login') {
       setIsAuthenticated(true);
       sessionStorage.setItem('training-manager-auth', 'true');
     } else if (passwordModalReason === 'delete' && deleteConfirmId) {
-      // Executar a exclusão confirmada
       deleteEmployeeConfirmed();
     }
   };
@@ -234,32 +226,23 @@ export default function Home() {
   };
 
   const deleteEmployee = async () => {
-    // Agora a exclusão é direta após a confirmação no DeleteConfirmModal
-    if (deleteConfirmId) {
-      await deleteEmployeeConfirmed();
-    }
+    if (deleteConfirmId) await deleteEmployeeConfirmed();
   };
 
   const deleteEmployeeConfirmed = async () => {
     if (!deleteConfirmId) return;
-
     try {
-      // Atualizar o estado local imediatamente
       setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
-      
       await deleteMutation.mutateAsync({ id: deleteConfirmId });
-      
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
-      
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
-      toast.success('Colaborador excluido com sucesso!');
+      toast.success('Colaborador excluído com sucesso!');
       setLastSyncTime(new Date());
       setSyncError(null);
     } catch (error) {
       toast.error('Erro ao excluir colaborador');
       console.error(error);
-      // Recarregar dados em caso de erro para restaurar o estado
       await listQuery.refetch();
     }
   };
@@ -267,40 +250,22 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
-      
-      // Debug: log dos dados disponíveis
-      console.log('exportData chamada');
-      console.log('listQuery.data:', listQuery.data);
-      console.log('employees state:', employees);
-      
-      // Forçar recarregamento dos dados do servidor antes de exportar
-      if (listQuery.data && listQuery.data.length > 0) {
-        setEmployees(listQuery.data as Employee[]);
-      }
-      
-      // Usar os dados mais recentes (que podem ter sido atualizados acima)
-      const dataToExport = listQuery.data && listQuery.data.length > 0 ? (listQuery.data as Employee[]) : employees;
-      console.log('dataToExport:', dataToExport);
-      
-      // Preparar dados para Excel - Uma linha por treinamento
       const excelData: any[] = [];
-      console.log('Processando', dataToExport.length, 'colaboradores');
-      console.log('Primeiro colaborador:', dataToExport[0]);
-      
-      dataToExport.forEach(emp => {
+
+      employees.forEach(emp => {
         if (emp.trainings && emp.trainings.length > 0) {
-          // Se tem treinamentos, cria uma linha para cada um
           emp.trainings.forEach(training => {
             excelData.push({
               'Nome': emp.name || '',
               'Função': emp.role || '',
               'Treinamento': training.name || '',
-              'Data de Realização': training.completionDate ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
-              'Validade': training.expirationDate ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
+              'Data de Realização': training.completionDate
+                ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
+              'Validade': training.expirationDate
+                ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
             });
           });
         } else {
-          // Se não tem treinamentos, cria uma linha vazia para o colaborador
           excelData.push({
             'Nome': emp.name || '',
             'Função': emp.role || '',
@@ -311,46 +276,18 @@ export default function Home() {
         }
       });
 
-      // Criar workbook e worksheet
       const ws = XLSX.utils.json_to_sheet(excelData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
-      
-      // Ajustar largura das colunas
-      const colWidths = [
-        { wch: 25 }, // Nome
-        { wch: 20 }, // Função
-        { wch: 30 }, // Treinamento
-        { wch: 18 }, // Data de Realização
-        { wch: 15 }, // Validade
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Gerar arquivo Excel
-      const fileName = `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`;
-      console.log('Gerando arquivo:', fileName, 'com', excelData.length, 'linhas');
-      console.log('Primeiras linhas do Excel:', excelData.slice(0, 3));
-      XLSX.writeFile(wb, fileName);
-      
+      ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 30 }, { wch: 18 }, { wch: 15 }];
+      XLSX.writeFile(wb, `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.success('Dados exportados para Excel com sucesso!');
     } catch (error) {
       toast.error('Erro ao exportar dados para Excel.');
-      console.error('Erro na exportação:', error);
+      console.error(error);
     } finally {
       setIsSyncing(false);
     }
-  };
-
-  const downloadFile = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `treinamentos_backup_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success('Arquivo baixado com sucesso!');
   };
 
   const importData = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -369,30 +306,32 @@ export default function Home() {
           return;
         }
 
-        for (const employee of importedData.employees) {
-          if (employee.trainings) {
-            employee.trainings = employee.trainings.map((t: any) => ({
-              ...t,
-              completionDate:
-                t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-            }));
-          }
+        const employeeData: Employee[] = importedData.employees.map((employee: Employee) => ({
+          ...employee,
+          trainings: (employee.trainings || []).map((t: any) => ({
+            ...t,
+            completionDate:
+              t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
+          })),
+        }));
+
+        for (const employee of employeeData) {
           localStorage.setItem(
             `training-manager:employee:${employee.id}`,
             JSON.stringify(employee)
           );
         }
 
-        await loadData();
-        toast.success(
-          `Dados importados com sucesso! ${importedData.employees.length} colaborador(es) carregado(s).`
-        );
-        // Trigger immediate sync
+        const sorted = employeeData.sort((a, b) => a.name.localeCompare(b.name));
+        setEmployees(sorted);
+
         try {
-          await syncMutation.mutateAsync({ employees });
+          await syncMutation.mutateAsync({ employees: sorted });
         } catch (err) {
-          console.error('Erro ao sincronizar imediatamente:', err);
+          console.error('Erro ao sincronizar após importação:', err);
         }
+
+        toast.success(`Dados importados com sucesso! ${employeeData.length} colaborador(es) carregado(s).`);
       } catch (error) {
         toast.error('Erro ao importar dados. Verifique se o arquivo está correto.');
         console.error(error);
@@ -403,17 +342,13 @@ export default function Home() {
     if (event.target) event.target.value = '';
   };
 
-  const triggerFileImport = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleExportPDF = async () => {
     try {
       setIsSyncing(true);
       await generateComprehensivePDF(employees);
       toast.success('Relatório PDF gerado com sucesso!');
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
+      console.error(error);
       toast.error('Erro ao gerar relatório PDF');
     } finally {
       setIsSyncing(false);
@@ -424,11 +359,13 @@ export default function Home() {
     try {
       setIsSyncing(true);
       await generateFilteredPDF(employees, filterType);
-      const filterLabel = filterType === 'all' ? 'Todos' : filterType === 'valid' ? 'Validos' : filterType === 'expiring' ? 'Proximos a Vencer' : 'Vencidos';
-      toast.success(`Relatorio de ${filterLabel} gerado com sucesso!`);
+      const labels: Record<FilterType, string> = {
+        all: 'Todos', valid: 'Válidos', expiring: 'Próximos a Vencer', expired: 'Vencidos',
+      };
+      toast.success(`Relatório de ${labels[filterType]} gerado com sucesso!`);
     } catch (error) {
-      console.error('Erro ao gerar PDF filtrado:', error);
-      toast.error('Erro ao gerar relatorio PDF');
+      console.error(error);
+      toast.error('Erro ao gerar relatório PDF');
     } finally {
       setIsSyncing(false);
     }
@@ -439,26 +376,14 @@ export default function Home() {
     setShowModal(true);
   };
 
+  // Memoizado para evitar recálculo em cada re-render
   const stats = useMemo(() => getStatistics(employees), [employees]);
 
   const filteredEmployees = useMemo(() => {
     let result = getFilteredEmployees(employees, filter, searchQuery);
-    if (selectedRole) {
-      result = result.filter(emp => emp.role === selectedRole);
-    }
+    if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
     return result;
   }, [employees, filter, searchQuery, selectedRole]);
-
-  // Render password modal as an overlay
-  const renderPasswordModal = showPasswordModal && (
-    <PasswordModal
-      isOpen={showPasswordModal}
-      title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
-      description={passwordModalReason === 'login' ? 'Digite a senha para habilitar edições' : 'Digite a senha para confirmar a exclusão do colaborador'}
-      onSuccess={handlePasswordSuccess}
-      onCancel={handlePasswordCancel}
-    />
-  );
 
   if (isLoading) {
     return (
@@ -473,9 +398,22 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {renderPasswordModal}
+      {showPasswordModal && (
+        <PasswordModal
+          isOpen={showPasswordModal}
+          title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
+          description={
+            passwordModalReason === 'login'
+              ? 'Digite a senha para habilitar edições'
+              : 'Digite a senha para confirmar a exclusão do colaborador'
+          }
+          onSuccess={handlePasswordSuccess}
+          onCancel={handlePasswordCancel}
+        />
+      )}
+
       <div className="container py-6 md:py-8">
-        {/* Hidden file input */}
+        {/* Input oculto para importação de JSON */}
         <input
           ref={fileInputRef}
           type="file"
@@ -484,7 +422,6 @@ export default function Home() {
           className="hidden"
         />
 
-        {/* Header with hero */}
         <Header
           onNewEmployee={() => openModal()}
           onExport={exportData}
@@ -505,21 +442,14 @@ export default function Home() {
           }}
         />
 
-        {/* Sync Status */}
         <div className="mb-6">
           <SyncStatus lastSyncTime={lastSyncTime} isSyncing={isSyncing} syncError={syncError} />
         </div>
 
-        {/* Statistics */}
         <StatCards stats={stats} />
-
-        {/* Compliance Charts */}
         <ComplianceCharts employees={employees} />
-
-        {/* Expiring Notifications */}
         <ExpiringNotifications employees={employees} />
 
-        {/* Advanced Search */}
         <AdvancedSearch
           searchTerm={searchQuery}
           onSearchChange={setSearchQuery}
@@ -527,18 +457,13 @@ export default function Home() {
           onSearchByChange={setSearchBy}
         />
 
-        {/* Email History Panel */}
         <div className="mb-6">
           <EmailHistoryPanel />
         </div>
 
-        {/* Role Filter */}
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-
-        {/* Filters */}
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
-        {/* Employee Cards or Table */}
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
@@ -577,15 +502,11 @@ export default function Home() {
           />
         )}
 
-        {/* Footer */}
         <div className="mt-12 pb-8 text-center">
-          <p className="text-muted-foreground text-xs font-medium">
-            Gestão de Treinamentos
-          </p>
+          <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
         </div>
       </div>
 
-      {/* Employee Modal */}
       <EmployeeModal
         isOpen={showModal}
         employee={editingEmployee}
@@ -597,7 +518,6 @@ export default function Home() {
         isAdmin={isAuthenticated}
       />
 
-      {/* Delete Confirmation */}
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
         onConfirm={deleteEmployee}
@@ -607,14 +527,12 @@ export default function Home() {
         }}
       />
 
-      {/* Excel Import Modal */}
       <ExcelImportModal
         isOpen={showExcelImport}
         onClose={() => setShowExcelImport(false)}
         onImport={handleExcelImport}
       />
 
-      {/* Audit History Modal */}
       {selectedEmployeeForAudit && (
         <AuditHistory
           isOpen={showAuditHistory}
@@ -622,12 +540,11 @@ export default function Home() {
             setShowAuditHistory(false);
             setSelectedEmployeeForAudit(null);
           }}
-          auditLogs={auditLogs}
+          auditLogs={[]}
           employeeName={selectedEmployeeForAudit.name}
         />
       )}
 
-      {/* Training Notifications */}
       <TrainingNotifications employees={employees} />
     </div>
   );
