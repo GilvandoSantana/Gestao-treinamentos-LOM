@@ -5,7 +5,7 @@
  * Palette: navy (#1a2332), orange (#e8772e), teal (#2d9f7f), warm gray (#f4f1ed)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics } from '@/lib/training-utils';
@@ -41,7 +41,6 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -65,8 +64,8 @@ export default function Home() {
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
   const listQuery = trpc.employees.list.useQuery(undefined, {
-    refetchInterval: 5000, // Fetch from server every 5 seconds
-    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // Fetch from server every 30 seconds
+    refetchOnWindowFocus: false,
   });
 
   // Check authentication on mount
@@ -77,21 +76,44 @@ export default function Home() {
     }
   }, []);
 
-  // Load data on mount and set up auto-sync
+  // Load initial data from localStorage as fallback while server loads
   useEffect(() => {
     seedEmployees();
-    loadData();
 
-    // Set up auto-sync every 5 seconds
-    syncIntervalRef.current = setInterval(() => {
-      syncToServer();
-    }, 5000);
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
+    // Only load from localStorage if server hasn't returned data yet
+    if (!listQuery.data || listQuery.data.length === 0) {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('training-manager:employee:')) {
+          keys.push(key.replace('training-manager:', ''));
+        }
       }
-    };
+
+      if (keys.length > 0) {
+        const employeeData: Employee[] = [];
+        for (const key of keys) {
+          const value = localStorage.getItem('training-manager:' + key);
+          if (value) {
+            try {
+              const employee: Employee = JSON.parse(value);
+              if (employee.trainings) {
+                employee.trainings = employee.trainings.map((t) => ({
+                  ...t,
+                  completionDate:
+                    t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
+                }));
+              }
+              employeeData.push(employee);
+            } catch {}
+          }
+        }
+        employeeData.sort((a, b) => a.name.localeCompare(b.name));
+        setEmployees(employeeData);
+      }
+    }
+
+    setIsLoading(false);
   }, []);
 
   // Update local state when server data changes
@@ -102,61 +124,14 @@ export default function Home() {
     }
   }, [listQuery.data]);
 
-  const loadData = async () => {
-    try {
-      // Try to load from server first
-      if (listQuery.data && listQuery.data.length > 0) {
-        const serverEmployees = listQuery.data as Employee[];
-        setEmployees(serverEmployees);
-        setIsLoading(false);
-        return;
-      }
+  const syncToServer = async (employeeList?: Employee[]) => {
+    const list = employeeList ?? employees;
+    if (list.length === 0) return;
 
-      // Fallback to localStorage if server is empty
-      const keys = await new Promise<string[]>((resolve) => {
-        const result: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('training-manager:employee:')) {
-            result.push(key.replace('training-manager:', ''));
-          }
-        }
-        resolve(result);
-      });
-
-      if (keys && keys.length > 0) {
-        const employeeData: Employee[] = [];
-        for (const key of keys) {
-          const value = localStorage.getItem('training-manager:' + key);
-          if (value) {
-            const employee: Employee = JSON.parse(value);
-            if (employee.trainings) {
-              employee.trainings = employee.trainings.map((t) => ({
-                ...t,
-                completionDate:
-                  t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-              }));
-            }
-            employeeData.push(employee);
-          }
-        }
-        employeeData.sort((a, b) => a.name.localeCompare(b.name));
-        setEmployees(employeeData);
-      }
-    } catch (error) {
-      console.log('Nenhum dado anterior encontrado');
-    }
-    setIsLoading(false);
-  };
-
-  const syncToServer = async () => {
-    if (employees.length === 0) return;
-    
     try {
       setIsSyncing(true);
       setSyncError(null);
-      // Sync employees to server every 5 seconds
-      await syncMutation.mutateAsync({ employees });
+      await syncMutation.mutateAsync({ employees: list });
       setLastSyncTime(new Date());
     } catch (error) {
       console.error('Erro ao sincronizar:', error);
@@ -224,18 +199,16 @@ export default function Home() {
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
       
-      // Trigger immediate sync com a lista completa de colaboradores
-      setEmployees(currentEmployees => {
-        // Garante que o employee atualizado está na lista antes de sincronizar
-        const updated = currentEmployees.some(e => e.id === employeeData.id)
-          ? currentEmployees.map(e => e.id === employeeData.id ? employeeData : e)
-          : [...currentEmployees, employeeData];
-
-        syncMutation.mutate({ employees: updated });
-        return updated;
-      });
-      setLastSyncTime(new Date());
-      setSyncError(null);
+      // Trigger immediate sync with the updated employee list (fixes phone/data loss bug)
+      try {
+        const updatedList = employees.some(e => e.id === employeeData.id)
+          ? employees.map(e => e.id === employeeData.id ? employeeData : e)
+          : [...employees, employeeData];
+        await syncToServer(updatedList);
+      } catch (err) {
+        console.error('Erro ao sincronizar imediatamente:', err);
+        setSyncError('Falha na sincronização');
+      }
     } catch (error) {
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
@@ -473,13 +446,15 @@ export default function Home() {
     setShowModal(true);
   };
 
-  const stats = getStatistics(employees);
-  let filteredEmployees = getFilteredEmployees(employees, filter, searchQuery);
-  
-  // Apply role filter
-  if (selectedRole) {
-    filteredEmployees = filteredEmployees.filter(emp => emp.role === selectedRole);
-  }
+  const stats = useMemo(() => getStatistics(employees), [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    let result = getFilteredEmployees(employees, filter, searchQuery);
+    if (selectedRole) {
+      result = result.filter(emp => emp.role === selectedRole);
+    }
+    return result;
+  }, [employees, filter, searchQuery, selectedRole]);
 
   // Render password modal as an overlay
   const renderPasswordModal = showPasswordModal && (
