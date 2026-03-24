@@ -25,7 +25,8 @@ const loadImage = (url: string): Promise<string> => {
           return;
         }
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        // Retornamos como PNG para preservar a transparência
+        resolve(canvas.toDataURL('image/png'));
       } catch (e) {
         reject(e);
       }
@@ -62,10 +63,11 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
     // Slot for lanyard
     doc.ellipse(27.5, 5, 6, 2, 'S');
 
-    // Logo Area - Replaced text with image
+    // Logo Area - PNG format with transparency
     try {
       const logoBase64 = await loadImage(logoMining);
-      doc.addImage(logoBase64, 'PNG', 5, 7, 20, 10);
+      // Especificamos 'PNG' e 'FAST' para manter transparência no jsPDF
+      doc.addImage(logoBase64, 'PNG', 5, 7, 20, 10, undefined, 'FAST');
     } catch (error) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6);
