@@ -7,6 +7,7 @@
 import { jsPDF } from 'jspdf';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
+import logoMining from '@/assets/logo-support-mining.png';
 
 // Helper to load image from URL and convert to base64
 const loadImage = (url: string): Promise<string> => {
@@ -24,7 +25,8 @@ const loadImage = (url: string): Promise<string> => {
           return;
         }
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
+        // Retornamos como PNG para preservar a transparência
+        resolve(canvas.toDataURL('image/png'));
       } catch (e) {
         reject(e);
       }
@@ -61,12 +63,18 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
     // Slot for lanyard
     doc.ellipse(27.5, 5, 6, 2, 'S');
 
-    // Logo Area
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.text('SUPPORT+MINING', 5, 10);
-    doc.setFontSize(4);
-    doc.text('ENGENHARIA', 5, 12);
+    // Logo Area - PNG format with transparency
+    try {
+      const logoBase64 = await loadImage(logoMining);
+      // Especificamos 'PNG' e 'FAST' para manter transparência no jsPDF
+      doc.addImage(logoBase64, 'PNG', 5, 7, 20, 10, undefined, 'FAST');
+    } catch (error) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.text('SUPPORT+MINING', 5, 10);
+      doc.setFontSize(4);
+      doc.text('ENGENHARIA', 5, 12);
+    }
 
     // Yellow Header Section
     doc.setFillColor(yellow);
@@ -116,7 +124,7 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
     doc.setFont('helvetica', 'bold');
     doc.text('Nome:', 3, 64);
     doc.setFont('helvetica', 'normal');
-    doc.text(employee.name, 10, 64);
+    doc.text(employee.name.toUpperCase(), 10, 64);
 
     // Row 2: Matricula | Gerencia
     doc.setFont('helvetica', 'bold');
