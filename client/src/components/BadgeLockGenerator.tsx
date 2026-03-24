@@ -7,6 +7,7 @@
 import { jsPDF } from 'jspdf';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
+import logoMining from '@/assets/logo-support-mining.png';
 
 // Helper to load image from URL and convert to base64
 const loadImage = (url: string): Promise<string> => {
@@ -61,24 +62,29 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
     // Slot for lanyard
     doc.ellipse(27.5, 5, 6, 2, 'S');
 
-    // Logo Area
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.text('SUPPORT+MINING', 5, 10);
-    doc.setFontSize(4);
-    doc.text('ENGENHARIA', 5, 12);
+    // Logo Area - Replaced text with image
+    try {
+      const logoBase64 = await loadImage(logoMining);
+      doc.addImage(logoBase64, 'PNG', 5, 7, 20, 10);
+    } catch (error) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.text('SUPPORT+MINING', 5, 10);
+      doc.setFontSize(4);
+      doc.text('ENGENHARIA', 5, 12);
+    }
 
     // PERIGO Section
     doc.setFillColor(black);
-    doc.roundedRect(5.5, 15, 44, 15, 2, 2, 'F');
+    doc.roundedRect(5.5, 18, 44, 12, 2, 2, 'F');
     
     doc.setFillColor(red);
-    doc.ellipse(27.5, 22.5, 18, 5, 'F');
+    doc.ellipse(27.5, 24, 18, 4, 'F');
     
     doc.setTextColor(white);
-    doc.setFontSize(12);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('PERIGO', 27.5, 24, { align: 'center' });
+    doc.text('PERIGO', 27.5, 25.5, { align: 'center' });
 
     // IDENTIFICAÇÃO DE BLOQUEIO
     doc.setTextColor(black);
