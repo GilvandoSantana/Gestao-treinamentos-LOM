@@ -78,12 +78,12 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
 
     // Yellow Header Section
     doc.setFillColor(yellow);
-    doc.rect(1, 15, 53, 15, 'F');
+    doc.rect(1, 20, 53, 15, 'F');
     
     doc.setTextColor(black);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('GARRAFA DE USO INDIVIDUAL', 27.5, 23, { align: 'center' });
+    doc.text('GARRAFA DE USO INDIVIDUAL', 27.5, 28, { align: 'center' });
 
     // ESTA GARRAFA PERTENCE A:
     doc.setTextColor(black);

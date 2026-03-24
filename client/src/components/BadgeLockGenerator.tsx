@@ -42,9 +42,9 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
   
   try {
     const doc = new jsPDF({
-      orientation: 'portrait',
+      orientation: 'landscape',
       unit: 'mm',
-      format: [55, 85]
+      format: [110, 85]
     });
 
     const black = '#000000';
@@ -156,30 +156,29 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
     doc.text(employee.phone || '', 35.5, 80);
 
 
-    // --- BACK SIDE ---
-    doc.addPage([55, 85], 'portrait');
+    // --- BACK SIDE (Right Half) ---
     doc.setFillColor(white);
-    doc.rect(0, 0, 55, 85, 'F');
+    doc.rect(55, 0, 55, 85, 'F');
     doc.setDrawColor(black);
-    doc.rect(1, 1, 53, 83, 'S');
+    doc.rect(56, 1, 53, 83, 'S');
 
     // Red Warning Box
     doc.setFillColor(red);
-    doc.rect(1, 25, 53, 30, 'F');
+    doc.rect(56, 25, 53, 30, 'F');
     
     doc.setTextColor(white);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     const warningText = 'SOMENTE A PESSOA QUE COLOCOU ESTA ETIQUETA PODERÁ FAZER A RETIRADA.';
     const splitWarning = doc.splitTextToSize(warningText, 45);
-    doc.text(splitWarning, 27.5, 35, { align: 'center' });
+    doc.text(splitWarning, 82.5, 35, { align: 'center' });
 
     // Emergency Info
     doc.setTextColor(red);
     doc.setFontSize(8);
-    doc.text('Ramal de Emergência', 27.5, 65, { align: 'center' });
+    doc.text('Ramal de Emergência', 82.5, 65, { align: 'center' });
     doc.setFontSize(18);
-    doc.text('193', 27.5, 75, { align: 'center' });
+    doc.text('193', 82.5, 75, { align: 'center' });
 
     doc.save(`cracha-bloqueio-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
     toast.success('Crachá de bloqueio gerado com sucesso!', { id: toastId });
