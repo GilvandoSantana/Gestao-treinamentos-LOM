@@ -73,12 +73,16 @@ export default function Home() {
   useEffect(() => {
     const auth = sessionStorage.getItem('training-manager-auth');
 <<<<<<< HEAD
+<<<<<<< HEAD
     if (auth === 'true') {
       setIsAuthenticated(true);
     }
 =======
     if (auth === 'true') setIsAuthenticated(true);
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+    if (auth === 'true') setIsAuthenticated(true);
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   }, []);
 
   // Carrega dados iniciais do localStorage enquanto o servidor responde
@@ -92,6 +96,7 @@ export default function Home() {
         keys.push(key.replace('training-manager:', ''));
       }
 <<<<<<< HEAD
+<<<<<<< HEAD
     };
   }, []);
 
@@ -102,6 +107,8 @@ export default function Home() {
       setEmployees(serverEmployees);
 =======
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
     }
 
     if (keys.length > 0) {
@@ -172,6 +179,7 @@ export default function Home() {
   const saveEmployee = async (employeeData: Employee) => {
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       console.log('Salvando colaborador:', employeeData);
       
       // Atualizar o estado local imediatamente para refletir as mudanças na UI
@@ -185,6 +193,8 @@ export default function Home() {
           return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
         }
 =======
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       // Bloqueia o listQuery de sobrescrever enquanto salvamos
       isSavingRef.current = true;
 
@@ -197,7 +207,10 @@ export default function Home() {
           return updated;
         }
         return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
+<<<<<<< HEAD
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       });
 
       localStorage.setItem(
@@ -205,15 +218,20 @@ export default function Home() {
         JSON.stringify(employeeData)
       );
 <<<<<<< HEAD
+<<<<<<< HEAD
       
 =======
 
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       setShowModal(false);
       setEditingEmployee(null);
       toast.success(
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
+<<<<<<< HEAD
 <<<<<<< HEAD
       
       // Trigger immediate sync com a lista completa de colaboradores
@@ -226,6 +244,11 @@ export default function Home() {
 
       // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
       try {
+=======
+
+      // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
+      try {
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         await upsertOneMutation.mutateAsync({
           id: employeeData.id,
           name: employeeData.name,
@@ -235,7 +258,10 @@ export default function Home() {
           role: employeeData.role,
           phone: employeeData.phone,
           trainings: employeeData.trainings,
+<<<<<<< HEAD
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         });
         setLastSyncTime(new Date());
         setSyncError(null);
@@ -273,6 +299,7 @@ export default function Home() {
 
   const deleteEmployee = async () => {
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Agora a exclusão é direta após a confirmação no DeleteConfirmModal
     if (deleteConfirmId) {
       await deleteEmployeeConfirmed();
@@ -280,11 +307,15 @@ export default function Home() {
 =======
     if (deleteConfirmId) await deleteEmployeeConfirmed();
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+    if (deleteConfirmId) await deleteEmployeeConfirmed();
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   };
 
   const deleteEmployeeConfirmed = async () => {
     if (!deleteConfirmId) return;
     try {
+<<<<<<< HEAD
 <<<<<<< HEAD
       // Atualizar o estado local imediatamente
       setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
@@ -298,6 +329,11 @@ export default function Home() {
       await deleteMutation.mutateAsync({ id: deleteConfirmId });
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
+      await deleteMutation.mutateAsync({ id: deleteConfirmId });
+      localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
       toast.success('Colaborador excluído com sucesso!');
@@ -307,9 +343,12 @@ export default function Home() {
       toast.error('Erro ao excluir colaborador');
       console.error(error);
 <<<<<<< HEAD
+<<<<<<< HEAD
       // Recarregar dados em caso de erro para restaurar o estado
 =======
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       await listQuery.refetch();
     }
   };
@@ -317,6 +356,7 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
+<<<<<<< HEAD
 <<<<<<< HEAD
       
       // Debug: log dos dados disponíveis
@@ -411,6 +451,34 @@ export default function Home() {
 =======
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
 
+=======
+      const excelData: any[] = [];
+
+      employees.forEach(emp => {
+        if (emp.trainings && emp.trainings.length > 0) {
+          emp.trainings.forEach(training => {
+            excelData.push({
+              'Nome': emp.name || '',
+              'Função': emp.role || '',
+              'Treinamento': training.name || '',
+              'Data de Realização': training.completionDate
+                ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
+              'Validade': training.expirationDate
+                ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
+            });
+          });
+        } else {
+          excelData.push({
+            'Nome': emp.name || '',
+            'Função': emp.role || '',
+            'Treinamento': '',
+            'Data de Realização': '',
+            'Validade': '',
+          });
+        }
+      });
+
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       const ws = XLSX.utils.json_to_sheet(excelData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
@@ -515,6 +583,7 @@ export default function Home() {
   const stats = useMemo(() => getStatistics(employees), [employees]);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   // Render password modal as an overlay
   const renderPasswordModal = showPasswordModal && (
     <PasswordModal
@@ -526,12 +595,17 @@ export default function Home() {
     />
   );
 =======
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   const filteredEmployees = useMemo(() => {
     let result = getFilteredEmployees(employees, filter, searchQuery);
     if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
     return result;
   }, [employees, filter, searchQuery, selectedRole]);
+<<<<<<< HEAD
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 
   if (isLoading) {
     return (
@@ -547,8 +621,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
 <<<<<<< HEAD
+<<<<<<< HEAD
       {renderPasswordModal}
 =======
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       {showPasswordModal && (
         <PasswordModal
           isOpen={showPasswordModal}
@@ -563,7 +640,10 @@ export default function Home() {
         />
       )}
 
+<<<<<<< HEAD
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       <div className="container py-6 md:py-8">
         {/* Input oculto para importação de JSON */}
         <input
@@ -617,12 +697,15 @@ export default function Home() {
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         {/* Filters */}
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
         {/* Employee Cards or Table */}
 =======
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
@@ -662,6 +745,7 @@ export default function Home() {
         )}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         {/* Footer */}
         <div className="mt-12 pb-8 text-center">
           <p className="text-muted-foreground text-xs font-medium">
@@ -671,6 +755,10 @@ export default function Home() {
         <div className="mt-12 pb-8 text-center">
           <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
 >>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
+=======
+        <div className="mt-12 pb-8 text-center">
+          <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         </div>
       </div>
 

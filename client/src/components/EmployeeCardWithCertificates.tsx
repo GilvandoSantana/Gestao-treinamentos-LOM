@@ -15,6 +15,11 @@ import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
+<<<<<<< HEAD
+=======
+import { generateBadgeLockPDF } from './BadgeLockGenerator';
+import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 
 interface EmployeeCardWithCertificatesProps {
   employee: Employee;
@@ -68,6 +73,17 @@ export default function EmployeeCardWithCertificates({
     generateBadgePDF(employee);
   };
 
+<<<<<<< HEAD
+=======
+  const handleGenerateLockBadge = () => {
+    generateBadgeLockPDF(employee);
+  };
+
+  const handleGenerateWaterBadge = () => {
+    generateBadgeWaterPDF(employee);
+  };
+
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   return (
     <>
       <div
@@ -145,6 +161,7 @@ export default function EmployeeCardWithCertificates({
 	                    <CreditCard className="mr-2 h-4 w-4" />
 	                    <span>Crachá Padrão</span>
 	                  </DropdownMenuItem>
+<<<<<<< HEAD
 	                  <DropdownMenuItem onClick={() => {}}>
 	                    <Lock className="mr-2 h-4 w-4" />
 	                    <span>Crachá de Bloqueio</span>
@@ -153,6 +170,16 @@ export default function EmployeeCardWithCertificates({
 	                    <Droplets className="mr-2 h-4 w-4" />
 	                    <span>Crachá de Água</span>
 	                  </DropdownMenuItem>
+=======
+<DropdownMenuItem onClick={handleGenerateLockBadge}>
+                    <Lock className="mr-2 h-4 w-4" />
+                    <span>Crachá de Bloqueio</span>
+                  </DropdownMenuItem>
+<DropdownMenuItem onClick={handleGenerateWaterBadge}>
+                    <Droplets className="mr-2 h-4 w-4" />
+                    <span>Crachá de Água</span>
+                  </DropdownMenuItem>
+>>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 	                </DropdownMenuContent>
 	              </DropdownMenu>
 	            )}
