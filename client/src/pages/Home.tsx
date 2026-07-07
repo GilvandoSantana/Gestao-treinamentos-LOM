@@ -1,11 +1,9 @@
 /*
- * Design: Industrial Blueprint — Neo-Industrial
- * Home: Main page orchestrating the training management dashboard.
- * Uses tRPC + backend database for multi-device synchronization every 5 seconds.
+ * Home: Página principal do sistema de gestão de treinamentos.
  * Palette: navy (#1a2332), orange (#e8772e), teal (#2d9f7f), warm gray (#f4f1ed)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics } from '@/lib/training-utils';
@@ -41,7 +39,9 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Impede que o listQuery sobrescreva dados logo após um save
+  const isSavingRef = useRef(false);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -51,46 +51,47 @@ export default function Home() {
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
-  const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<any>(null);
+  const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // tRPC mutations and queries
+  // tRPC mutations e queries
+  const upsertOneMutation = trpc.employees.upsertOne.useMutation();
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
   const listQuery = trpc.employees.list.useQuery(undefined, {
-    refetchInterval: 5000, // Fetch from server every 5 seconds
-    refetchOnWindowFocus: true,
+    refetchInterval: 30000, // Busca do servidor a cada 30 segundos
+    refetchOnWindowFocus: false,
   });
 
-  // Check authentication on mount
+  // Verifica autenticação ao montar
   useEffect(() => {
     const auth = sessionStorage.getItem('training-manager-auth');
+<<<<<<< HEAD
     if (auth === 'true') {
       setIsAuthenticated(true);
     }
+=======
+    if (auth === 'true') setIsAuthenticated(true);
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
   }, []);
 
-  // Load data on mount and set up auto-sync
+  // Carrega dados iniciais do localStorage enquanto o servidor responde
   useEffect(() => {
     seedEmployees();
-    loadData();
 
-    // Set up auto-sync every 5 seconds
-    syncIntervalRef.current = setInterval(() => {
-      syncToServer();
-    }, 5000);
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('training-manager:employee:')) {
+        keys.push(key.replace('training-manager:', ''));
       }
+<<<<<<< HEAD
     };
   }, []);
 
@@ -99,36 +100,16 @@ export default function Home() {
     if (listQuery.data && listQuery.data.length > 0) {
       const serverEmployees = listQuery.data as Employee[];
       setEmployees(serverEmployees);
+=======
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
     }
-  }, [listQuery.data]);
 
-  const loadData = async () => {
-    try {
-      // Try to load from server first
-      if (listQuery.data && listQuery.data.length > 0) {
-        const serverEmployees = listQuery.data as Employee[];
-        setEmployees(serverEmployees);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fallback to localStorage if server is empty
-      const keys = await new Promise<string[]>((resolve) => {
-        const result: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('training-manager:employee:')) {
-            result.push(key.replace('training-manager:', ''));
-          }
-        }
-        resolve(result);
-      });
-
-      if (keys && keys.length > 0) {
-        const employeeData: Employee[] = [];
-        for (const key of keys) {
-          const value = localStorage.getItem('training-manager:' + key);
-          if (value) {
+    if (keys.length > 0) {
+      const employeeData: Employee[] = [];
+      for (const key of keys) {
+        const value = localStorage.getItem('training-manager:' + key);
+        if (value) {
+          try {
             const employee: Employee = JSON.parse(value);
             if (employee.trainings) {
               employee.trainings = employee.trainings.map((t) => ({
@@ -138,33 +119,24 @@ export default function Home() {
               }));
             }
             employeeData.push(employee);
-          }
+          } catch {}
         }
-        employeeData.sort((a, b) => a.name.localeCompare(b.name));
-        setEmployees(employeeData);
       }
-    } catch (error) {
-      console.log('Nenhum dado anterior encontrado');
+      employeeData.sort((a, b) => a.name.localeCompare(b.name));
+      setEmployees(employeeData);
     }
-    setIsLoading(false);
-  };
 
-  const syncToServer = async () => {
-    if (employees.length === 0) return;
-    
-    try {
-      setIsSyncing(true);
-      setSyncError(null);
-      // Sync employees to server every 5 seconds
-      await syncMutation.mutateAsync({ employees });
-      setLastSyncTime(new Date());
-    } catch (error) {
-      console.error('Erro ao sincronizar:', error);
-      setSyncError('Falha na sincronização');
-    } finally {
-      setIsSyncing(false);
+    setIsLoading(false);
+  }, []);
+
+  // Atualiza estado local quando o servidor responde — ignorado durante saves
+  useEffect(() => {
+    if (isSavingRef.current) return;
+    if (listQuery.data && listQuery.data.length > 0) {
+      setEmployees(listQuery.data as Employee[]);
+      setIsLoading(false);
     }
-  };
+  }, [listQuery.data]);
 
   const handleExcelImport = async (importedEmployees: Employee[]) => {
     try {
@@ -199,6 +171,7 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
+<<<<<<< HEAD
       console.log('Salvando colaborador:', employeeData);
       
       // Atualizar o estado local imediatamente para refletir as mudanças na UI
@@ -211,18 +184,37 @@ export default function Home() {
         } else {
           return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
         }
+=======
+      // Bloqueia o listQuery de sobrescrever enquanto salvamos
+      isSavingRef.current = true;
+
+      // Atualiza estado local imediatamente para UI responsiva
+      setEmployees(prev => {
+        const index = prev.findIndex(e => e.id === employeeData.id);
+        if (index >= 0) {
+          const updated = [...prev];
+          updated[index] = employeeData;
+          return updated;
+        }
+        return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
       });
 
       localStorage.setItem(
         `training-manager:employee:${employeeData.id}`,
         JSON.stringify(employeeData)
       );
+<<<<<<< HEAD
       
+=======
+
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
       setShowModal(false);
       setEditingEmployee(null);
       toast.success(
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
+<<<<<<< HEAD
       
       // Trigger immediate sync com a lista completa de colaboradores
       try {
@@ -230,23 +222,35 @@ export default function Home() {
         setEmployees(currentEmployees => {
           syncMutation.mutate({ employees: currentEmployees });
           return currentEmployees;
+=======
+
+      // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
+      try {
+        await upsertOneMutation.mutateAsync({
+          id: employeeData.id,
+          name: employeeData.name,
+          registration: employeeData.registration,
+          educationLevel: employeeData.educationLevel,
+          age: employeeData.age,
+          role: employeeData.role,
+          phone: employeeData.phone,
+          trainings: employeeData.trainings,
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
         });
         setLastSyncTime(new Date());
         setSyncError(null);
       } catch (err) {
-        console.error('Erro ao sincronizar imediatamente:', err);
+        console.error('Erro ao sincronizar:', err);
         setSyncError('Falha na sincronização');
+      } finally {
+        // Libera o bloqueio após 3s para o listQuery voltar a funcionar
+        setTimeout(() => { isSavingRef.current = false; }, 3000);
       }
     } catch (error) {
+      isSavingRef.current = false;
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
     }
-  };
-
-  const handleDeleteClick = (employeeId: string) => {
-    // Apenas abrir o DeleteConfirmModal, não o PasswordModal
-    setDeleteConfirmId(employeeId);
-    setShowDeleteConfirm(true);
   };
 
   const handlePasswordSuccess = () => {
@@ -255,7 +259,6 @@ export default function Home() {
       setIsAuthenticated(true);
       sessionStorage.setItem('training-manager-auth', 'true');
     } else if (passwordModalReason === 'delete' && deleteConfirmId) {
-      // Executar a exclusão confirmada
       deleteEmployeeConfirmed();
     }
   };
@@ -269,16 +272,20 @@ export default function Home() {
   };
 
   const deleteEmployee = async () => {
+<<<<<<< HEAD
     // Agora a exclusão é direta após a confirmação no DeleteConfirmModal
     if (deleteConfirmId) {
       await deleteEmployeeConfirmed();
     }
+=======
+    if (deleteConfirmId) await deleteEmployeeConfirmed();
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
   };
 
   const deleteEmployeeConfirmed = async () => {
     if (!deleteConfirmId) return;
-
     try {
+<<<<<<< HEAD
       // Atualizar o estado local imediatamente
       setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
       
@@ -286,15 +293,23 @@ export default function Home() {
       
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
       
+=======
+      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
+      await deleteMutation.mutateAsync({ id: deleteConfirmId });
+      localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
-      toast.success('Colaborador excluido com sucesso!');
+      toast.success('Colaborador excluído com sucesso!');
       setLastSyncTime(new Date());
       setSyncError(null);
     } catch (error) {
       toast.error('Erro ao excluir colaborador');
       console.error(error);
+<<<<<<< HEAD
       // Recarregar dados em caso de erro para restaurar o estado
+=======
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
       await listQuery.refetch();
     }
   };
@@ -302,6 +317,7 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
+<<<<<<< HEAD
       
       // Debug: log dos dados disponíveis
       console.log('exportData chamada');
@@ -325,17 +341,33 @@ export default function Home() {
       dataToExport.forEach(emp => {
         if (emp.trainings && emp.trainings.length > 0) {
           // Se tem treinamentos, cria uma linha para cada um
+=======
+      const excelData: any[] = [];
+
+      employees.forEach(emp => {
+        if (emp.trainings && emp.trainings.length > 0) {
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
           emp.trainings.forEach(training => {
             excelData.push({
               'Nome': emp.name || '',
               'Função': emp.role || '',
               'Treinamento': training.name || '',
+<<<<<<< HEAD
               'Data de Realização': training.completionDate ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
               'Validade': training.expirationDate ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
             });
           });
         } else {
           // Se não tem treinamentos, cria uma linha vazia para o colaborador
+=======
+              'Data de Realização': training.completionDate
+                ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
+              'Validade': training.expirationDate
+                ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
+            });
+          });
+        } else {
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
           excelData.push({
             'Nome': emp.name || '',
             'Função': emp.role || '',
@@ -345,6 +377,7 @@ export default function Home() {
           });
         }
       });
+<<<<<<< HEAD
 
       // Criar workbook e worksheet
       const ws = XLSX.utils.json_to_sheet(excelData);
@@ -375,17 +408,21 @@ export default function Home() {
       setIsSyncing(false);
     }
   };
+=======
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
 
-  const downloadFile = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `treinamentos_backup_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success('Arquivo baixado com sucesso!');
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
+      ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 30 }, { wch: 18 }, { wch: 15 }];
+      XLSX.writeFile(wb, `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Dados exportados para Excel com sucesso!');
+    } catch (error) {
+      toast.error('Erro ao exportar dados para Excel.');
+      console.error(error);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const importData = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,30 +441,32 @@ export default function Home() {
           return;
         }
 
-        for (const employee of importedData.employees) {
-          if (employee.trainings) {
-            employee.trainings = employee.trainings.map((t: any) => ({
-              ...t,
-              completionDate:
-                t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-            }));
-          }
+        const employeeData: Employee[] = importedData.employees.map((employee: Employee) => ({
+          ...employee,
+          trainings: (employee.trainings || []).map((t: any) => ({
+            ...t,
+            completionDate:
+              t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
+          })),
+        }));
+
+        for (const employee of employeeData) {
           localStorage.setItem(
             `training-manager:employee:${employee.id}`,
             JSON.stringify(employee)
           );
         }
 
-        await loadData();
-        toast.success(
-          `Dados importados com sucesso! ${importedData.employees.length} colaborador(es) carregado(s).`
-        );
-        // Trigger immediate sync
+        const sorted = employeeData.sort((a, b) => a.name.localeCompare(b.name));
+        setEmployees(sorted);
+
         try {
-          await syncMutation.mutateAsync({ employees });
+          await syncMutation.mutateAsync({ employees: sorted });
         } catch (err) {
-          console.error('Erro ao sincronizar imediatamente:', err);
+          console.error('Erro ao sincronizar após importação:', err);
         }
+
+        toast.success(`Dados importados com sucesso! ${employeeData.length} colaborador(es) carregado(s).`);
       } catch (error) {
         toast.error('Erro ao importar dados. Verifique se o arquivo está correto.');
         console.error(error);
@@ -438,17 +477,13 @@ export default function Home() {
     if (event.target) event.target.value = '';
   };
 
-  const triggerFileImport = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleExportPDF = async () => {
     try {
       setIsSyncing(true);
       await generateComprehensivePDF(employees);
       toast.success('Relatório PDF gerado com sucesso!');
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
+      console.error(error);
       toast.error('Erro ao gerar relatório PDF');
     } finally {
       setIsSyncing(false);
@@ -459,11 +494,13 @@ export default function Home() {
     try {
       setIsSyncing(true);
       await generateFilteredPDF(employees, filterType);
-      const filterLabel = filterType === 'all' ? 'Todos' : filterType === 'valid' ? 'Validos' : filterType === 'expiring' ? 'Proximos a Vencer' : 'Vencidos';
-      toast.success(`Relatorio de ${filterLabel} gerado com sucesso!`);
+      const labels: Record<FilterType, string> = {
+        all: 'Todos', valid: 'Válidos', expiring: 'Próximos a Vencer', expired: 'Vencidos',
+      };
+      toast.success(`Relatório de ${labels[filterType]} gerado com sucesso!`);
     } catch (error) {
-      console.error('Erro ao gerar PDF filtrado:', error);
-      toast.error('Erro ao gerar relatorio PDF');
+      console.error(error);
+      toast.error('Erro ao gerar relatório PDF');
     } finally {
       setIsSyncing(false);
     }
@@ -474,14 +511,10 @@ export default function Home() {
     setShowModal(true);
   };
 
-  const stats = getStatistics(employees);
-  let filteredEmployees = getFilteredEmployees(employees, filter, searchQuery);
-  
-  // Apply role filter
-  if (selectedRole) {
-    filteredEmployees = filteredEmployees.filter(emp => emp.role === selectedRole);
-  }
+  // Memoizado para evitar recálculo em cada re-render
+  const stats = useMemo(() => getStatistics(employees), [employees]);
 
+<<<<<<< HEAD
   // Render password modal as an overlay
   const renderPasswordModal = showPasswordModal && (
     <PasswordModal
@@ -492,6 +525,13 @@ export default function Home() {
       onCancel={handlePasswordCancel}
     />
   );
+=======
+  const filteredEmployees = useMemo(() => {
+    let result = getFilteredEmployees(employees, filter, searchQuery);
+    if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
+    return result;
+  }, [employees, filter, searchQuery, selectedRole]);
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
 
   if (isLoading) {
     return (
@@ -506,9 +546,26 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+<<<<<<< HEAD
       {renderPasswordModal}
+=======
+      {showPasswordModal && (
+        <PasswordModal
+          isOpen={showPasswordModal}
+          title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
+          description={
+            passwordModalReason === 'login'
+              ? 'Digite a senha para habilitar edições'
+              : 'Digite a senha para confirmar a exclusão do colaborador'
+          }
+          onSuccess={handlePasswordSuccess}
+          onCancel={handlePasswordCancel}
+        />
+      )}
+
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
       <div className="container py-6 md:py-8">
-        {/* Hidden file input */}
+        {/* Input oculto para importação de JSON */}
         <input
           ref={fileInputRef}
           type="file"
@@ -517,7 +574,6 @@ export default function Home() {
           className="hidden"
         />
 
-        {/* Header with hero */}
         <Header
           onNewEmployee={() => openModal()}
           onExport={exportData}
@@ -538,21 +594,14 @@ export default function Home() {
           }}
         />
 
-        {/* Sync Status */}
         <div className="mb-6">
           <SyncStatus lastSyncTime={lastSyncTime} isSyncing={isSyncing} syncError={syncError} />
         </div>
 
-        {/* Statistics */}
         <StatCards stats={stats} />
-
-        {/* Compliance Charts */}
         <ComplianceCharts employees={employees} />
-
-        {/* Expiring Notifications */}
         <ExpiringNotifications employees={employees} />
 
-        {/* Advanced Search */}
         <AdvancedSearch
           searchTerm={searchQuery}
           onSearchChange={setSearchQuery}
@@ -560,18 +609,20 @@ export default function Home() {
           onSearchByChange={setSearchBy}
         />
 
-        {/* Email History Panel */}
         <div className="mb-6">
           <EmailHistoryPanel />
         </div>
 
-        {/* Role Filter */}
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
+        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
+<<<<<<< HEAD
         {/* Filters */}
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
         {/* Employee Cards or Table */}
+=======
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
@@ -610,15 +661,19 @@ export default function Home() {
           />
         )}
 
+<<<<<<< HEAD
         {/* Footer */}
         <div className="mt-12 pb-8 text-center">
           <p className="text-muted-foreground text-xs font-medium">
             Gestão de Treinamentos
           </p>
+=======
+        <div className="mt-12 pb-8 text-center">
+          <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
+>>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
         </div>
       </div>
 
-      {/* Employee Modal */}
       <EmployeeModal
         isOpen={showModal}
         employee={editingEmployee}
@@ -630,7 +685,6 @@ export default function Home() {
         isAdmin={isAuthenticated}
       />
 
-      {/* Delete Confirmation */}
       <DeleteConfirmModal
         isOpen={showDeleteConfirm}
         onConfirm={deleteEmployee}
@@ -640,14 +694,12 @@ export default function Home() {
         }}
       />
 
-      {/* Excel Import Modal */}
       <ExcelImportModal
         isOpen={showExcelImport}
         onClose={() => setShowExcelImport(false)}
         onImport={handleExcelImport}
       />
 
-      {/* Audit History Modal */}
       {selectedEmployeeForAudit && (
         <AuditHistory
           isOpen={showAuditHistory}
@@ -655,12 +707,11 @@ export default function Home() {
             setShowAuditHistory(false);
             setSelectedEmployeeForAudit(null);
           }}
-          auditLogs={auditLogs}
+          auditLogs={[]}
           employeeName={selectedEmployeeForAudit.name}
         />
       )}
 
-      {/* Training Notifications */}
       <TrainingNotifications employees={employees} />
     </div>
   );

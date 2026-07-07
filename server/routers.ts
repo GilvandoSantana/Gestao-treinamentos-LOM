@@ -1,12 +1,15 @@
 import { COOKIE_NAME } from "@shared/const";
+import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
+import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
 
 export const appRouter = router({
   system: systemRouter,
@@ -22,6 +25,58 @@ export const appRouter = router({
   }),
 
   employees: router({
+    upsertOne: publicProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          registration: z.string().optional(),
+          educationLevel: z.string().optional(),
+          age: z.number().optional(),
+          role: z.string(),
+          phone: z.string().optional(),
+          trainings: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              completionDate: z.string(),
+              expirationDate: z.string(),
+            })
+          ),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          await upsertEmployee({
+            id: input.id,
+            name: input.name,
+            registration: input.registration,
+            educationLevel: input.educationLevel,
+            age: input.age,
+            role: input.role,
+            phone: input.phone,
+          });
+
+          const currentTrainingIds = input.trainings.map(t => t.id);
+          await deleteTrainingsExcept(input.id, currentTrainingIds);
+
+          for (const training of input.trainings) {
+            await upsertTraining({
+              id: training.id,
+              employeeId: input.id,
+              name: training.name,
+              completionDate: training.completionDate,
+              expirationDate: training.expirationDate,
+            });
+          }
+
+          return { success: true };
+        } catch (error) {
+          console.error("UpsertOne error:", error);
+          throw error;
+        }
+      }),
+
     delete: publicProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
@@ -40,7 +95,11 @@ export const appRouter = router({
             z.object({
               id: z.string(),
               name: z.string(),
+              registration: z.string().optional(),
+              educationLevel: z.string().optional(),
+              age: z.number().optional(),
               role: z.string(),
+              phone: z.string().optional(),
               trainings: z.array(
                 z.object({
                   id: z.string(),
@@ -60,10 +119,19 @@ export const appRouter = router({
             await upsertEmployee({
               id: employee.id,
               name: employee.name,
+              registration: employee.registration,
+              educationLevel: employee.educationLevel,
+              age: employee.age,
               role: employee.role,
+              phone: employee.phone,
             });
 
             // Upsert trainings
+            const currentTrainingIds = employee.trainings.map(t => t.id);
+            
+            // First, remove trainings that are no longer in the list
+            await deleteTrainingsExcept(employee.id, currentTrainingIds);
+
             for (const training of employee.trainings) {
               await upsertTraining({
                 id: training.id,
@@ -82,16 +150,41 @@ export const appRouter = router({
       }),
     list: publicProcedure.query(async () => {
       const employeeList = await getAllEmployees();
-      const result = [];
-      for (const emp of employeeList) {
-        const trainings = await getTrainingsByEmployeeId(emp.id);
-        result.push({
-          ...emp,
-          trainings,
-        });
-      }
+      // Busca trainings e foto em paralelo para cada colaborador (muito mais rápido)
+      const result = await Promise.all(
+        employeeList.map(async (emp) => {
+          const [trainings, photoUrl] = await Promise.all([
+            getTrainingsByEmployeeId(emp.id),
+            getPhotoUrl(emp.id),
+          ]);
+          return { ...emp, photoUrl, trainings };
+        })
+      );
       return result;
     }),
+
+    uploadPhoto: publicProcedure
+      .input(
+        z.object({
+          employeeId: z.string(),
+          fileData: z.string(),
+          mimeType: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const fileBuffer = Buffer.from(input.fileData, "base64");
+          const uploadResult = await uploadPhotoToSupabase(
+            fileBuffer,
+            input.employeeId,
+            input.mimeType || "image/jpeg"
+          );
+          return { url: uploadResult.url };
+        } catch (error) {
+          console.error("Photo upload error:", error);
+          throw error;
+        }
+      }),
   }),
 
   trainings: router({
@@ -142,6 +235,93 @@ export const appRouter = router({
         return [];
       }
     }),
+  }),
+
+  certificates: router({
+    upload: publicProcedure
+      .input(
+        z.object({
+          trainingId: z.string(),
+          employeeId: z.string(),
+          fileName: z.string(),
+          fileData: z.string().or(z.instanceof(Buffer)),
+          mimeType: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          const fileBuffer = typeof input.fileData === "string" 
+            ? Buffer.from(input.fileData, "base64")
+            : input.fileData;
+
+          // Upload to Supabase
+          const uploadResult = await uploadCertificateToSupabase(
+            fileBuffer,
+            input.fileName,
+            input.mimeType || "application/octet-stream"
+          );
+
+          // Save to database
+          const certificate = await uploadCertificate({
+            id: uuidv4(),
+            trainingId: input.trainingId,
+            employeeId: input.employeeId,
+            fileName: input.fileName,
+            fileUrl: uploadResult.url,
+            fileSize: uploadResult.size,
+            mimeType: input.mimeType || "application/octet-stream",
+          });
+
+          return certificate;
+        } catch (error) {
+          console.error("Certificate upload error:", error);
+          throw error;
+        }
+      }),
+
+    getByTraining: publicProcedure
+      .input(z.object({ trainingId: z.string() }))
+      .query(async ({ input }) => {
+        try {
+          return await getCertificatesByTrainingId(input.trainingId);
+        } catch (error) {
+          console.error("Error fetching certificates by training:", error);
+          return [];
+        }
+      }),
+
+    getByEmployee: publicProcedure
+      .input(z.object({ employeeId: z.string() }))
+      .query(async ({ input }) => {
+        try {
+          return await getCertificatesByEmployeeId(input.employeeId);
+        } catch (error) {
+          console.error("Error fetching certificates by employee:", error);
+          return [];
+        }
+      }),
+
+    delete: publicProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const certificate = await getCertificateById(input.id);
+          if (!certificate) {
+            throw new Error("Certificate not found");
+          }
+
+          // Delete from Supabase
+          await deleteCertificateFromSupabase(certificate.fileUrl);
+
+          // Delete from database
+          await deleteCertificate(input.id);
+
+          return { success: true };
+        } catch (error) {
+          console.error("Certificate deletion error:", error);
+          throw error;
+        }
+      }),
   }),
 });
 

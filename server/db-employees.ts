@@ -2,7 +2,7 @@
  * Database helpers for employees and trainings
  */
 
-import { eq } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 import { employees, trainings, type InsertEmployee, type InsertTraining } from "../drizzle/schema";
 import { getDb } from "./db";
 
@@ -17,7 +17,11 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
     await db.insert(employees).values(employee).onDuplicateKeyUpdate({
       set: {
         name: employee.name,
+        registration: employee.registration,
+        educationLevel: employee.educationLevel,
+        age: employee.age,
         role: employee.role,
+        phone: employee.phone,
         updatedAt: new Date(),
       },
     });
@@ -126,6 +130,27 @@ export async function deleteTraining(id: string): Promise<void> {
     await db.delete(trainings).where(eq(trainings.id, id));
   } catch (error) {
     console.error("[Database] Failed to delete training:", error);
+    throw error;
+  }
+}
+
+export async function deleteTrainingsExcept(employeeId: string, trainingIds: string[]): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    if (trainingIds.length === 0) {
+      await db.delete(trainings).where(eq(trainings.employeeId, employeeId));
+    } else {
+      await db.delete(trainings).where(
+        and(
+          eq(trainings.employeeId, employeeId),
+          notInArray(trainings.id, trainingIds)
+        )
+      );
+    }
+  } catch (error) {
+    console.error("[Database] Failed to delete old trainings:", error);
     throw error;
   }
 }
