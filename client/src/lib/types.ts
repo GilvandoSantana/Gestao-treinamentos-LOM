@@ -11,6 +11,7 @@ export interface Employee {
   registration?: string;
   educationLevel?: string;
   age?: number;
+  birthDate?: string;
   role: string;
   phone?: string;
   photoUrl?: string | null;

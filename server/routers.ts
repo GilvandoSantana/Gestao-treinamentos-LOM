@@ -33,6 +33,7 @@ export const appRouter = router({
           registration: z.string().optional(),
           educationLevel: z.string().optional(),
           age: z.number().optional(),
+          birthDate: z.string().optional(),
           role: z.string(),
           phone: z.string().optional(),
           trainings: z.array(
@@ -47,15 +48,16 @@ export const appRouter = router({
       )
       .mutation(async ({ input }) => {
         try {
-          await upsertEmployee({
-            id: input.id,
-            name: input.name,
-            registration: input.registration,
-            educationLevel: input.educationLevel,
-            age: input.age,
-            role: input.role,
-            phone: input.phone,
-          });
+            await upsertEmployee({
+              id: input.id,
+              name: input.name,
+              registration: input.registration,
+              educationLevel: input.educationLevel,
+              age: input.age,
+              birthDate: input.birthDate,
+              role: input.role,
+              phone: input.phone,
+            });
 
           const currentTrainingIds = input.trainings.map(t => t.id);
           await deleteTrainingsExcept(input.id, currentTrainingIds);
@@ -97,8 +99,9 @@ export const appRouter = router({
               name: z.string(),
               registration: z.string().optional(),
               educationLevel: z.string().optional(),
-              age: z.number().optional(),
-              role: z.string(),
+                age: z.number().optional(),
+                birthDate: z.string().optional(),
+                role: z.string(),
               phone: z.string().optional(),
               trainings: z.array(
                 z.object({
@@ -122,6 +125,7 @@ export const appRouter = router({
               registration: employee.registration,
               educationLevel: employee.educationLevel,
               age: employee.age,
+              birthDate: employee.birthDate,
               role: employee.role,
               phone: employee.phone,
             });

@@ -99,7 +99,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     </td>
                     <td className="p-4">
                       <div className="font-bold text-foreground">{employee.name}</div>
-                      <div className="text-xs text-muted-foreground md:hidden">{employee.role}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {employee.age ? `${employee.age} anos` : ''}
+                        <span className="md:hidden"> • {employee.role}</span>
+                      </div>
                     </td>
                     <td className="p-4 hidden md:table-cell text-sm text-foreground">
                       {employee.role}

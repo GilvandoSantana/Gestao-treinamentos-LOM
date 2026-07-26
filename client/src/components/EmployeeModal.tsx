@@ -31,6 +31,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
   const [age, setAge] = useState<number | undefined>(undefined);
+  const [birthDate, setBirthDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
   const [showCustomRole, setShowCustomRole] = useState(false);
@@ -63,6 +64,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setRegistration(employee.registration || '');
       setEducationLevel(employee.educationLevel || '');
       setAge(employee.age || undefined);
+      setBirthDate(employee.birthDate || '');
       setRole(employee.role);
       setPhone(employee.phone || '');
       setPhotoPreview(employee.photoUrl || null);
@@ -73,6 +75,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setRegistration('');
       setEducationLevel('');
       setAge(undefined);
+      setBirthDate('');
       setRole('');
       setPhone('');
       setPhotoPreview(null);
@@ -231,6 +234,24 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
     }
   };
 
+  const calculateAge = (dateString: string) => {
+    if (!dateString) return undefined;
+    const birth = new Date(dateString);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const handleBirthDateChange = (date: string) => {
+    setBirthDate(date);
+    const calculatedAge = calculateAge(date);
+    setAge(calculatedAge);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) return;
     if (!role.trim()) return;
@@ -262,6 +283,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
         registration: registration.trim() || undefined,
         educationLevel: educationLevel || undefined,
         age: age || undefined,
+        birthDate: birthDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
         trainings,
@@ -377,7 +399,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
             </div>
           </div>
 
-          {/* Education Level & Age */}
+          {/* Education Level & Birth Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Nível de Escolaridade</label>
@@ -394,16 +416,18 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
               </select>
             </div>
             <div>
-              <label className="block text-foreground font-semibold mb-2 text-sm">Idade</label>
-              <input
-                type="number"
-                value={age || ''}
-                onChange={(e) => setAge(e.target.value ? parseInt(e.target.value) : undefined)}
-                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                placeholder="Digite a idade"
-                min="1"
-                max="120"
-              />
+              <label className="block text-foreground font-semibold mb-2 text-sm">Data de Nascimento</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => handleBirthDateChange(e.target.value)}
+                  className="flex-1 border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                />
+                <div className="w-20 border-2 border-muted bg-muted/30 rounded-lg p-3 flex items-center justify-center font-bold text-navy" title="Idade calculada">
+                  {age ?? '--'}
+                </div>
+              </div>
             </div>
           </div>
 

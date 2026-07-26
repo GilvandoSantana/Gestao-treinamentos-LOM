@@ -78,6 +78,12 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
                     <span className="opacity-40">•</span>
                   </>
                 )}
+                {employee.birthDate && (
+                  <p className="flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-white/30" />
+                    Nasc: {new Date(employee.birthDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                )}
                 {employee.age && (
                   <p className="flex items-center gap-1">
                     <span className="w-1 h-1 rounded-full bg-white/30" />

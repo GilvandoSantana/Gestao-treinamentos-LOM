@@ -34,6 +34,7 @@ export const employees = mysqlTable("employees", {
   registration: varchar("registration", { length: 50 }),
   educationLevel: varchar("educationLevel", { length: 100 }),
   age: int("age"),
+  birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
