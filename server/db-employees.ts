@@ -6,6 +6,23 @@ import { eq, and, notInArray } from "drizzle-orm";
 import { employees, trainings, type InsertEmployee, type InsertTraining } from "../drizzle/schema";
 import { getDb } from "./db";
 
+/**
+ * Calcula a idade a partir da data de nascimento (formato YYYY-MM-DD).
+ * Retorna undefined se a data for inválida ou ausente.
+ */
+function calculateAgeFromBirthDate(birthDate?: string | null): number | undefined {
+  if (!birthDate) return undefined;
+  const birth = new Date(birthDate);
+  if (isNaN(birth.getTime())) return undefined;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
   const db = await getDb();
   if (!db) {
@@ -13,13 +30,16 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
     return;
   }
 
+  // Sempre recalcula a idade a partir da data de nascimento antes de salvar
+  const computedAge = calculateAgeFromBirthDate(employee.birthDate) ?? employee.age;
+
   try {
-    await db.insert(employees).values(employee).onDuplicateKeyUpdate({
+    await db.insert(employees).values({ ...employee, age: computedAge }).onDuplicateKeyUpdate({
       set: {
         name: employee.name,
         registration: employee.registration,
         educationLevel: employee.educationLevel,
-        age: employee.age,
+        age: computedAge,
         birthDate: employee.birthDate,
         role: employee.role,
         phone: employee.phone,

@@ -15,11 +15,8 @@ import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
-<<<<<<< HEAD
-=======
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -58,8 +55,6 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
     generateBadgePDF(employee);
   };
 
-<<<<<<< HEAD
-=======
   const handleGenerateLockBadge = (employee: Employee) => {
     generateBadgeLockPDF(employee);
   };
@@ -68,7 +63,6 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
     generateBadgeWaterPDF(employee);
   };
 
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   return (
     <div className="bg-card rounded-xl shadow-sm overflow-hidden border border-border animate-fade-in-up">
       <div className="overflow-x-auto">
@@ -100,7 +94,18 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     <td className="p-4">
                       <div className="font-bold text-foreground">{employee.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {employee.age ? `${employee.age} anos` : ''}
+                        {(() => {
+                          const bd = employee.birthDate;
+                          if (bd) {
+                            const birth = new Date(bd);
+                            const today = new Date();
+                            let a = today.getFullYear() - birth.getFullYear();
+                            const m = today.getMonth() - birth.getMonth();
+                            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+                            return `${a} anos`;
+                          }
+                          return employee.age ? `${employee.age} anos` : '';
+                        })()}
                         <span className="md:hidden"> • {employee.role}</span>
                       </div>
                     </td>
@@ -168,16 +173,6 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 		                                    <CreditCard className="mr-2 h-4 w-4" />
 		                                    <span>Crachá Padrão</span>
 		                                  </DropdownMenuItem>
-<<<<<<< HEAD
-		                                  <DropdownMenuItem onClick={() => {}}>
-		                                    <Lock className="mr-2 h-4 w-4" />
-		                                    <span>Crachá de Bloqueio</span>
-		                                  </DropdownMenuItem>
-		                                  <DropdownMenuItem onClick={() => {}}>
-		                                    <Droplets className="mr-2 h-4 w-4" />
-		                                    <span>Crachá de Água</span>
-		                                  </DropdownMenuItem>
-=======
 <DropdownMenuItem onClick={() => handleGenerateLockBadge(employee)}>
 			                                    <Lock className="mr-2 h-4 w-4" />
 			                                    <span>Crachá de Bloqueio</span>
@@ -186,7 +181,6 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 			                                    <Droplets className="mr-2 h-4 w-4" />
 			                                    <span>Crachá de Água</span>
 			                                  </DropdownMenuItem>
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 		                                </DropdownMenuContent>
 		                              </DropdownMenu>
 		                            )}

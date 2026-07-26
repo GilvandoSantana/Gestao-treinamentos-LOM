@@ -15,11 +15,8 @@ import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
-<<<<<<< HEAD
-=======
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 
 interface EmployeeCardWithCertificatesProps {
   employee: Employee;
@@ -73,8 +70,6 @@ export default function EmployeeCardWithCertificates({
     generateBadgePDF(employee);
   };
 
-<<<<<<< HEAD
-=======
   const handleGenerateLockBadge = () => {
     generateBadgeLockPDF(employee);
   };
@@ -83,7 +78,6 @@ export default function EmployeeCardWithCertificates({
     generateBadgeWaterPDF(employee);
   };
 
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   return (
     <>
       <div
@@ -124,12 +118,26 @@ export default function EmployeeCardWithCertificates({
                       <span className="opacity-40">•</span>
                     </>
                   )}
-                  {employee.age && (
-                    <p className="flex items-center gap-1">
-                      <span className="w-1 h-1 rounded-full bg-white/30" />
-                      {employee.age} anos
-                    </p>
-                  )}
+                  {(() => {
+                    const bd = employee.birthDate;
+                    if (!bd) return employee.age ? (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {employee.age} anos
+                      </p>
+                    ) : null;
+                    const birth = new Date(bd);
+                    const today = new Date();
+                    let a = today.getFullYear() - birth.getFullYear();
+                    const m = today.getMonth() - birth.getMonth();
+                    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+                    return (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {a} anos
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -161,16 +169,6 @@ export default function EmployeeCardWithCertificates({
 	                    <CreditCard className="mr-2 h-4 w-4" />
 	                    <span>Crachá Padrão</span>
 	                  </DropdownMenuItem>
-<<<<<<< HEAD
-	                  <DropdownMenuItem onClick={() => {}}>
-	                    <Lock className="mr-2 h-4 w-4" />
-	                    <span>Crachá de Bloqueio</span>
-	                  </DropdownMenuItem>
-	                  <DropdownMenuItem onClick={() => {}}>
-	                    <Droplets className="mr-2 h-4 w-4" />
-	                    <span>Crachá de Água</span>
-	                  </DropdownMenuItem>
-=======
 <DropdownMenuItem onClick={handleGenerateLockBadge}>
                     <Lock className="mr-2 h-4 w-4" />
                     <span>Crachá de Bloqueio</span>
@@ -179,7 +177,6 @@ export default function EmployeeCardWithCertificates({
                     <Droplets className="mr-2 h-4 w-4" />
                     <span>Crachá de Água</span>
                   </DropdownMenuItem>
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 	                </DropdownMenuContent>
 	              </DropdownMenu>
 	            )}

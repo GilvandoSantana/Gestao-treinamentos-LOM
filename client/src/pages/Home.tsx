@@ -72,17 +72,7 @@ export default function Home() {
   // Verifica autenticação ao montar
   useEffect(() => {
     const auth = sessionStorage.getItem('training-manager-auth');
-<<<<<<< HEAD
-<<<<<<< HEAD
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-    }
-=======
     if (auth === 'true') setIsAuthenticated(true);
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
-    if (auth === 'true') setIsAuthenticated(true);
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   }, []);
 
   // Carrega dados iniciais do localStorage enquanto o servidor responde
@@ -95,20 +85,6 @@ export default function Home() {
       if (key && key.startsWith('training-manager:employee:')) {
         keys.push(key.replace('training-manager:', ''));
       }
-<<<<<<< HEAD
-<<<<<<< HEAD
-    };
-  }, []);
-
-  // Update local state when server data changes
-  useEffect(() => {
-    if (listQuery.data && listQuery.data.length > 0) {
-      const serverEmployees = listQuery.data as Employee[];
-      setEmployees(serverEmployees);
-=======
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
     }
 
     if (keys.length > 0) {
@@ -178,23 +154,6 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.log('Salvando colaborador:', employeeData);
-      
-      // Atualizar o estado local imediatamente para refletir as mudanças na UI
-      setEmployees(prev => {
-        const index = prev.findIndex(e => e.id === employeeData.id);
-        if (index >= 0) {
-          const newEmployees = [...prev];
-          newEmployees[index] = employeeData;
-          return newEmployees;
-        } else {
-          return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
-        }
-=======
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       // Bloqueia o listQuery de sobrescrever enquanto salvamos
       isSavingRef.current = true;
 
@@ -207,48 +166,21 @@ export default function Home() {
           return updated;
         }
         return [...prev, employeeData].sort((a, b) => a.name.localeCompare(b.name));
-<<<<<<< HEAD
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       });
 
       localStorage.setItem(
         `training-manager:employee:${employeeData.id}`,
         JSON.stringify(employeeData)
       );
-<<<<<<< HEAD
-<<<<<<< HEAD
-      
-=======
 
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
-
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       setShowModal(false);
       setEditingEmployee(null);
       toast.success(
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
-<<<<<<< HEAD
-<<<<<<< HEAD
-      
-      // Trigger immediate sync com a lista completa de colaboradores
-      try {
-        // Precisamos pegar a lista atualizada
-        setEmployees(currentEmployees => {
-          syncMutation.mutate({ employees: currentEmployees });
-          return currentEmployees;
-=======
 
       // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
       try {
-=======
-
-      // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
-      try {
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         await upsertOneMutation.mutateAsync({
           id: employeeData.id,
           name: employeeData.name,
@@ -258,10 +190,6 @@ export default function Home() {
           role: employeeData.role,
           phone: employeeData.phone,
           trainings: employeeData.trainings,
-<<<<<<< HEAD
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         });
         setLastSyncTime(new Date());
         setSyncError(null);
@@ -298,42 +226,15 @@ export default function Home() {
   };
 
   const deleteEmployee = async () => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-    // Agora a exclusão é direta após a confirmação no DeleteConfirmModal
-    if (deleteConfirmId) {
-      await deleteEmployeeConfirmed();
-    }
-=======
     if (deleteConfirmId) await deleteEmployeeConfirmed();
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
-    if (deleteConfirmId) await deleteEmployeeConfirmed();
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   };
 
   const deleteEmployeeConfirmed = async () => {
     if (!deleteConfirmId) return;
     try {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      // Atualizar o estado local imediatamente
-      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
-      
-      await deleteMutation.mutateAsync({ id: deleteConfirmId });
-      
-      localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
-      
-=======
       setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
       await deleteMutation.mutateAsync({ id: deleteConfirmId });
       localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
-      setEmployees(prev => prev.filter(e => e.id !== deleteConfirmId));
-      await deleteMutation.mutateAsync({ id: deleteConfirmId });
-      localStorage.removeItem(`training-manager:employee:${deleteConfirmId}`);
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       setDeleteConfirmId(null);
       setShowDeleteConfirm(false);
       toast.success('Colaborador excluído com sucesso!');
@@ -342,13 +243,6 @@ export default function Home() {
     } catch (error) {
       toast.error('Erro ao excluir colaborador');
       console.error(error);
-<<<<<<< HEAD
-<<<<<<< HEAD
-      // Recarregar dados em caso de erro para restaurar o estado
-=======
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       await listQuery.refetch();
     }
   };
@@ -356,102 +250,6 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
-<<<<<<< HEAD
-<<<<<<< HEAD
-      
-      // Debug: log dos dados disponíveis
-      console.log('exportData chamada');
-      console.log('listQuery.data:', listQuery.data);
-      console.log('employees state:', employees);
-      
-      // Forçar recarregamento dos dados do servidor antes de exportar
-      if (listQuery.data && listQuery.data.length > 0) {
-        setEmployees(listQuery.data as Employee[]);
-      }
-      
-      // Usar os dados mais recentes (que podem ter sido atualizados acima)
-      const dataToExport = listQuery.data && listQuery.data.length > 0 ? (listQuery.data as Employee[]) : employees;
-      console.log('dataToExport:', dataToExport);
-      
-      // Preparar dados para Excel - Uma linha por treinamento
-      const excelData: any[] = [];
-      console.log('Processando', dataToExport.length, 'colaboradores');
-      console.log('Primeiro colaborador:', dataToExport[0]);
-      
-      dataToExport.forEach(emp => {
-        if (emp.trainings && emp.trainings.length > 0) {
-          // Se tem treinamentos, cria uma linha para cada um
-=======
-      const excelData: any[] = [];
-
-      employees.forEach(emp => {
-        if (emp.trainings && emp.trainings.length > 0) {
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-          emp.trainings.forEach(training => {
-            excelData.push({
-              'Nome': emp.name || '',
-              'Função': emp.role || '',
-              'Treinamento': training.name || '',
-<<<<<<< HEAD
-              'Data de Realização': training.completionDate ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
-              'Validade': training.expirationDate ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
-            });
-          });
-        } else {
-          // Se não tem treinamentos, cria uma linha vazia para o colaborador
-=======
-              'Data de Realização': training.completionDate
-                ? new Date(training.completionDate).toLocaleDateString('pt-BR') : '',
-              'Validade': training.expirationDate
-                ? new Date(training.expirationDate).toLocaleDateString('pt-BR') : '',
-            });
-          });
-        } else {
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-          excelData.push({
-            'Nome': emp.name || '',
-            'Função': emp.role || '',
-            'Treinamento': '',
-            'Data de Realização': '',
-            'Validade': '',
-          });
-        }
-      });
-<<<<<<< HEAD
-
-      // Criar workbook e worksheet
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
-      
-      // Ajustar largura das colunas
-      const colWidths = [
-        { wch: 25 }, // Nome
-        { wch: 20 }, // Função
-        { wch: 30 }, // Treinamento
-        { wch: 18 }, // Data de Realização
-        { wch: 15 }, // Validade
-      ];
-      ws['!cols'] = colWidths;
-      
-      // Gerar arquivo Excel
-      const fileName = `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`;
-      console.log('Gerando arquivo:', fileName, 'com', excelData.length, 'linhas');
-      console.log('Primeiras linhas do Excel:', excelData.slice(0, 3));
-      XLSX.writeFile(wb, fileName);
-      
-      toast.success('Dados exportados para Excel com sucesso!');
-    } catch (error) {
-      toast.error('Erro ao exportar dados para Excel.');
-      console.error('Erro na exportação:', error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-=======
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-
-=======
       const excelData: any[] = [];
 
       employees.forEach(emp => {
@@ -478,7 +276,6 @@ export default function Home() {
         }
       });
 
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       const ws = XLSX.utils.json_to_sheet(excelData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
@@ -582,30 +379,11 @@ export default function Home() {
   // Memoizado para evitar recálculo em cada re-render
   const stats = useMemo(() => getStatistics(employees), [employees]);
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-  // Render password modal as an overlay
-  const renderPasswordModal = showPasswordModal && (
-    <PasswordModal
-      isOpen={showPasswordModal}
-      title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
-      description={passwordModalReason === 'login' ? 'Digite a senha para habilitar edições' : 'Digite a senha para confirmar a exclusão do colaborador'}
-      onSuccess={handlePasswordSuccess}
-      onCancel={handlePasswordCancel}
-    />
-  );
-=======
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
   const filteredEmployees = useMemo(() => {
     let result = getFilteredEmployees(employees, filter, searchQuery);
     if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
     return result;
   }, [employees, filter, searchQuery, selectedRole]);
-<<<<<<< HEAD
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
 
   if (isLoading) {
     return (
@@ -620,12 +398,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-<<<<<<< HEAD
-<<<<<<< HEAD
-      {renderPasswordModal}
-=======
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       {showPasswordModal && (
         <PasswordModal
           isOpen={showPasswordModal}
@@ -640,10 +412,6 @@ export default function Home() {
         />
       )}
 
-<<<<<<< HEAD
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
       <div className="container py-6 md:py-8">
         {/* Input oculto para importação de JSON */}
         <input
@@ -696,16 +464,6 @@ export default function Home() {
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-        {/* Filters */}
-        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
-
-        {/* Employee Cards or Table */}
-=======
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
@@ -744,21 +502,8 @@ export default function Home() {
           />
         )}
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-        {/* Footer */}
-        <div className="mt-12 pb-8 text-center">
-          <p className="text-muted-foreground text-xs font-medium">
-            Gestão de Treinamentos
-          </p>
-=======
         <div className="mt-12 pb-8 text-center">
           <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
->>>>>>> 2632f43d8215b6a89f1b418278c500887f1c94b3
-=======
-        <div className="mt-12 pb-8 text-center">
-          <p className="text-muted-foreground text-xs font-medium">Gestão de Treinamentos</p>
->>>>>>> fd5bb731495fc5ac4bce33c42d3041aa82ceb208
         </div>
       </div>
 

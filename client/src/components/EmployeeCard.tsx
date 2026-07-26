@@ -84,12 +84,26 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
                     Nasc: {new Date(employee.birthDate + 'T00:00:00').toLocaleDateString('pt-BR')}
                   </p>
                 )}
-                {employee.age && (
-                  <p className="flex items-center gap-1">
-                    <span className="w-1 h-1 rounded-full bg-white/30" />
-                    {employee.age} anos
-                  </p>
-                )}
+{(() => {
+                    const bd = employee.birthDate;
+                    if (!bd) return employee.age ? (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {employee.age} anos
+                      </p>
+                    ) : null;
+                    const birth = new Date(bd);
+                    const today = new Date();
+                    let a = today.getFullYear() - birth.getFullYear();
+                    const m = today.getMonth() - birth.getMonth();
+                    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+                    return (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {a} anos
+                      </p>
+                    );
+                  })()}
               </div>
             </div>
           </div>

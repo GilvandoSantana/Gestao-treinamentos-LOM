@@ -60,10 +60,23 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
     { label: '50+', min: 51, max: 200 }
   ];
 
+  // Função auxiliar para calcular idade a partir da data de nascimento
+  const calcAge = (birthDate?: string | null, savedAge?: number | null): number | undefined => {
+    if (birthDate) {
+      const birth = new Date(birthDate);
+      const today = new Date();
+      let a = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+      return a;
+    }
+    return savedAge ?? undefined;
+  };
+
   const ageData = ageRanges.map(range => {
     const count = employees.filter(e => {
-      const age = e.age;
-      return age && age >= range.min && age <= range.max;
+      const age = calcAge(e.birthDate, e.age);
+      return age !== undefined && age >= range.min && age <= range.max;
     }).length;
     return {
       name: range.label,

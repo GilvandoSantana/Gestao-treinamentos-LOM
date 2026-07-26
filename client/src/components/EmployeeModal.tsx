@@ -63,8 +63,10 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setName(employee.name);
       setRegistration(employee.registration || '');
       setEducationLevel(employee.educationLevel || '');
-      setAge(employee.age || undefined);
-      setBirthDate(employee.birthDate || '');
+      // Sempre recalcula a idade a partir da data de nascimento (nunca usa valor manual salvo)
+      const birthDateValue = employee.birthDate || '';
+      setBirthDate(birthDateValue);
+      setAge(birthDateValue ? calculateAge(birthDateValue) : undefined);
       setRole(employee.role);
       setPhone(employee.phone || '');
       setPhotoPreview(employee.photoUrl || null);
@@ -417,17 +419,26 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
             </div>
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Data de Nascimento</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <input
                   type="date"
                   value={birthDate}
                   onChange={(e) => handleBirthDateChange(e.target.value)}
                   className="flex-1 border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 />
-                <div className="w-20 border-2 border-muted bg-muted/30 rounded-lg p-3 flex items-center justify-center font-bold text-navy" title="Idade calculada">
-                  {age ?? '--'}
+                <div
+                  className="flex-shrink-0 border-2 border-orange/40 bg-orange/10 rounded-lg px-3 py-3 flex flex-col items-center justify-center min-w-[72px]"
+                  title="Idade calculada automaticamente"
+                >
+                  <span className="text-[10px] text-muted-foreground font-medium leading-none mb-1">Idade</span>
+                  <span className="text-lg font-bold text-navy leading-none">{age ?? '--'}</span>
                 </div>
               </div>
+              {birthDate && age !== undefined && (
+                <p className="text-xs text-teal mt-1 flex items-center gap-1">
+                  <span>✓</span> Idade calculada automaticamente
+                </p>
+              )}
             </div>
           </div>
 
