@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
+import bcrypt from "bcryptjs";
 
 export const SITE_SESSION_COOKIE = "site_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 horas
@@ -32,12 +33,10 @@ export function checkSitePassword(password: string): boolean {
 }
 
 export async function hashAdminPassword(password: string): Promise<string> {
-  const bcrypt = await import("bcryptjs");
   return bcrypt.hash(password, 10);
 }
 
 export async function verifyAdminPassword(password: string, hash: string): Promise<boolean> {
-  const bcrypt = await import("bcryptjs");
   return bcrypt.compare(password, hash);
 }
 
