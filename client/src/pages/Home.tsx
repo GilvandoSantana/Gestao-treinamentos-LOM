@@ -364,6 +364,25 @@ export default function Home() {
     return result;
   }, [employees, filter, searchQuery, selectedRole]);
 
+  // Paginação: evita renderizar centenas de cartões/linhas de uma vez só
+  // quando a lista de colaboradores crescer.
+  const PAGE_SIZE = 24;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, searchQuery, selectedRole, viewMode]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
+
+  const paginatedEmployees = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredEmployees.slice(start, start + PAGE_SIZE);
+  }, [filteredEmployees, currentPage]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -460,7 +479,7 @@ export default function Home() {
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {filteredEmployees.map((employee, index) => (
+            {paginatedEmployees.map((employee, index) => (
               <EmployeeCard
                 key={employee.id}
                 employee={employee}
@@ -480,7 +499,7 @@ export default function Home() {
           </div>
         ) : (
           <EmployeeTable
-            employees={filteredEmployees}
+            employees={paginatedEmployees}
             onEdit={(emp) => openModal(emp)}
             onDelete={(id) => {
               setDeleteConfirmId(id);
@@ -492,6 +511,28 @@ export default function Home() {
             }}
             isAdmin={isAuthenticated}
           />
+        )}
+
+        {filteredEmployees.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 rounded-lg border border-border bg-card text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            >
+              Anterior
+            </button>
+            <span className="text-sm text-muted-foreground px-2">
+              Página {currentPage} de {totalPages} · {filteredEmployees.length} colaborador{filteredEmployees.length !== 1 ? 'es' : ''}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 rounded-lg border border-border bg-card text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            >
+              Próxima
+            </button>
+          </div>
         )}
 
         <div className="mt-12 pb-8 text-center">
