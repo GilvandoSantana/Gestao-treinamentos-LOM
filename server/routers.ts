@@ -235,6 +235,23 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         try {
           const fileBuffer = Buffer.from(input.fileData, "base64");
+
+          const MAX_PHOTO_BYTES = 5 * 1024 * 1024; // 5MB
+          if (fileBuffer.length > MAX_PHOTO_BYTES) {
+            throw new TRPCError({
+              code: "PAYLOAD_TOO_LARGE",
+              message: "A foto excede o limite de 5MB.",
+            });
+          }
+
+          const ALLOWED_PHOTO_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+          if (input.mimeType && !ALLOWED_PHOTO_MIME_TYPES.includes(input.mimeType)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Tipo de imagem não suportado. Permitidos: JPG, PNG, WEBP.",
+            });
+          }
+
           const uploadResult = await uploadPhotoToSupabase(
             fileBuffer,
             input.employeeId,
@@ -314,6 +331,31 @@ export const appRouter = router({
           const fileBuffer = typeof input.fileData === "string" 
             ? Buffer.from(input.fileData, "base64")
             : input.fileData;
+
+          // Reforça no servidor os mesmos limites já validados no client
+          // (tamanho máximo e tipos permitidos), já que o client pode ser
+          // contornado por quem chamar a API diretamente.
+          const MAX_CERTIFICATE_BYTES = 10 * 1024 * 1024; // 10MB
+          if (fileBuffer.length > MAX_CERTIFICATE_BYTES) {
+            throw new TRPCError({
+              code: "PAYLOAD_TOO_LARGE",
+              message: "O arquivo excede o limite de 10MB.",
+            });
+          }
+
+          const ALLOWED_CERTIFICATE_MIME_TYPES = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ];
+          if (input.mimeType && !ALLOWED_CERTIFICATE_MIME_TYPES.includes(input.mimeType)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Tipo de arquivo não suportado. Permitidos: PDF, JPG, PNG, DOC, DOCX.",
+            });
+          }
 
           // Upload to Supabase
           const uploadResult = await uploadCertificateToSupabase(
