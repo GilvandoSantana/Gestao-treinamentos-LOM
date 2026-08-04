@@ -12,5 +12,24 @@ jobs:
     steps:
       - name: Chamar endpoint de alertas
         run: |
-          curl -sf -X POST "${{ secrets.SITE_URL }}/api/cron/training-alerts" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
+          if [ -z "${{ secrets.SITE_URL }}" ]; then
+            echo "::error::O secret SITE_URL não está configurado neste repositório."
+            exit 1
+          fi
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::error::O secret CRON_SECRET não está configurado neste repositório."
+            exit 1
+          fi
+
+          http_code=$(curl -s -o response.txt -w "%{http_code}" -X POST \
+            "${{ secrets.SITE_URL }}/api/cron/training-alerts" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}")
+
+          echo "Status HTTP: $http_code"
+          echo "Resposta do servidor:"
+          cat response.txt
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Endpoint retornou status $http_code"
+            exit 1
+          fi
