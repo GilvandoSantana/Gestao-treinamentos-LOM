@@ -35,7 +35,9 @@ export default function PasswordModal({
       setPassword('');
       onSuccess();
     } catch (error) {
-      toast.error('Senha incorreta. Tente novamente.');
+      const message =
+        error instanceof Error && error.message ? error.message : 'Senha incorreta. Tente novamente.';
+      toast.error(message);
       setPassword('');
     }
   };

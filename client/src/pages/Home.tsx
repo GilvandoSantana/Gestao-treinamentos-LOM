@@ -64,7 +64,9 @@ export default function Home() {
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
   const listQuery = trpc.employees.list.useQuery(undefined, {
-    refetchInterval: 30000, // Busca do servidor a cada 30 segundos
+    // Antes buscava do servidor a cada 30s por polling fixo; agora só
+    // recarrega quando uma mutação (salvar/excluir/sincronizar) termina,
+    // reduzindo carga no banco sem perder atualização.
     refetchOnWindowFocus: false,
   });
   const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
@@ -113,6 +115,7 @@ export default function Home() {
       mergedEmployees.sort((a, b) => a.name.localeCompare(b.name));
       setEmployees(mergedEmployees);
       await syncMutation.mutateAsync({ employees: mergedEmployees });
+      await listQuery.refetch();
       setLastSyncTime(new Date());
       toast.success(`${importedEmployees.length} colaborador(es) importado(s)!`);
     } catch (error) {
@@ -164,6 +167,7 @@ export default function Home() {
         });
         setLastSyncTime(new Date());
         setSyncError(null);
+        await listQuery.refetch();
       } catch (err) {
         console.error('Erro ao sincronizar:', err);
         setSyncError('Falha na sincronização');
@@ -299,6 +303,7 @@ export default function Home() {
 
         try {
           await syncMutation.mutateAsync({ employees: sorted });
+          await listQuery.refetch();
         } catch (err) {
           console.error('Erro ao sincronizar após importação:', err);
         }

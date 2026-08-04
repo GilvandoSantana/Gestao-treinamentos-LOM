@@ -34,6 +34,9 @@ async function startServer() {
   // Initialize email service
   console.log("[Server] Initializing email service for training alerts...");
   const app = express();
+  // Necessário para que req.ip reflita o IP real do cliente (Railway roda
+  // atrás de um proxy reverso) — usado pelo rate limit do login do site.
+  app.set("trust proxy", true);
   
   // Initialize database connection early
   const { getDb } = await import("../db");

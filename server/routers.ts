@@ -11,7 +11,7 @@ import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
-import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS } from "./site-auth";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey } from "./site-auth";
 
 export const appRouter = router({
   system: systemRouter,
@@ -31,6 +31,17 @@ export const appRouter = router({
     siteLogin: publicProcedure
       .input(z.object({ password: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {
+        const clientKey = getClientKey(ctx.req);
+
+        const remainingMs = checkLoginRateLimit(clientKey);
+        if (remainingMs !== null) {
+          const minutes = Math.ceil(remainingMs / 60000);
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Muitas tentativas incorretas. Tente novamente em ${minutes} minuto${minutes !== 1 ? "s" : ""}.`,
+          });
+        }
+
         let isValid: boolean;
         try {
           isValid = checkSitePassword(input.password);
@@ -43,8 +54,11 @@ export const appRouter = router({
         }
 
         if (!isValid) {
+          registerFailedLoginAttempt(clientKey);
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha incorreta." });
         }
+
+        clearLoginAttempts(clientKey);
 
         const token = await createSiteSessionToken();
         const cookieOptions = getSessionCookieOptions(ctx.req);

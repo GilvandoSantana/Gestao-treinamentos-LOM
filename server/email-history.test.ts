@@ -17,6 +17,7 @@ vi.mock("./db-employees", () => ({
 function createMockContext(): TrpcContext {
   return {
     user: null,
+    isSiteAdmin: false,
     req: {
       protocol: "https",
       headers: {},
