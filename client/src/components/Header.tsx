@@ -6,6 +6,7 @@
 import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock, Sun, Moon, Users } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useScrolled } from '@/hooks/useScrolled';
 
 interface HeaderProps {
   onNewEmployee: () => void;
@@ -35,6 +36,7 @@ export default function Header({
   onManageAdmins,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
+  const scrolled = useScrolled(40);
 
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
@@ -56,25 +58,27 @@ export default function Header({
       <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-white/25 pointer-events-none hidden sm:block" />
 
       {/* Content */}
-      <div className="relative p-6 md:p-8 lg:p-10">
+      <div className={`relative transition-[padding] duration-300 ${scrolled ? 'p-4 md:p-8 lg:p-10' : 'p-6 md:p-8 lg:p-10'}`}>
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="bg-orange p-2.5 rounded-xl shadow-lg">
-                <Shield size={28} className="text-white" />
+              <div className={`bg-orange rounded-xl shadow-lg transition-all duration-300 ${scrolled ? 'p-1.5 md:p-2.5' : 'p-2.5'}`}>
+                <Shield size={scrolled ? 22 : 28} className="text-white transition-all duration-300" />
               </div>
-              <h1 className="text-3xl md:text-4xl font-display font-bold text-white tracking-tight">
+              <h1 className={`font-display font-bold text-white tracking-tight transition-all duration-300 ${scrolled ? 'text-xl md:text-4xl' : 'text-3xl md:text-4xl'}`}>
                 Gestão de Treinamentos <span className="text-orange-light">LOM</span>
               </h1>
             </div>
-            <p className="text-white/70 text-base mt-2 max-w-lg font-technical text-sm">
-              {employeeCount > 0 && (
-                <span className="text-orange-light font-semibold">{employeeCount} colaborador{employeeCount !== 1 ? 'es' : ''} cadastrado{employeeCount !== 1 ? 's' : ''}</span>
-              )}
-            </p>
-            <p className="text-white/40 text-xs mt-1 font-technical tracking-wide">
-              Criado por Gilvando Santana
-            </p>
+            <div className={`overflow-hidden transition-all duration-300 lg:max-h-24 lg:opacity-100 ${scrolled ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100'}`}>
+              <p className="text-white/70 text-base mt-2 max-w-lg font-technical text-sm">
+                {employeeCount > 0 && (
+                  <span className="text-orange-light font-semibold">{employeeCount} colaborador{employeeCount !== 1 ? 'es' : ''} cadastrado{employeeCount !== 1 ? 's' : ''}</span>
+                )}
+              </p>
+              <p className="text-white/40 text-xs mt-1 font-technical tracking-wide">
+                Criado por Gilvando Santana
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2.5 items-center">

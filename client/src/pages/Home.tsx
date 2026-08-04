@@ -13,6 +13,8 @@ import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
 import AdminManagementModal from '@/components/AdminManagementModal';
+import SwipeActions from '@/components/SwipeActions';
+import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
@@ -54,6 +56,7 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
   const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
@@ -473,28 +476,37 @@ export default function Home() {
         </div>
 
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} />
+        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} employees={employees} />
 
         {filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div id="lista-colaboradores" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {paginatedEmployees.map((employee, index) => (
-              <EmployeeCard
+              <SwipeActions
                 key={employee.id}
-                employee={employee}
-                index={index}
-                onEdit={(emp) => openModal(emp)}
-                onDelete={(id) => {
-                  setDeleteConfirmId(id);
+                enabled={isAuthenticated}
+                onEdit={() => openModal(employee)}
+                onDelete={() => {
+                  setDeleteConfirmId(employee.id);
                   setShowDeleteConfirm(true);
                 }}
-                onViewAudit={(emp) => {
-                  setSelectedEmployeeForAudit(emp);
-                  setShowAuditHistory(true);
-                }}
-                isAdmin={isAuthenticated}
-              />
+              >
+                <EmployeeCard
+                  employee={employee}
+                  index={index}
+                  onEdit={(emp) => openModal(emp)}
+                  onDelete={(id) => {
+                    setDeleteConfirmId(id);
+                    setShowDeleteConfirm(true);
+                  }}
+                  onViewAudit={(emp) => {
+                    setSelectedEmployeeForAudit(emp);
+                    setShowAuditHistory(true);
+                  }}
+                  isAdmin={isAuthenticated}
+                />
+              </SwipeActions>
             ))}
           </div>
         ) : (
@@ -579,6 +591,35 @@ export default function Home() {
       )}
 
       <TrainingNotifications employees={employees} />
+
+      {/* Navegação inferior (celular). Cada aba leva à seção correspondente
+          da página, que já existe — não há troca de rota. */}
+      <MobileNav
+        active={mobileTab}
+        expiredCount={stats.expired}
+        onSelect={(tab) => {
+          setMobileTab(tab);
+          if (tab === 'vencimentos') {
+            setFilter('expired');
+            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
+          } else if (tab === 'colaboradores') {
+            setFilter('all');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else if (tab === 'relatorios') {
+            handleExportPDF();
+          } else if (tab === 'admin') {
+            if (isAuthenticated) {
+              setShowAdminManagement(true);
+            } else {
+              setPasswordModalReason('login');
+              setShowPasswordModal(true);
+            }
+          }
+        }}
+      />
+
+      {/* Espaço para a barra inferior não cobrir o fim da lista */}
+      <div className="h-20 lg:hidden" />
     </div>
   );
 }
