@@ -1,0 +1,16 @@
+name: Alertas de Treinamentos Vencendo
+
+on:
+  schedule:
+    # Todo dia às 12:00 UTC (~09:00 horário de Brasília)
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de alertas
+        run: |
+          curl -sf -X POST "${{ secrets.SITE_URL }}/api/cron/training-alerts" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

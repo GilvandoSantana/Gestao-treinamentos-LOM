@@ -18,6 +18,8 @@ function getSecretKey() {
 /**
  * Verifica a senha de acesso do site contra a variável de ambiente APP_PASSWORD.
  * A senha NUNCA deve ficar hardcoded no client.
+ * Serve como acesso mestre/recuperação — usado quando nenhum usuário é
+ * informado no login (ex: se todos os admins nomeados forem perdidos).
  */
 export function checkSitePassword(password: string): boolean {
   const expected = process.env.APP_PASSWORD;
@@ -29,13 +31,25 @@ export function checkSitePassword(password: string): boolean {
   return password === expected;
 }
 
-export async function createSiteSessionToken(): Promise<string> {
-  return new SignJWT({ scope: "site-admin" })
+export async function hashAdminPassword(password: string): Promise<string> {
+  const bcrypt = await import("bcryptjs");
+  return bcrypt.hash(password, 10);
+}
+
+export async function verifyAdminPassword(password: string, hash: string): Promise<boolean> {
+  const bcrypt = await import("bcryptjs");
+  return bcrypt.compare(password, hash);
+}
+
+export async function createSiteSessionToken(username: string = "master"): Promise<string> {
+  return new SignJWT({ scope: "site-admin", username })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .sign(getSecretKey());
 }
+
+export type SiteSession = { isSiteAdmin: boolean; username: string | null };
 
 export async function verifySiteSessionToken(token: string): Promise<boolean> {
   try {
@@ -43,6 +57,23 @@ export async function verifySiteSessionToken(token: string): Promise<boolean> {
     return payload.scope === "site-admin";
   } catch {
     return false;
+  }
+}
+
+export async function getSiteSession(req: Request): Promise<SiteSession> {
+  const cookies = parseCookieHeader(req.headers.cookie ?? "");
+  const token = cookies[SITE_SESSION_COOKIE];
+  if (!token) return { isSiteAdmin: false, username: null };
+
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.scope !== "site-admin") return { isSiteAdmin: false, username: null };
+    return {
+      isSiteAdmin: true,
+      username: typeof payload.username === "string" ? payload.username : null,
+    };
+  } catch {
+    return { isSiteAdmin: false, username: null };
   }
 }
 

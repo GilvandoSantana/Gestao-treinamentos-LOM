@@ -7,7 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { scheduleTrainingAlerts } from "../email-service";
+import { scheduleTrainingAlerts, sendTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
 import { hasValidSiteSession } from "../site-auth";
 
@@ -53,6 +53,31 @@ async function startServer() {
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   
+  // Endpoint para disparar a checagem de treinamentos vencendo/vencidos por
+  // um agendador externo (GitHub Actions, cron-job.org, etc.), já que o
+  // Railway Cron reexecutaria o comando de start inteiro deste serviço (que
+  // nunca termina) em vez de só essa tarefa pontual. Protegido por um
+  // segredo compartilhado (CRON_SECRET), não pela sessão de admin do site.
+  app.post("/api/cron/training-alerts", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    const provided = req.headers["x-cron-secret"];
+
+    if (!secret) {
+      return res.status(500).json({ error: "CRON_SECRET não configurado no servidor." });
+    }
+    if (provided !== secret) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    try {
+      const sent = await sendTrainingAlerts();
+      return res.status(200).json({ success: true, sent });
+    } catch (error) {
+      console.error("[Cron] Erro ao enviar alertas de treinamento:", error);
+      return res.status(500).json({ error: "Falha ao processar alertas" });
+    }
+  });
+
   // Seed route for bulk employee insertion
   // Protegida: só executa com uma sessão de admin do site válida (cookie
   // definido via auth.siteLogin). Antes era pública e qualquer um podia

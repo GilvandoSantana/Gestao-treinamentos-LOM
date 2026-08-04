@@ -18,6 +18,7 @@ function createMockContext(): TrpcContext {
   return {
     user: null,
     isSiteAdmin: false,
+    siteAdminUsername: null,
     req: {
       protocol: "https",
       headers: {},

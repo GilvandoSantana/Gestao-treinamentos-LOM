@@ -3,7 +3,7 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock, Sun, Moon } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock, Sun, Moon, Users } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -18,6 +18,7 @@ interface HeaderProps {
   isAdmin: boolean;
   onAdminLogin: () => void;
   onAdminLogout: () => void;
+  onManageAdmins?: () => void;
 }
 
 export default function Header({ 
@@ -30,7 +31,8 @@ export default function Header({
   onViewModeChange,
   isAdmin,
   onAdminLogin,
-  onAdminLogout
+  onAdminLogout,
+  onManageAdmins,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
@@ -99,6 +101,16 @@ export default function Header({
                 </>
               )}
             </button>
+
+            {isAdmin && onManageAdmins && (
+              <button
+                onClick={onManageAdmins}
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all shadow-lg"
+                title="Gerenciar admins"
+              >
+                <Users size={18} />
+              </button>
+            )}
 
             <div className="h-8 w-px bg-white/10 mx-1 hidden sm:block" />
 

@@ -12,6 +12,7 @@ function createMockContext(overrides: Partial<TrpcContext> = {}) {
   const ctx: TrpcContext = {
     user: null,
     isSiteAdmin: false,
+    siteAdminUsername: null,
     req: {
       protocol: "https",
       headers: {},

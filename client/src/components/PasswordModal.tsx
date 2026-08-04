@@ -18,6 +18,7 @@ export default function PasswordModal({
   onSuccess,
   onCancel,
 }: PasswordModalProps) {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const loginMutation = trpc.auth.siteLogin.useMutation();
 
@@ -30,8 +31,13 @@ export default function PasswordModal({
       // A verificação agora acontece no servidor (auth.siteLogin), que define
       // um cookie de sessão assinado. Isso substitui a checagem que antes era
       // feita só no navegador com a senha exposta no código do cliente.
-      await loginMutation.mutateAsync({ password });
+      // Usuário em branco = usa a senha mestra (recuperação).
+      await loginMutation.mutateAsync({
+        username: username.trim() || undefined,
+        password,
+      });
       toast.success('Autenticação bem-sucedida!');
+      setUsername('');
       setPassword('');
       onSuccess();
     } catch (error) {
@@ -43,6 +49,7 @@ export default function PasswordModal({
   };
 
   const handleCancel = () => {
+    setUsername('');
     setPassword('');
     if (onCancel) {
       onCancel();
@@ -68,6 +75,22 @@ export default function PasswordModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+              Usuário <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Deixe em branco para usar a senha mestra"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              autoFocus
+              disabled={isLoading}
+              autoComplete="username"
+            />
+          </div>
+          <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               Senha
             </label>
@@ -78,8 +101,8 @@ export default function PasswordModal({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Digite a senha"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              autoFocus
               disabled={isLoading}
+              autoComplete="current-password"
             />
           </div>
 

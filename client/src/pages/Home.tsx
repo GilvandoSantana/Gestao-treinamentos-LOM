@@ -12,6 +12,7 @@ import * as XLSX from 'xlsx';
 import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
+import AdminManagementModal from '@/components/AdminManagementModal';
 import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
@@ -52,6 +53,7 @@ export default function Home() {
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
@@ -421,7 +423,16 @@ export default function Home() {
             setIsAuthenticated(false);
             toast.info('Modo administrativo desativado.');
           }}
+          onManageAdmins={() => setShowAdminManagement(true)}
         />
+
+        {showAdminManagement && (
+          <AdminManagementModal
+            isOpen={showAdminManagement}
+            onClose={() => setShowAdminManagement(false)}
+            currentUsername={siteSessionQuery.data?.username}
+          />
+        )}
 
         <div className="mb-6">
           <SyncStatus lastSyncTime={lastSyncTime} isSyncing={isSyncing} syncError={syncError} />

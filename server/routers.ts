@@ -11,7 +11,8 @@ import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
-import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey } from "./site-auth";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
+import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdmins } from "./db-admins";
 
 export const appRouter = router({
   system: systemRouter,
@@ -28,8 +29,17 @@ export const appRouter = router({
     // Login com a senha única do site (substitui a checagem que era feita
     // só no frontend). A senha correta fica em APP_PASSWORD no servidor,
     // nunca no código do cliente.
+    // Login com senha do site. Aceita duas formas:
+    // 1) username + password → confere contra a tabela de admins nomeados
+    // 2) só password (sem username) → senha mestra (APP_PASSWORD), usada
+    //    como acesso de recuperação caso os admins nomeados sejam perdidos
     siteLogin: publicProcedure
-      .input(z.object({ password: z.string().min(1) }))
+      .input(
+        z.object({
+          username: z.string().trim().min(1).optional(),
+          password: z.string().min(1),
+        })
+      )
       .mutation(async ({ input, ctx }) => {
         const clientKey = getClientKey(ctx.req);
 
@@ -42,25 +52,38 @@ export const appRouter = router({
           });
         }
 
-        let isValid: boolean;
-        try {
-          isValid = checkSitePassword(input.password);
-        } catch (error) {
-          console.error("siteLogin config error:", error);
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Autenticação do site não configurada no servidor.",
-          });
+        let isValid = false;
+        let sessionUsername = "master";
+
+        if (input.username) {
+          const admin = await getAdminByUsername(input.username);
+          if (admin) {
+            isValid = await verifyAdminPassword(input.password, admin.passwordHash);
+            sessionUsername = admin.username;
+          }
+        } else {
+          try {
+            isValid = checkSitePassword(input.password);
+          } catch (error) {
+            console.error("siteLogin config error:", error);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Autenticação do site não configurada no servidor.",
+            });
+          }
         }
 
         if (!isValid) {
           registerFailedLoginAttempt(clientKey);
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha incorreta." });
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: input.username ? "Usuário ou senha incorretos." : "Senha incorreta.",
+          });
         }
 
         clearLoginAttempts(clientKey);
 
-        const token = await createSiteSessionToken();
+        const token = await createSiteSessionToken(sessionUsername);
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(SITE_SESSION_COOKIE, token, {
           ...cookieOptions,
@@ -78,7 +101,63 @@ export const appRouter = router({
 
     siteSession: publicProcedure.query(({ ctx }) => ({
       isSiteAdmin: ctx.isSiteAdmin,
+      username: ctx.siteAdminUsername,
     })),
+
+    // Gerenciamento de admins nomeados — só quem já está autenticado pode
+    // ver/cadastrar/remover outros admins.
+    admins: router({
+      list: siteAdminProcedure.query(async () => {
+        return listAdmins();
+      }),
+
+      create: siteAdminProcedure
+        .input(
+          z.object({
+            username: z
+              .string()
+              .trim()
+              .min(3, "Usuário deve ter ao menos 3 caracteres")
+              .max(50)
+              .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
+            password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
+          })
+        )
+        .mutation(async ({ input }) => {
+          const existing = await getAdminByUsername(input.username);
+          if (existing) {
+            throw new TRPCError({ code: "CONFLICT", message: "Esse usuário já existe." });
+          }
+
+          const passwordHash = await hashAdminPassword(input.password);
+          return createAdmin({ id: uuidv4(), username: input.username, passwordHash });
+        }),
+
+      delete: siteAdminProcedure
+        .input(z.object({ id: z.string() }))
+        .mutation(async ({ input, ctx }) => {
+          const remaining = await countAdmins();
+          const admins = await listAdmins();
+          const target = admins.find(a => a.id === input.id);
+
+          if (target && target.username === ctx.siteAdminUsername) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Você não pode remover a própria conta enquanto estiver logado com ela.",
+            });
+          }
+
+          if (remaining <= 1 && target) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Não é possível remover o último admin cadastrado.",
+            });
+          }
+
+          await deleteAdmin(input.id);
+          return { success: true } as const;
+        }),
+    }),
   }),
 
   employees: router({
