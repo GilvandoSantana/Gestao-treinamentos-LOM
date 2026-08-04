@@ -4,6 +4,45 @@ import type { Employee, FilterType } from './types';
 import { getTrainingStatus } from './training-utils';
 
 /**
+ * Desenha um selo circular de conformidade no PDF — a mesma linguagem visual
+ * do "carimbo" usado na tela (ComplianceStamp.tsx), em vez de um texto colorido
+ * solto. Usa apenas os recursos nativos do jsPDF (sem fontes web customizadas).
+ */
+function drawComplianceStamp(
+  pdf: jsPDF,
+  centerX: number,
+  centerY: number,
+  status: 'expired' | 'expiring' | 'valid' | 'unknown',
+  radiusMm: number = 4
+) {
+  const colorByStatus: Record<string, [number, number, number]> = {
+    expired: [220, 53, 69],
+    expiring: [232, 160, 32],
+    valid: [45, 159, 127],
+    unknown: [150, 150, 150],
+  };
+  const labelByStatus: Record<string, string> = {
+    expired: 'VENCIDO',
+    expiring: 'ATENÇÃO',
+    valid: 'VÁLIDO',
+    unknown: 'S/ DATA',
+  };
+  const [r, g, b] = colorByStatus[status] ?? colorByStatus.unknown;
+  const label = labelByStatus[status] ?? labelByStatus.unknown;
+
+  pdf.setDrawColor(r, g, b);
+  pdf.setLineWidth(0.35);
+  pdf.circle(centerX, centerY, radiusMm, 'S');
+
+  pdf.setTextColor(r, g, b);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(5);
+  pdf.text(label, centerX, centerY + 0.8, { align: 'center', angle: -8 });
+  pdf.setTextColor(0, 0, 0);
+  pdf.setFont('helvetica', 'normal');
+}
+
+/**
  * Generate a PDF report for a single employee with their trainings
  */
 export async function generateEmployeePDF(employee: Employee): Promise<void> {
@@ -75,7 +114,6 @@ export async function generateEmployeePDF(employee: Employee): Promise<void> {
 
     for (const training of employee.trainings) {
       const status = getTrainingStatus(training.expirationDate);
-      const statusColor = status.status === 'expired' ? [220, 53, 69] : status.status === 'expiring' ? [255, 193, 7] : [45, 159, 127];
 
       // Alternate row colors
       if (employee.trainings.indexOf(training) % 2 === 0) {
@@ -97,11 +135,8 @@ export async function generateEmployeePDF(employee: Employee): Promise<void> {
       pdf.text(training.expirationDate || '', xPos + 2, yPosition);
       xPos += colWidths[2];
 
-      // Status with color
-      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
-      const statusLabel = status.status === 'expired' ? 'Vencido' : status.status === 'expiring' ? 'Próximo' : 'Válido';
-      pdf.text(statusLabel, xPos + 2, yPosition);
-      pdf.setTextColor(0, 0, 0);
+      // Status como selo de conformidade (mesma linguagem visual da tela)
+      drawComplianceStamp(pdf, xPos + colWidths[3] / 2, yPosition - 2, status.status, 3.2);
 
       yPosition += 8;
 
@@ -400,7 +435,6 @@ export async function generateFilteredPDF(employees: Employee[], filter: FilterT
       }
 
       const status = getTrainingStatus(training.expirationDate || '');
-      const statusColor = status.status === 'expired' ? [220, 53, 69] : status.status === 'expiring' ? [255, 193, 7] : [45, 159, 127];
 
       xPos = margin;
 
@@ -421,13 +455,8 @@ export async function generateFilteredPDF(employees: Employee[], filter: FilterT
       pdf.text(training.expirationDate || '', xPos + 2, yPosition + 4);
       xPos += colWidths[3];
 
-      // Status with color
-      pdf.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
-      pdf.setFont('helvetica', 'bold');
-      const statusLabel = status.status === 'expired' ? 'Vencido' : status.status === 'expiring' ? 'Próximo' : 'Válido';
-      pdf.text(statusLabel, xPos + 2, yPosition + 4);
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFont('helvetica', 'normal');
+      // Status como selo de conformidade (mesma linguagem visual da tela)
+      drawComplianceStamp(pdf, xPos + colWidths[4] / 2, yPosition + 2.5, status.status, 2.6);
 
       yPosition += rowHeight;
       rowCount++;

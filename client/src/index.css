@@ -241,3 +241,34 @@
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
 }
+
+/* Selo de conformidade "batendo" ao aparecer — usa scale/opacity (não
+   transform) para não brigar com as classes de rotação do Tailwind, que no
+   v4 usam a propriedade CSS `rotate` separada de `scale`. */
+@keyframes stampPunch {
+  0% {
+    scale: 2.4;
+    opacity: 0;
+  }
+  55% {
+    scale: 0.9;
+    opacity: 1;
+  }
+  75% {
+    scale: 1.08;
+  }
+  100% {
+    scale: 1;
+    opacity: 1;
+  }
+}
+
+.animate-stamp-punch {
+  animation: stampPunch 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-stamp-punch {
+    animation: none;
+  }
+}

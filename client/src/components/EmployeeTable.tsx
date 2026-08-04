@@ -14,6 +14,7 @@ import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
+import ComplianceStamp from './ComplianceStamp';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
@@ -194,16 +195,18 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 	                                return (
 	                                  <div 
 	                                    key={training.id}
-	                                    className={`p-3 rounded-lg border bg-card flex flex-col gap-1 ${statusBadgeMap[statusInfo.status]}`}
+	                                    className={`relative p-3 rounded-lg border bg-card flex flex-col gap-1 ${statusBadgeMap[statusInfo.status]}`}
 	                                  >
-	                                    <div className="font-bold text-sm truncate">{training.name}</div>
-	                                    <div className="text-[10px] opacity-80">
-	                                      Realizado: {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+	                                    <div className="flex items-start justify-between gap-2">
+	                                      <div className="font-bold text-sm truncate flex-1">{training.name}</div>
+	                                      <ComplianceStamp status={statusInfo.status} label={statusInfo.label} size="sm" />
 	                                    </div>
-	                                    <div className="text-[10px] font-bold">
-	                                      Vencimento: {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+	                                    <div className="text-[10px] opacity-80 font-technical">
+	                                      {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
 	                                    </div>
-	                                    <div className="text-[10px] mt-1 uppercase tracking-wider">{statusInfo.label}</div>
+	                                    <div className="text-[10px] font-bold font-technical">
+	                                      vence {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+	                                    </div>
 	                                    
 	                                    <div className="mt-2 pt-2 border-t border-current/10">
 	                                      <button

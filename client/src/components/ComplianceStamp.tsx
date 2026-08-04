@@ -47,7 +47,7 @@ export default function ComplianceStamp({ status, size = 'md' }: ComplianceStamp
 
   return (
     <div
-      className={`relative shrink-0 ${dimension} ${config.rotate} select-none`}
+      className={`relative shrink-0 ${dimension} ${config.rotate} animate-stamp-punch select-none`}
       aria-hidden="true"
       title={config.word}
     >
