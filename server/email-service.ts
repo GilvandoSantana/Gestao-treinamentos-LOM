@@ -1,4 +1,5 @@
 import { notifyOwner } from "./_core/notification";
+import { sendEmail } from "./mailer";
 import { getDb } from "./db";
 import { eq, and, gte } from "drizzle-orm";
 import { employees, trainings, emailNotifications } from "../drizzle/schema";
@@ -204,10 +205,17 @@ export async function sendTrainingAlerts(): Promise<boolean> {
       <p><small>Gerado em: ${new Date().toLocaleString("pt-BR")}</small></p>
     `;
 
-    const result = await notifyOwner({
+    const result = await sendEmail({
+      subject: `Relatório de Treinamentos - ${alerts.length} alertas`,
+      html: emailContent,
+    });
+
+    // Notificação interna da plataforma original (best-effort, não crítica —
+    // se falhar não impede o e-mail real de já ter sido enviado acima).
+    notifyOwner({
       title: `Relatório de Treinamentos - ${alerts.length} alertas`,
       content: emailContent,
-    });
+    }).catch(() => {});
 
     if (result) {
       console.log(`[Email Service] Successfully sent ${alerts.length} training alerts`);
