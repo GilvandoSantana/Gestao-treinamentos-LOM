@@ -9,7 +9,6 @@ import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics } from '@/lib/training-utils';
 import { generateComprehensivePDF, generateFilteredPDF } from '@/lib/pdf-export';
 import * as XLSX from 'xlsx';
-import { seedEmployees } from '@/lib/seed-data';
 import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
@@ -80,51 +79,18 @@ export default function Home() {
     }
   }, [siteSessionQuery.data]);
 
-  // Carrega dados iniciais do localStorage enquanto o servidor responde
-  useEffect(() => {
-    seedEmployees();
-
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('training-manager:employee:')) {
-        keys.push(key.replace('training-manager:', ''));
-      }
-    }
-
-    if (keys.length > 0) {
-      const employeeData: Employee[] = [];
-      for (const key of keys) {
-        const value = localStorage.getItem('training-manager:' + key);
-        if (value) {
-          try {
-            const employee: Employee = JSON.parse(value);
-            if (employee.trainings) {
-              employee.trainings = employee.trainings.map((t) => ({
-                ...t,
-                completionDate:
-                  t.completionDate || t.expirationDate || new Date().toISOString().split('T')[0],
-              }));
-            }
-            employeeData.push(employee);
-          } catch {}
-        }
-      }
-      employeeData.sort((a, b) => a.name.localeCompare(b.name));
-      setEmployees(employeeData);
-    }
-
-    setIsLoading(false);
-  }, []);
-
-  // Atualiza estado local quando o servidor responde — ignorado durante saves
+  // Carrega dados reais assim que o servidor responde (o app não guarda mais
+  // um "cache" de colaboradores no localStorage do navegador para evitar
+  // mostrar uma contagem antiga/de teste antes da real).
   useEffect(() => {
     if (isSavingRef.current) return;
-    if (listQuery.data && listQuery.data.length > 0) {
-      setEmployees(listQuery.data as Employee[]);
+    if (listQuery.isSuccess) {
+      setEmployees((listQuery.data ?? []) as Employee[]);
+      setIsLoading(false);
+    } else if (listQuery.isError) {
       setIsLoading(false);
     }
-  }, [listQuery.data]);
+  }, [listQuery.data, listQuery.isSuccess, listQuery.isError]);
 
   const handleExcelImport = async (importedEmployees: Employee[]) => {
     try {
