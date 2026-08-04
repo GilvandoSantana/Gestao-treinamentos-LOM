@@ -57,7 +57,7 @@ export default function StatCards({ stats }: StatCardsProps) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-muted-foreground text-sm font-medium">{card.label}</p>
-              <p className="text-3xl font-extrabold text-card-foreground mt-1">{card.value}</p>
+              <p className="text-3xl font-display font-bold text-card-foreground mt-1">{card.value}</p>
             </div>
             <div className={`${card.bgIcon} p-3 rounded-xl`}>
               <card.icon className={card.iconColor} size={28} strokeWidth={2} />

@@ -48,6 +48,13 @@ export default function Header({
         <div className="absolute inset-0 bg-gradient-to-r from-navy/95 via-navy/85 to-navy/60" />
       </div>
 
+      {/* Marcas de registro (estilo desenho técnico) — assinatura discreta do
+          design "Industrial Blueprint" nos quatro cantos do painel. */}
+      <div className="absolute top-3 left-3 w-3 h-3 border-t border-l border-white/25 pointer-events-none hidden sm:block" />
+      <div className="absolute top-3 right-3 w-3 h-3 border-t border-r border-white/25 pointer-events-none hidden sm:block" />
+      <div className="absolute bottom-3 left-3 w-3 h-3 border-b border-l border-white/25 pointer-events-none hidden sm:block" />
+      <div className="absolute bottom-3 right-3 w-3 h-3 border-b border-r border-white/25 pointer-events-none hidden sm:block" />
+
       {/* Content */}
       <div className="relative p-6 md:p-8 lg:p-10">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -56,15 +63,17 @@ export default function Header({
               <div className="bg-orange p-2.5 rounded-xl shadow-lg">
                 <Shield size={28} className="text-white" />
               </div>
-              <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-                Bem-vindo ao Gestão de Treinamentos LOM
+              <h1 className="text-3xl md:text-4xl font-display font-bold text-white tracking-tight">
+                Gestão de Treinamentos <span className="text-orange-light">LOM</span>
               </h1>
             </div>
-            <p className="text-white/70 text-base mt-2 max-w-lg">
-              Criado por Gilvando Santana.
+            <p className="text-white/70 text-base mt-2 max-w-lg font-technical text-sm">
               {employeeCount > 0 && (
-                <span className="text-orange-light font-semibold"> {employeeCount} colaborador{employeeCount !== 1 ? 'es' : ''} cadastrado{employeeCount !== 1 ? 's' : ''}.</span>
+                <span className="text-orange-light font-semibold">{employeeCount} colaborador{employeeCount !== 1 ? 'es' : ''} cadastrado{employeeCount !== 1 ? 's' : ''}</span>
               )}
+            </p>
+            <p className="text-white/40 text-xs mt-1 font-technical tracking-wide">
+              Criado por Gilvando Santana
             </p>
           </div>
 

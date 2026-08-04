@@ -112,7 +112,7 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     <td className="p-4 hidden md:table-cell text-sm text-foreground">
                       {employee.role}
                     </td>
-                    <td className="p-4 hidden sm:table-cell text-sm font-mono text-muted-foreground">
+                    <td className="p-4 hidden sm:table-cell text-sm font-technical text-muted-foreground">
                       {employee.registration ? `#${employee.registration}` : '-'}
                     </td>
                     <td className="p-4">
