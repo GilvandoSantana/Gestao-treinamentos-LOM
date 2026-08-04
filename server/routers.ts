@@ -2,7 +2,8 @@ import { COOKIE_NAME } from "@shared/const";
 import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, siteAdminProcedure, router } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
@@ -10,6 +11,7 @@ import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS } from "./site-auth";
 
 export const appRouter = router({
   system: systemRouter,
@@ -22,10 +24,51 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+
+    // Login com a senha única do site (substitui a checagem que era feita
+    // só no frontend). A senha correta fica em APP_PASSWORD no servidor,
+    // nunca no código do cliente.
+    siteLogin: publicProcedure
+      .input(z.object({ password: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        let isValid: boolean;
+        try {
+          isValid = checkSitePassword(input.password);
+        } catch (error) {
+          console.error("siteLogin config error:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Autenticação do site não configurada no servidor.",
+          });
+        }
+
+        if (!isValid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha incorreta." });
+        }
+
+        const token = await createSiteSessionToken();
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(SITE_SESSION_COOKIE, token, {
+          ...cookieOptions,
+          maxAge: SITE_SESSION_MAX_AGE_MS,
+        });
+
+        return { success: true } as const;
+      }),
+
+    siteLogout: publicProcedure.mutation(({ ctx }) => {
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.clearCookie(SITE_SESSION_COOKIE, { ...cookieOptions, maxAge: -1 });
+      return { success: true } as const;
+    }),
+
+    siteSession: publicProcedure.query(({ ctx }) => ({
+      isSiteAdmin: ctx.isSiteAdmin,
+    })),
   }),
 
   employees: router({
-    upsertOne: publicProcedure
+    upsertOne: siteAdminProcedure
       .input(
         z.object({
           id: z.string(),
@@ -79,7 +122,7 @@ export const appRouter = router({
         }
       }),
 
-    delete: publicProcedure
+    delete: siteAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
@@ -90,7 +133,7 @@ export const appRouter = router({
           throw error;
         }
       }),
-    sync: publicProcedure
+    sync: siteAdminProcedure
       .input(
         z.object({
           employees: z.array(
@@ -167,7 +210,7 @@ export const appRouter = router({
       return result;
     }),
 
-    uploadPhoto: publicProcedure
+    uploadPhoto: siteAdminProcedure
       .input(
         z.object({
           employeeId: z.string(),
@@ -192,7 +235,7 @@ export const appRouter = router({
   }),
 
   trainings: router({
-    delete: publicProcedure
+    delete: siteAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
@@ -242,7 +285,7 @@ export const appRouter = router({
   }),
 
   certificates: router({
-    upload: publicProcedure
+    upload: siteAdminProcedure
       .input(
         z.object({
           trainingId: z.string(),
@@ -305,7 +348,7 @@ export const appRouter = router({
         }
       }),
 
-    delete: publicProcedure
+    delete: siteAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {

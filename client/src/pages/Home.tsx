@@ -68,12 +68,17 @@ export default function Home() {
     refetchInterval: 30000, // Busca do servidor a cada 30 segundos
     refetchOnWindowFocus: false,
   });
+  const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
 
-  // Verifica autenticação ao montar
+  // Verifica autenticação ao montar consultando o servidor (fonte da verdade),
+  // já que a sessão real agora vive num cookie httpOnly assinado, não no
+  // sessionStorage do navegador.
+  const siteSessionQuery = trpc.auth.siteSession.useQuery();
   useEffect(() => {
-    const auth = sessionStorage.getItem('training-manager-auth');
-    if (auth === 'true') setIsAuthenticated(true);
-  }, []);
+    if (siteSessionQuery.data) {
+      setIsAuthenticated(siteSessionQuery.data.isSiteAdmin);
+    }
+  }, [siteSessionQuery.data]);
 
   // Carrega dados iniciais do localStorage enquanto o servidor responde
   useEffect(() => {
@@ -210,8 +215,9 @@ export default function Home() {
   const handlePasswordSuccess = () => {
     setShowPasswordModal(false);
     if (passwordModalReason === 'login') {
+      // O cookie de sessão já foi definido pelo servidor dentro do PasswordModal
+      // (auth.siteLogin). Aqui só refletimos isso na UI.
       setIsAuthenticated(true);
-      sessionStorage.setItem('training-manager-auth', 'true');
     } else if (passwordModalReason === 'delete' && deleteConfirmId) {
       deleteEmployeeConfirmed();
     }
@@ -435,9 +441,13 @@ export default function Home() {
             setPasswordModalReason('login');
             setShowPasswordModal(true);
           }}
-          onAdminLogout={() => {
+          onAdminLogout={async () => {
+            try {
+              await siteLogoutMutation.mutateAsync();
+            } catch (error) {
+              console.error('Erro ao encerrar sessão:', error);
+            }
             setIsAuthenticated(false);
-            sessionStorage.removeItem('training-manager-auth');
             toast.info('Modo administrativo desativado.');
           }}
         />

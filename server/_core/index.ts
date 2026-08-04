@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { scheduleTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
+import { hasValidSiteSession } from "../site-auth";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -50,7 +51,14 @@ async function startServer() {
   registerOAuthRoutes(app);
   
   // Seed route for bulk employee insertion
+  // Protegida: só executa com uma sessão de admin do site válida (cookie
+  // definido via auth.siteLogin). Antes era pública e qualquer um podia
+  // chamá-la para inserir dados em massa sem senha.
   app.post("/api/seed/employees", async (req, res) => {
+    const isSiteAdmin = await hasValidSiteSession(req);
+    if (!isSiteAdmin) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
     try {
       const db = await getDb();
       if (!db) {

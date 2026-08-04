@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { trpc } from '@/lib/trpc';
 
 interface PasswordModalProps {
   isOpen: boolean;
@@ -10,8 +11,6 @@ interface PasswordModalProps {
   onCancel?: () => void;
 }
 
-const CORRECT_PASSWORD = 'SCM2026@lom';
-
 export default function PasswordModal({
   isOpen,
   title = 'Acesso Restrito',
@@ -20,29 +19,25 @@ export default function PasswordModal({
   onCancel,
 }: PasswordModalProps) {
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const loginMutation = trpc.auth.siteLogin.useMutation();
+
+  const isLoading = loginMutation.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
 
-    // Simulate a small delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    console.log('Password attempt:', password);
-    console.log('Correct password:', CORRECT_PASSWORD);
-    if (password === CORRECT_PASSWORD) {
-      console.log('Password correct!');
+    try {
+      // A verificação agora acontece no servidor (auth.siteLogin), que define
+      // um cookie de sessão assinado. Isso substitui a checagem que antes era
+      // feita só no navegador com a senha exposta no código do cliente.
+      await loginMutation.mutateAsync({ password });
       toast.success('Autenticação bem-sucedida!');
       setPassword('');
       onSuccess();
-    } else {
-      console.log('Password incorrect!');
+    } catch (error) {
       toast.error('Senha incorreta. Tente novamente.');
       setPassword('');
     }
-
-    setIsLoading(false);
   };
 
   const handleCancel = () => {

@@ -43,3 +43,21 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+/**
+ * Procedure para ações administrativas do site (criar/editar/excluir colaboradores,
+ * treinamentos e certificados). Exige uma sessão válida criada via auth.siteLogin,
+ * verificada no servidor (cookie assinado com JWT) — substitui a antiga checagem
+ * apenas no cliente que permitia bypass direto da API.
+ */
+export const siteAdminProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    if (!ctx.isSiteAdmin) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+
+    return next({ ctx });
+  }),
+);
