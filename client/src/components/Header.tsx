@@ -3,8 +3,9 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock, Sun, Moon } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface HeaderProps {
   onNewEmployee: () => void;
@@ -31,6 +32,8 @@ export default function Header({
   onAdminLogin,
   onAdminLogout
 }: HeaderProps) {
+  const { theme, toggleTheme } = useTheme();
+
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg mb-8 animate-fade-in-up">
       {/* Background Image */}
@@ -64,6 +67,17 @@ export default function Header({
           </div>
 
           <div className="flex flex-wrap gap-2.5 items-center">
+            {/* Theme Toggle Button */}
+            {toggleTheme && (
+              <button
+                onClick={toggleTheme}
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all shadow-lg"
+                title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+              >
+                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+            )}
+
             {/* Admin Toggle Button */}
             <button
               onClick={isAdmin ? onAdminLogout : onAdminLogin}

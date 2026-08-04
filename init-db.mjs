@@ -31,6 +31,15 @@ async function initializeDatabase() {
     const connection = await mysql.createConnection(config);
     console.log('[Init DB] Connected successfully');
 
+    // Controla quais migrações já foram aplicadas, para não reexecutar
+    // arquivos antigos a cada deploy (isso já causava ALTER TABLE duplicado
+    // silenciosamente tolerado só para "tabela já existe").
+    await connection.execute(
+      'CREATE TABLE IF NOT EXISTS `_migrations` (`name` varchar(255) NOT NULL, `appliedAt` timestamp NOT NULL DEFAULT (now()), PRIMARY KEY (`name`))'
+    );
+    const [appliedRows] = await connection.execute('SELECT `name` FROM `_migrations`');
+    const appliedSet = new Set(appliedRows.map(row => row.name));
+
     // Read and execute migration files
     const migrationsDir = path.join(__dirname, 'drizzle');
     const migrationFiles = fs.readdirSync(migrationsDir)
@@ -40,6 +49,11 @@ async function initializeDatabase() {
     console.log(`[Init DB] Found ${migrationFiles.length} migration files`);
 
     for (const file of migrationFiles) {
+      if (appliedSet.has(file)) {
+        console.log(`[Init DB] ↷ ${file} já aplicada, pulando`);
+        continue;
+      }
+
       const filePath = path.join(migrationsDir, file);
       const sql = fs.readFileSync(filePath, 'utf-8');
       
@@ -52,15 +66,20 @@ async function initializeDatabase() {
           await connection.execute(statement);
           console.log(`[Init DB] ✓ Success`);
         } catch (error) {
-          // Ignore "table already exists" errors
-          if (error.code === 'ER_TABLE_EXISTS_ERROR') {
-            console.log(`[Init DB] ℹ Table already exists, skipping`);
+          // Ignora erros de objeto já existente, comuns quando uma migração
+          // antiga roda pela primeira vez sob este novo controle mas o
+          // schema já foi criado manualmente antes.
+          if (['ER_TABLE_EXISTS_ERROR', 'ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME', 'ER_FK_DUP_NAME'].includes(error.code)) {
+            console.log(`[Init DB] ℹ ${error.code}, ignorando (objeto já existe)`);
           } else {
             console.error(`[Init DB] ✗ Error executing statement:`, error.message);
             throw error;
           }
         }
       }
+
+      await connection.execute('INSERT INTO `_migrations` (`name`) VALUES (?)', [file]);
+      console.log(`[Init DB] ✓ ${file} registrada como aplicada`);
     }
 
     await connection.end();

@@ -49,7 +49,9 @@ export type InsertEmployee = typeof employees.$inferInsert;
  */
 export const trainings = mysqlTable("trainings", {
   id: varchar("id", { length: 64 }).primaryKey(),
-  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  employeeId: varchar("employeeId", { length: 64 })
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   completionDate: varchar("completionDate", { length: 10 }).notNull(),
   expirationDate: varchar("expirationDate", { length: 10 }).notNull(),
@@ -65,7 +67,9 @@ export type InsertTraining = typeof trainings.$inferInsert;
  */
 export const auditLogs = mysqlTable("auditLogs", {
   id: varchar("id", { length: 64 }).primaryKey(),
-  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  employeeId: varchar("employeeId", { length: 64 })
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
   action: varchar("action", { length: 50 }).notNull(),
   changes: text("changes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -79,8 +83,12 @@ export type InsertAuditLog = typeof auditLogs.$inferInsert;
  */
 export const certificates = mysqlTable("certificates", {
   id: varchar("id", { length: 64 }).primaryKey(),
-  trainingId: varchar("trainingId", { length: 64 }).notNull(),
-  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  trainingId: varchar("trainingId", { length: 64 })
+    .notNull()
+    .references(() => trainings.id, { onDelete: "cascade" }),
+  employeeId: varchar("employeeId", { length: 64 })
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileUrl: text("fileUrl").notNull(),
   fileSize: int("fileSize"),
@@ -98,8 +106,12 @@ export type InsertCertificate = typeof certificates.$inferInsert;
  */
 export const emailNotifications = mysqlTable("emailNotifications", {
   id: varchar("id", { length: 64 }).primaryKey(),
-  trainingId: varchar("trainingId", { length: 64 }).notNull(),
-  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  trainingId: varchar("trainingId", { length: 64 })
+    .notNull()
+    .references(() => trainings.id, { onDelete: "cascade" }),
+  employeeId: varchar("employeeId", { length: 64 })
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
   lastSentAt: timestamp("lastSentAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
