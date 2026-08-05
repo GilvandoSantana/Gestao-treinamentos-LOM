@@ -485,7 +485,7 @@ export default function Home() {
           <AdminManagementModal
             isOpen={showAdminManagement}
             onClose={() => setShowAdminManagement(false)}
-            currentUsername={siteSessionQuery.data?.username}
+            currentUsername={session.username}
           />
         )}
 

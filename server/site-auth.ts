@@ -114,7 +114,7 @@ type AttemptRecord = { count: number; firstAttemptAt: number };
 const loginAttempts = new Map<string, AttemptRecord>();
 
 function pruneExpired(now: number) {
-  for (const [key, record] of loginAttempts) {
+  for (const [key, record] of Array.from(loginAttempts.entries())) {
     if (now - record.firstAttemptAt > WINDOW_MS) {
       loginAttempts.delete(key);
     }

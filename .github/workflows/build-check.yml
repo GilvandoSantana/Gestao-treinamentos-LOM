@@ -1,0 +1,35 @@
+name: Verificação de build
+
+# Roda a cada push e pull request. Serve para pegar erros como variável
+# inexistente ou tipo quebrado ANTES de o Railway publicar — o build do Railway
+# usa esbuild, que não checa tipos, então esse tipo de erro só aparecia como
+# tela branca no navegador do usuário.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Checar tipos
+        run: pnpm run check
+
+      - name: Build de produção
+        run: pnpm run build
