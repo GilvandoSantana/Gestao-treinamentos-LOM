@@ -467,7 +467,19 @@ export default function Home() {
         </div>
 
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={session.can('importExport')} employees={employees} />
+        {/* Os filtros por situação vivem na aba "Vencimentos" do celular — na
+            aba "Colaboradores" a lista aparece completa, sem as pílulas. No
+            desktop não existe a barra inferior, então eles seguem sempre
+            visíveis. */}
+        <div className={mobileTab === 'vencimentos' ? 'block' : 'hidden lg:block'}>
+          <FilterBar
+            filter={filter}
+            onFilterChange={setFilter}
+            onPrintFilter={handlePrintFilter}
+            isAdmin={session.can('importExport')}
+            employees={employees}
+          />
+        </div>
 
         {listQuery.isError ? (
           <div className="bg-card border border-danger/30 rounded-xl p-6 text-center">
@@ -604,11 +616,14 @@ export default function Home() {
         active={mobileTab}
         expiredCount={stats.expired}
         onSelect={(tab) => {
-          setMobileTab(tab);
+          // Só "Colaboradores" e "Vencimentos" são visualizações; as outras
+          // duas disparam uma ação e não devem ficar marcadas como aba ativa.
           if (tab === 'vencimentos') {
+            setMobileTab(tab);
             setFilter('expired');
             document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
           } else if (tab === 'colaboradores') {
+            setMobileTab(tab);
             setFilter('all');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           } else if (tab === 'relatorios') {
