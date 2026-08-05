@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { Employee, FilterType } from '@/lib/types';
-import { getFilteredEmployees, getStatistics } from '@/lib/training-utils';
+import { getFilteredEmployees, getStatistics, getWorstStatus } from '@/lib/training-utils';
 import { generateComprehensivePDF, generateFilteredPDF } from '@/lib/pdf-export';
 import * as XLSX from 'xlsx';
 import { trpc } from '@/lib/trpc';
@@ -342,6 +342,20 @@ export default function Home() {
   // Memoizado para evitar recálculo em cada re-render
   const stats = useMemo(() => getStatistics(employees), [employees]);
 
+  // Contagem por COLABORADOR (pela pior situação dele), para os selos da barra
+  // inferior baterem com o tamanho da lista que cada aba mostra. O `stats`
+  // acima conta treinamentos, que é outro número.
+  const statusCounts = useMemo(() => {
+    const counts = { expired: 0, expiring: 0, valid: 0 };
+    for (const emp of employees) {
+      const worst = getWorstStatus(emp);
+      if (worst === 'expired') counts.expired++;
+      else if (worst === 'expiring') counts.expiring++;
+      else if (worst === 'valid') counts.valid++;
+    }
+    return counts;
+  }, [employees]);
+
   const filteredEmployees = useMemo(() => {
     let result = getFilteredEmployees(employees, filter, searchQuery);
     if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
@@ -467,11 +481,9 @@ export default function Home() {
         </div>
 
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-        {/* Os filtros por situação vivem na aba "Vencimentos" do celular — na
-            aba "Colaboradores" a lista aparece completa, sem as pílulas. No
-            desktop não existe a barra inferior, então eles seguem sempre
-            visíveis. */}
-        <div className={mobileTab === 'vencimentos' ? 'block' : 'hidden lg:block'}>
+        {/* No celular as situações viraram abas da barra inferior, então as
+            pílulas só aparecem no desktop, onde essa barra não existe. */}
+        <div className="hidden lg:block">
           <FilterBar
             filter={filter}
             onFilterChange={setFilter}
@@ -614,18 +626,30 @@ export default function Home() {
           da página, que já existe — não há troca de rota. */}
       <MobileNav
         active={mobileTab}
-        expiredCount={stats.expired}
+        counts={{
+          vencidos: statusCounts.expired,
+          vencendo: statusCounts.expiring,
+          validos: statusCounts.valid,
+        }}
         onSelect={(tab) => {
-          // Só "Colaboradores" e "Vencimentos" são visualizações; as outras
-          // duas disparam uma ação e não devem ficar marcadas como aba ativa.
-          if (tab === 'vencimentos') {
+          // As quatro primeiras abas são visualizações (trocam o filtro da
+          // lista); Relatórios e Admin disparam uma ação e não ficam marcadas.
+          const filterByTab: Partial<Record<typeof tab, FilterType>> = {
+            colaboradores: 'all',
+            vencidos: 'expired',
+            vencendo: 'expiring',
+            validos: 'valid',
+          };
+
+          const nextFilter = filterByTab[tab];
+          if (nextFilter) {
             setMobileTab(tab);
-            setFilter('expired');
-            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
-          } else if (tab === 'colaboradores') {
-            setMobileTab(tab);
-            setFilter('all');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setFilter(nextFilter);
+            if (tab === 'colaboradores') {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
+            }
           } else if (tab === 'relatorios') {
             handleExportPDF();
           } else if (tab === 'admin') {
