@@ -3,7 +3,7 @@
  * Header: Application header with hero banner, title, and action buttons
  */
 
-import { Plus, Download, Shield, FileText, LayoutGrid, List, Lock, Unlock, Sun, Moon, Users } from 'lucide-react';
+import { Plus, Download, Shield, FileText, LayoutGrid, List, Sun, Moon, Users, UserCircle, LogOut } from 'lucide-react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useScrolled } from '@/hooks/useScrolled';
@@ -16,9 +16,10 @@ interface HeaderProps {
   employeeCount: number;
   viewMode?: 'grid' | 'table';
   onViewModeChange?: (mode: 'grid' | 'table') => void;
-  isAdmin: boolean;
-  onAdminLogin: () => void;
-  onAdminLogout: () => void;
+  username?: string | null;
+  onLogout: () => void;
+  canEdit?: boolean;
+  canImportExport?: boolean;
   onManageAdmins?: () => void;
 }
 
@@ -30,9 +31,10 @@ export default function Header({
   employeeCount,
   viewMode = 'grid',
   onViewModeChange,
-  isAdmin,
-  onAdminLogin,
-  onAdminLogout,
+  username,
+  onLogout,
+  canEdit = false,
+  canImportExport = false,
   onManageAdmins,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
@@ -93,29 +95,24 @@ export default function Header({
               </button>
             )}
 
-            {/* Admin Toggle Button */}
-            <button
-              onClick={isAdmin ? onAdminLogout : onAdminLogin}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg ${
-                isAdmin 
-                ? 'bg-teal hover:bg-teal-light text-white shadow-teal/20' 
-                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
-              }`}
-            >
-              {isAdmin ? (
-                <>
-                  <Unlock size={18} />
-                  Modo ADM Ativo
-                </>
-              ) : (
-                <>
-                  <Lock size={18} />
-                  Login ADM
-                </>
-              )}
-            </button>
+            {/* Quem está logado + sair. O antigo botão de "Modo ADM" saiu:
+                o acesso agora é definido pelo login e pelas permissões da
+                conta, então não há mais um modo para ativar/desativar. */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 border border-white/20 shadow-lg">
+              <UserCircle size={18} className="text-white/70 shrink-0" />
+              <span className="text-white text-sm font-semibold max-w-[120px] truncate">
+                {username || 'Conectado'}
+              </span>
+              <button
+                onClick={onLogout}
+                title="Sair"
+                className="text-white/60 hover:text-white transition-colors ml-1"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
 
-            {isAdmin && onManageAdmins && (
+            {onManageAdmins && (
               <button
                 onClick={onManageAdmins}
                 className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all shadow-lg"
@@ -145,7 +142,7 @@ export default function Header({
                 </button>
               </div>
             )}
-            {isAdmin && (
+            {canEdit && (
               <button
                 onClick={onNewEmployee}
                 className="bg-orange hover:bg-orange-light text-white px-5 py-2.5 rounded-xl shadow-lg shadow-orange/20 transition-all duration-200 flex items-center gap-2 font-bold text-sm animate-in fade-in zoom-in duration-300"
@@ -155,7 +152,7 @@ export default function Header({
               </button>
             )}
 
-            {isAdmin && (
+            {canImportExport && (
               <>
                 <button
                   onClick={onExportPDF}

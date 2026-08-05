@@ -33,7 +33,6 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
-import PasswordModal from '@/components/PasswordModal';
 
 export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -55,11 +54,8 @@ export default function Home() {
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
-  const [passwordModalReason, setPasswordModalReason] = useState<'login' | 'delete'>('login');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -88,10 +84,6 @@ export default function Home() {
     refetchOnWindowFocus: false,
   });
   const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
-
-  useEffect(() => {
-    setIsAuthenticated(session.isLoggedIn);
-  }, [session.isLoggedIn]);
 
   // Carrega dados reais assim que o servidor responde (o app não guarda mais
   // um "cache" de colaboradores no localStorage do navegador para evitar
@@ -192,25 +184,6 @@ export default function Home() {
       isSavingRef.current = false;
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
-    }
-  };
-
-  const handlePasswordSuccess = () => {
-    setShowPasswordModal(false);
-    if (passwordModalReason === 'login') {
-      // O cookie de sessão já foi definido pelo servidor dentro do PasswordModal
-      // (auth.siteLogin). Aqui só refletimos isso na UI.
-      setIsAuthenticated(true);
-    } else if (passwordModalReason === 'delete' && deleteConfirmId) {
-      deleteEmployeeConfirmed();
-    }
-  };
-
-  const handlePasswordCancel = () => {
-    setShowPasswordModal(false);
-    if (passwordModalReason === 'delete') {
-      setDeleteConfirmId(null);
-      setShowDeleteConfirm(false);
     }
   };
 
@@ -432,20 +405,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {showPasswordModal && (
-        <PasswordModal
-          isOpen={showPasswordModal}
-          title={passwordModalReason === 'login' ? 'Acesso Administrativo' : 'Confirmar Exclusão'}
-          description={
-            passwordModalReason === 'login'
-              ? 'Digite a senha para habilitar edições'
-              : 'Digite a senha para confirmar a exclusão do colaborador'
-          }
-          onSuccess={handlePasswordSuccess}
-          onCancel={handlePasswordCancel}
-        />
-      )}
-
       <div className="container py-6 md:py-8">
         {/* Input oculto para importação de JSON */}
         <input
@@ -464,19 +423,18 @@ export default function Home() {
           employeeCount={employees.length}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          isAdmin={isAuthenticated}
-          onAdminLogin={() => {
-            setPasswordModalReason('login');
-            setShowPasswordModal(true);
-          }}
-          onAdminLogout={async () => {
+          username={session.username}
+          canEdit={session.can('editEmployees')}
+          canImportExport={session.can('importExport')}
+          onLogout={async () => {
             try {
               await siteLogoutMutation.mutateAsync();
             } catch (error) {
               console.error('Erro ao encerrar sessão:', error);
             }
-            setIsAuthenticated(false);
-            toast.info('Modo administrativo desativado.');
+            await session.refetch();
+            await utils.invalidate();
+            toast.info('Sessão encerrada.');
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
         />
@@ -509,7 +467,7 @@ export default function Home() {
         </div>
 
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
-        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} employees={employees} />
+        <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={session.can('importExport')} employees={employees} />
 
         {listQuery.isError ? (
           <div className="bg-card border border-danger/30 rounded-xl p-6 text-center">
@@ -569,7 +527,7 @@ export default function Home() {
               setSelectedEmployeeForAudit(emp);
               setShowAuditHistory(true);
             }}
-            isAdmin={isAuthenticated}
+            isAdmin={session.can('editEmployees')}
           />
         )}
 
@@ -608,7 +566,7 @@ export default function Home() {
           setShowModal(false);
           setEditingEmployee(null);
         }}
-        isAdmin={isAuthenticated}
+        isAdmin={session.can('editEmployees')}
       />
 
       <DeleteConfirmModal
@@ -656,11 +614,10 @@ export default function Home() {
           } else if (tab === 'relatorios') {
             handleExportPDF();
           } else if (tab === 'admin') {
-            if (isAuthenticated) {
+            if (session.isMasterAdmin) {
               setShowAdminManagement(true);
             } else {
-              setPasswordModalReason('login');
-              setShowPasswordModal(true);
+              toast.info('Somente o administrador principal gerencia contas.');
             }
           }
         }}
