@@ -632,32 +632,19 @@ export default function Home() {
           validos: statusCounts.valid,
         }}
         onSelect={(tab) => {
-          // As quatro primeiras abas são visualizações (trocam o filtro da
-          // lista); Relatórios e Admin disparam uma ação e não ficam marcadas.
-          const filterByTab: Partial<Record<typeof tab, FilterType>> = {
+          const filterByTab: Record<MobileTab, FilterType> = {
             colaboradores: 'all',
             vencidos: 'expired',
             vencendo: 'expiring',
             validos: 'valid',
           };
 
-          const nextFilter = filterByTab[tab];
-          if (nextFilter) {
-            setMobileTab(tab);
-            setFilter(nextFilter);
-            if (tab === 'colaboradores') {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-              document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
-            }
-          } else if (tab === 'relatorios') {
-            handleExportPDF();
-          } else if (tab === 'admin') {
-            if (session.isMasterAdmin) {
-              setShowAdminManagement(true);
-            } else {
-              toast.info('Somente o administrador principal gerencia contas.');
-            }
+          setMobileTab(tab);
+          setFilter(filterByTab[tab]);
+          if (tab === 'colaboradores') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else {
+            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
           }
         }}
       />

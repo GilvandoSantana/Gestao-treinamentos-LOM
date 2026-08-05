@@ -1,19 +1,13 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * MobileNav: barra fixa no rodapé, só no celular. Além de "Colaboradores",
- * traz as situações (Vencidos, Vencendo, Válidos) como abas próprias, no lugar
- * das antigas pílulas de filtro, e as ações de Relatórios e Admin.
+ * MobileNav: barra fixa no rodapé, só no celular. Cada aba é uma visualização
+ * da lista por situação — as ações (relatórios, contas, tema, sair) ficam no
+ * menu do cabeçalho, para a barra manter só navegação.
  */
 
-import { Users, AlertTriangle, Clock, CircleCheck, FileText, ShieldCheck } from 'lucide-react';
+import { Users, AlertTriangle, Clock, CircleCheck } from 'lucide-react';
 
-export type MobileTab =
-  | 'colaboradores'
-  | 'vencidos'
-  | 'vencendo'
-  | 'validos'
-  | 'relatorios'
-  | 'admin';
+export type MobileTab = 'colaboradores' | 'vencidos' | 'vencendo' | 'validos';
 
 interface MobileNavProps {
   active: MobileTab;
@@ -32,8 +26,6 @@ const tabs: {
   { key: 'vencidos', label: 'Vencidos', Icon: AlertTriangle, countKey: 'vencidos', badgeClass: 'bg-danger' },
   { key: 'vencendo', label: 'Vencendo', Icon: Clock, countKey: 'vencendo', badgeClass: 'bg-warning' },
   { key: 'validos', label: 'Válidos', Icon: CircleCheck, countKey: 'validos', badgeClass: 'bg-teal' },
-  { key: 'relatorios', label: 'Relatórios', Icon: FileText },
-  { key: 'admin', label: 'Admin', Icon: ShieldCheck },
 ];
 
 export default function MobileNav({ active, counts, onSelect }: MobileNavProps) {
@@ -51,13 +43,13 @@ export default function MobileNav({ active, counts, onSelect }: MobileNavProps) 
             key={key}
             onClick={() => onSelect(key)}
             aria-current={isActive ? 'page' : undefined}
-            className={`relative flex-1 min-w-0 flex flex-col items-center gap-1 py-1 text-[9.5px] font-semibold transition-colors ${
+            className={`relative flex-1 min-w-0 flex flex-col items-center gap-1 py-1 text-[11px] font-semibold transition-colors ${
               isActive ? 'text-orange' : 'text-muted-foreground'
             }`}
           >
             {isActive && <span className="absolute -top-2 w-6 h-[3px] bg-orange rounded-b" />}
             <span className="relative">
-              <Icon size={19} className={isActive ? 'scale-110 transition-transform' : 'transition-transform'} />
+              <Icon size={20} className={isActive ? 'scale-110 transition-transform' : 'transition-transform'} />
               {countKey && count > 0 && (
                 <span
                   className={`absolute -top-1.5 -right-2.5 min-w-[15px] h-[15px] px-1 rounded-full ${badgeClass} text-white font-technical text-[9px] flex items-center justify-center border-2 border-card`}
