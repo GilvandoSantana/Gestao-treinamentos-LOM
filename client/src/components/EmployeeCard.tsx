@@ -1,11 +1,10 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * EmployeeCard: cartão enxuto no formato do protótipo — avatar com iniciais,
- * nome, matrícula/função, selo de conformidade e os treinamentos como chips
- * compactos. A borda esquerda colorida indica a pior situação do colaborador.
+ * EmployeeCard: Card with colored left border indicating worst training status.
+ * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, History, ChevronDown } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -24,155 +23,165 @@ const statusBorderMap = {
   expired: 'border-l-danger',
   expiring: 'border-l-warning',
   valid: 'border-l-teal',
-  none: 'border-l-border',
+  none: 'border-l-muted-foreground',
 };
 
-const chipMap = {
-  expired: 'bg-danger/10 text-danger',
-  expiring: 'bg-warning/15 text-warning',
-  valid: 'bg-teal/10 text-teal',
-  unknown: 'bg-muted text-muted-foreground',
+const statusBgMap = {
+  expired: 'bg-danger/10 text-danger border-danger/20',
+  expiring: 'bg-warning/10 text-warning border-warning/20',
+  valid: 'bg-success-light text-teal border-teal/20',
+  unknown: 'bg-muted text-muted-foreground border-border',
 };
 
-const dotMap = {
-  expired: 'bg-danger',
-  expiring: 'bg-warning',
-  valid: 'bg-teal',
-  unknown: 'bg-muted-foreground',
-};
-
-/** Iniciais do nome, como no protótipo (ex.: "Ana Carolina" -> "AC"). */
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-const MAX_VISIBLE_CHIPS = 4;
-
-export default function EmployeeCard({
-  employee,
-  index,
-  onEdit,
-  onDelete,
-  onViewAudit,
-  isAdmin = false,
-}: EmployeeCardProps) {
-  const [showAll, setShowAll] = useState(false);
+export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeCardProps) {
+  const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const worstStatus = getWorstStatus(employee);
-  const trainings = employee.trainings ?? [];
-  const visibleTrainings = showAll ? trainings : trainings.slice(0, MAX_VISIBLE_CHIPS);
-  const hiddenCount = trainings.length - visibleTrainings.length;
 
   return (
     <div
-      className={`bg-card rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all duration-300 border border-border border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
-      style={{ animationDelay: `${index * 50}ms` }}
+      className={`bg-card rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
+      style={{ animationDelay: `${index * 60}ms` }}
     >
-      {/* Cabeçalho: avatar + identificação + selo */}
-      <div className="flex items-start gap-3">
-        {employee.photoUrl ? (
-          <img
-            src={employee.photoUrl}
-            alt=""
-            className="w-11 h-11 rounded-xl object-cover shrink-0 bg-muted"
-          />
-        ) : (
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-navy to-navy-light text-white grid place-items-center font-display font-bold text-sm shrink-0">
-            {getInitials(employee.name)}
-          </div>
-        )}
-
-        <div className="min-w-0 flex-1">
-          <h3 className="font-display font-semibold text-[15px] tracking-tight text-foreground truncate">
-            {employee.name}
-          </h3>
-          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-            {employee.registration && (
-              <span className="font-technical text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded shrink-0">
-                #{employee.registration}
-              </span>
-            )}
-            <span className="text-[13px] text-muted-foreground truncate">{employee.role}</span>
-          </div>
-        </div>
-
-        {worstStatus !== 'none' && (
-          <ComplianceStamp status={worstStatus} label={worstStatus} size="md" />
-        )}
-      </div>
-
-      {/* Treinamentos como chips compactos */}
-      {trainings.length > 0 ? (
-        <div className="mt-3 pt-2.5 border-t border-dashed border-border">
-          <div className="flex flex-wrap gap-1.5">
-            {visibleTrainings.map((training) => {
-              const info = getTrainingStatus(training.expirationDate);
-              return (
-                <span
-                  key={training.id}
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-md ${chipMap[info.status]}`}
-                  title={`${training.name} — ${info.label}`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotMap[info.status]}`} />
-                  <span className="truncate max-w-[150px]">{training.name}</span>
-                  <span className="font-technical opacity-75 text-[10px] shrink-0">
-                    {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: '2-digit',
-                    })}
-                  </span>
-                </span>
-              );
-            })}
-
-            {hiddenCount > 0 && (
-              <button
-                onClick={() => setShowAll(true)}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              >
-                +{hiddenCount}
-                <ChevronDown size={11} />
-              </button>
-            )}
+      {/* Header */}
+      <div className="bg-gradient-to-r from-navy to-navy-light p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-white/15 p-2 rounded-lg shrink-0">
+              <User size={20} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-display font-bold text-white truncate tracking-tight">{employee.name}</h3>
+              <div className="flex items-center gap-2 text-white/70 text-sm truncate">
+                {employee.registration && (
+                  <>
+                    <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-technical border border-white/20">
+                      #{employee.registration}
+                    </span>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                <span>{employee.role}</span>
+              </div>
+              <div className="flex items-center gap-2 text-white/50 text-[10px] mt-0.5">
+                {employee.educationLevel && (
+                  <>
+                    <p className="flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-white/30" />
+                      {employee.educationLevel}
+                    </p>
+                    <span className="opacity-40">•</span>
+                  </>
+                )}
+                {employee.birthDate && (
+                  <p className="flex items-center gap-1">
+                    <span className="w-1 h-1 rounded-full bg-white/30" />
+                    Nasc: {new Date(employee.birthDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+{(() => {
+                    const bd = employee.birthDate;
+                    if (!bd) return employee.age ? (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {employee.age} anos
+                      </p>
+                    ) : null;
+                    const birth = new Date(bd);
+                    const today = new Date();
+                    let a = today.getFullYear() - birth.getFullYear();
+                    const m = today.getMonth() - birth.getMonth();
+                    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+                    return (
+                      <p className="flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-white/30" />
+                        {a} anos
+                      </p>
+                    );
+                  })()}
+              </div>
+            </div>
           </div>
         </div>
-      ) : (
-        <p className="mt-3 pt-2.5 border-t border-dashed border-border text-[13px] text-muted-foreground">
-          Nenhum treinamento cadastrado
-        </p>
-      )}
-
-      {/* Ações: no celular ficam no gesto de arrastar; aqui aparecem no desktop */}
-      {isAdmin && (
-        <div className="hidden lg:flex gap-2 mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <button
-            onClick={() => onEdit(employee)}
-            className="flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-muted text-foreground hover:bg-navy hover:text-white transition-colors"
-          >
-            <Edit2 size={13} />
-            Editar
-          </button>
-          <button
-            onClick={() => onDelete(employee.id)}
-            className="flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-muted text-danger hover:bg-danger hover:text-white transition-colors"
-          >
-            <Trash2 size={13} />
-            Excluir
-          </button>
-          {onViewAudit && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {isAdmin && (
             <button
-              onClick={() => onViewAudit(employee)}
-              className="flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors ml-auto"
-              title="Histórico de alterações"
+              onClick={() => onEdit(employee)}
+              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
             >
-              <History size={13} />
+              <Edit2 size={14} />
+              Editar
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={() => onDelete(employee.id)}
+              className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+            >
+              <Trash2 size={14} />
+              Excluir
             </button>
           )}
         </div>
-      )}
+      </div>
+
+      {/* Trainings */}
+      <div className="p-4">
+        {employee.trainings && employee.trainings.length > 0 ? (
+          <div>
+            <button
+              onClick={() => setIsTrainingsExpanded(!isTrainingsExpanded)}
+              className="w-full flex items-center justify-between gap-2 mb-3 p-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Shield size={16} className="text-orange" />
+                <span className="font-semibold text-foreground text-sm">Treinamentos ({employee.trainings.length})</span>
+              </div>
+              <ChevronDown
+                size={18}
+                className={`text-muted-foreground transition-transform duration-300 ${isTrainingsExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isTrainingsExpanded && (
+              <div className="space-y-2.5">
+                {employee.trainings.map((training) => {
+                  const statusInfo = getTrainingStatus(training.expirationDate);
+                  return (
+                    <div
+                      key={training.id}
+                      className={`rounded-lg p-3 border ${statusBgMap[statusInfo.status]} transition-all duration-200`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <ComplianceStamp status={statusInfo.status} label={statusInfo.label} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Shield size={13} className="shrink-0 opacity-60" />
+                            <h4 className="font-semibold text-sm truncate">{training.name}</h4>
+                          </div>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 text-xs opacity-80 font-technical">
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              {new Date(training.completionDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar size={11} />
+                              vence {new Date(training.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-muted-foreground text-sm text-center py-6">
+            Nenhum treinamento cadastrado
+          </p>
+        )}
+      </div>
     </div>
   );
 }
