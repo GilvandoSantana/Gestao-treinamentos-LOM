@@ -14,6 +14,7 @@ import { trpc } from '@/lib/trpc';
 import Header from '@/components/Header';
 import AdminManagementModal from '@/components/AdminManagementModal';
 import DismissedModal from '@/components/DismissedModal';
+import DismissConfirmModal from '@/components/DismissConfirmModal';
 import SwipeActions from '@/components/SwipeActions';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
@@ -57,6 +58,8 @@ export default function Home() {
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+  // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
+  const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
@@ -190,7 +193,14 @@ export default function Home() {
     }
   };
 
-  const handleSetDismissed = async (employee: Employee, dismissed: boolean) => {
+  /** Abre a confirmação; a ação em si roda em confirmSetDismissed. */
+  const requestSetDismissed = (employee: Employee, dismissed: boolean) => {
+    setDismissConfirm({ employee, dismissing: dismissed });
+  };
+
+  const confirmSetDismissed = async () => {
+    if (!dismissConfirm) return;
+    const { employee, dismissing: dismissed } = dismissConfirm;
     try {
       await setDismissedMutation.mutateAsync({ id: employee.id, dismissed });
       await listQuery.refetch();
@@ -201,6 +211,8 @@ export default function Home() {
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível concluir a ação.');
+    } finally {
+      setDismissConfirm(null);
     }
   };
 
@@ -555,7 +567,7 @@ export default function Home() {
                     setShowDeleteConfirm(true);
                   }}
                   onDismiss={
-                    session.can('editEmployees') ? (emp: Employee) => handleSetDismissed(emp, true) : undefined
+                    session.can('editEmployees') ? (emp: Employee) => requestSetDismissed(emp, true) : undefined
                   }
                   onViewAudit={(emp) => {
                     setSelectedEmployeeForAudit(emp);
@@ -653,7 +665,7 @@ export default function Home() {
         employees={dismissedEmployees}
         canEdit={session.can('editEmployees')}
         isRestoring={setDismissedMutation.isPending}
-        onRestore={(emp) => handleSetDismissed(emp, false)}
+        onRestore={(emp) => requestSetDismissed(emp, false)}
         onEdit={
           session.can('editEmployees')
             ? (emp) => {
@@ -662,6 +674,15 @@ export default function Home() {
               }
             : undefined
         }
+      />
+
+      <DismissConfirmModal
+        isOpen={dismissConfirm !== null}
+        dismissing={dismissConfirm?.dismissing ?? true}
+        employeeName={dismissConfirm?.employee.name ?? ''}
+        isProcessing={setDismissedMutation.isPending}
+        onConfirm={confirmSetDismissed}
+        onCancel={() => setDismissConfirm(null)}
       />
 
       <TrainingNotifications employees={activeEmployees} />
