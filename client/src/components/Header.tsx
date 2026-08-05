@@ -95,7 +95,16 @@ export default function Header({
     // Sem overflow-hidden aqui: o menu suspenso abre para fora do cabeçalho e
     // era recortado por ele. O arredondamento da imagem de fundo passou a ser
     // feito no próprio contêiner do fundo, logo abaixo.
-    <div className="relative rounded-2xl shadow-lg mb-6 animate-fade-in-up">
+    //
+    // O z-50 quando o menu está aberto é necessário porque animate-fade-in-up
+    // usa transform, o que cria um contexto de empilhamento: sem ele, o z-index
+    // do menu só vale dentro do cabeçalho e os cartões seguintes (também
+    // animados) ficavam por cima.
+    <div
+      className={`relative rounded-2xl shadow-lg mb-6 animate-fade-in-up ${
+        menuOpen ? 'z-50' : ''
+      }`}
+    >
       {/* Fundo */}
       <div className="absolute inset-0 rounded-2xl overflow-hidden">
         <img src={HERO_IMAGE} alt="" className="w-full h-full object-cover" />
