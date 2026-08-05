@@ -5,12 +5,12 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
-import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
+import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls } from "./supabase-storage";
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
@@ -332,18 +332,21 @@ export const appRouter = router({
         }
       }),
     list: requirePermission('viewEmployees').query(async () => {
-      const employeeList = await getAllEmployees();
-      // Busca trainings e foto em paralelo para cada colaborador (muito mais rápido)
-      const result = await Promise.all(
-        employeeList.map(async (emp) => {
-          const [trainings, photoUrl] = await Promise.all([
-            getTrainingsByEmployeeId(emp.id),
-            getPhotoUrl(emp.id),
-          ]);
-          return { ...emp, photoUrl, trainings };
-        })
-      );
-      return result;
+      // Três operações no total, independente do número de colaboradores:
+      // 1 consulta de colaboradores, 1 de treinamentos e 1 listagem de fotos.
+      // Antes eram 2 chamadas POR colaborador (uma ao banco e uma de rede ao
+      // Supabase), o que deixava a abertura da lista muito lenta.
+      const [employeeList, trainingsByEmployee, photoUrls] = await Promise.all([
+        getAllEmployees(),
+        getTrainingsGroupedByEmployee(),
+        getAllPhotoUrls(),
+      ]);
+
+      return employeeList.map((emp) => ({
+        ...emp,
+        photoUrl: photoUrls.get(emp.id) ?? null,
+        trainings: trainingsByEmployee.get(emp.id) ?? [],
+      }));
     }),
 
     uploadPhoto: requirePermission('editEmployees')

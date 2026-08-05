@@ -175,3 +175,34 @@ export async function deleteTrainingsExcept(employeeId: string, trainingIds: str
     throw error;
   }
 }
+
+/**
+ * Busca os treinamentos de TODOS os colaboradores numa única consulta e já
+ * devolve agrupados por employeeId.
+ *
+ * Substitui o padrão anterior de chamar getTrainingsByEmployeeId() uma vez por
+ * colaborador (N+1), que fazia dezenas/centenas de idas ao banco só para
+ * montar a lista inicial.
+ */
+export async function getTrainingsGroupedByEmployee(): Promise<Map<string, typeof trainings.$inferSelect[]>> {
+  const grouped = new Map<string, typeof trainings.$inferSelect[]>();
+
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get trainings: database not available");
+    return grouped;
+  }
+
+  try {
+    const rows = await db.select().from(trainings);
+    for (const row of rows) {
+      const list = grouped.get(row.employeeId);
+      if (list) list.push(row);
+      else grouped.set(row.employeeId, [row]);
+    }
+    return grouped;
+  } catch (error) {
+    console.error("[Database] Failed to get trainings in batch:", error);
+    return grouped;
+  }
+}

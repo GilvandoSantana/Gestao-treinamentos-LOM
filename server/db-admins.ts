@@ -64,11 +64,29 @@ export async function getAdminByUsername(username: string): Promise<Admin | unde
   return rows[0];
 }
 
+// Cache curto das contas. A checagem de permissão roda em TODA requisição, e
+// sem isso cada request virava uma consulta extra ao banco. O TTL baixo mantém
+// as mudanças de permissão praticamente imediatas.
+const ADMIN_CACHE_TTL_MS = 10_000;
+const adminCache = new Map<string, { value: PublicAdmin | undefined; at: number }>();
+
+export function invalidateAdminCache(id?: string) {
+  if (id) adminCache.delete(id);
+  else adminCache.clear();
+}
+
 export async function getAdminById(id: string): Promise<PublicAdmin | undefined> {
+  const cached = adminCache.get(id);
+  if (cached && Date.now() - cached.at < ADMIN_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
   const db = await getDb();
   if (!db) return undefined;
   const rows = await db.select().from(admins).where(eq(admins.id, id));
-  return rows[0] ? toPublic(rows[0]) : undefined;
+  const value = rows[0] ? toPublic(rows[0]) : undefined;
+  adminCache.set(id, { value, at: Date.now() });
+  return value;
 }
 
 export async function createAdmin(input: {
@@ -112,10 +130,12 @@ export async function updateAdminPermissions(
     .update(admins)
     .set({ permissions: JSON.stringify(permissions) })
     .where(eq(admins.id, id));
+  invalidateAdminCache(id);
 }
 
 export async function deleteAdmin(id: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(admins).where(eq(admins.id, id));
+  invalidateAdminCache(id);
 }

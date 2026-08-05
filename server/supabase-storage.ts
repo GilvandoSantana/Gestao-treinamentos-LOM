@@ -177,3 +177,44 @@ export async function getPhotoUrl(employeeId: string): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Monta o mapa employeeId -> URL da foto com UMA única listagem no Supabase,
+ * em vez de uma chamada de rede por colaborador (getPhotoUrl em loop), que era
+ * o principal motivo da lentidão ao abrir a lista.
+ */
+export async function getAllPhotoUrls(): Promise<Map<string, string>> {
+  const urls = new Map<string, string>();
+
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) return urls;
+
+    // Pagina a listagem para dar conta de bases maiores.
+    const pageSize = 1000;
+    let offset = 0;
+
+    for (;;) {
+      const { data: list, error } = await supabase.storage
+        .from(PHOTOS_BUCKET)
+        .list('', { limit: pageSize, offset });
+
+      if (error || !list || list.length === 0) break;
+
+      for (const file of list) {
+        // Arquivos são salvos como "<employeeId>.<ext>"
+        const employeeId = file.name.split('.')[0];
+        if (!employeeId || urls.has(employeeId)) continue;
+        const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(file.name);
+        urls.set(employeeId, data.publicUrl);
+      }
+
+      if (list.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    return urls;
+  } catch (error) {
+    console.error("[Supabase] Failed to list photos in batch:", error);
+    return urls;
+  }
+}
