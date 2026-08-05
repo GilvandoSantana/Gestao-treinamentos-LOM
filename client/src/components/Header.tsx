@@ -23,6 +23,7 @@ import {
   UserRoundX,
   Footprints,
   FolderOpen,
+  CreditCard,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -45,6 +46,7 @@ interface HeaderProps {
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
   onShowDocuments?: () => void;
+  onShowBadges?: () => void;
   dismissedCount?: number;
 }
 
@@ -64,6 +66,7 @@ export default function Header({
   onShowDismissed,
   onShowActivity,
   onShowDocuments,
+  onShowBadges,
   dismissedCount = 0,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
@@ -257,6 +260,12 @@ export default function Header({
                             {dismissedCount}
                           </span>
                         )}
+                      </button>
+                    )}
+                    {onShowBadges && (
+                      <button onClick={runAndClose(onShowBadges)} className={menuItemClass} role="menuitem">
+                        <CreditCard size={16} className="text-muted-foreground" />
+                        Crachás
                       </button>
                     )}
                     {onShowDocuments && (

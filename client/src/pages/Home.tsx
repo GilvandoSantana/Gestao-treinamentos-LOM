@@ -17,6 +17,7 @@ import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
 import DocumentsModal from '@/components/DocumentsModal';
+import BadgesModal from '@/components/BadgesModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
@@ -62,6 +63,7 @@ export default function Home() {
   const [showDismissed, setShowDismissed] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showBadges, setShowBadges] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
   const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
@@ -493,6 +495,7 @@ export default function Home() {
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
+          onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
           dismissedCount={dismissedEmployees.length}
         />
 
@@ -672,6 +675,12 @@ export default function Home() {
               }
             : undefined
         }
+      />
+
+      <BadgesModal
+        isOpen={showBadges}
+        onClose={() => setShowBadges(false)}
+        employees={activeEmployees}
       />
 
       <DocumentsModal
