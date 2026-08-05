@@ -654,6 +654,14 @@ export default function Home() {
         canEdit={session.can('editEmployees')}
         isRestoring={setDismissedMutation.isPending}
         onRestore={(emp) => handleSetDismissed(emp, false)}
+        onEdit={
+          session.can('editEmployees')
+            ? (emp) => {
+                setShowDismissed(false);
+                openModal(emp);
+              }
+            : undefined
+        }
       />
 
       <TrainingNotifications employees={activeEmployees} />
