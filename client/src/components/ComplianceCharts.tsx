@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recha
 import { ChevronDown, GraduationCap, BarChart3 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { getStatistics } from '@/lib/training-utils';
+import PlanningCharts from '@/components/PlanningCharts';
 
 interface ComplianceChartsProps {
   employees: Employee[];
@@ -303,6 +304,10 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
               </div>
 
             </div>
+
+            {/* Indicadores de planejamento (calendário de vencimentos,
+                situação por função e treinamentos mais críticos) */}
+            <PlanningCharts employees={employees} />
           </div>
         )}
       </div>
