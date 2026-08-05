@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
+import { randomUUID } from "crypto";
 import type { Request } from "express";
 import bcrypt from "bcryptjs";
 
@@ -40,12 +41,25 @@ export async function verifyAdminPassword(password: string, hash: string): Promi
   return bcrypt.compare(password, hash);
 }
 
+export const SESSION_MARKER_HEADER = "x-session-marker";
+
+/**
+ * Gera um marcador aleatório vinculado à sessão. O cliente guarda esse valor
+ * no sessionStorage do navegador, que é apagado quando a sessão do navegador
+ * termina de verdade. Sem ele, o cookie sozinho continuaria valendo — é o que
+ * fazia o site entrar direto ao ser reaberto.
+ */
+export function generateSessionMarker(): string {
+  return randomUUID();
+}
+
 export async function createSiteSessionToken(
   username: string = "master",
   role: "admin" | "user" = "admin",
-  adminId: string | null = null
+  adminId: string | null = null,
+  marker: string | null = null
 ): Promise<string> {
-  return new SignJWT({ scope: "site-admin", username, role, adminId })
+  return new SignJWT({ scope: "site-admin", username, role, adminId, marker })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
@@ -83,6 +97,16 @@ export async function getSiteSession(req: Request): Promise<SiteSession> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
     if (payload.scope !== "site-admin") return { ...EMPTY_SESSION };
+
+    // O marcador precisa bater com o que o navegador enviou. Se o navegador
+    // encerrou a sessão (sessionStorage limpo), ele não chega e o acesso cai,
+    // mesmo que o cookie tenha sido restaurado.
+    if (payload.marker) {
+      const headerValue = req.headers[SESSION_MARKER_HEADER];
+      const provided = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+      if (provided !== payload.marker) return { ...EMPTY_SESSION };
+    }
+
     return {
       isSiteAdmin: true,
       username: typeof payload.username === "string" ? payload.username : null,

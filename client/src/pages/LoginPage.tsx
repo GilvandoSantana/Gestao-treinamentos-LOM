@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Shield, Loader2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { setSessionMarker } from '@/lib/session-marker';
 
 interface LoginPageProps {
   onSuccess: () => void;
@@ -23,10 +24,13 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     e.preventDefault();
     setError(null);
     try {
-      await loginMutation.mutateAsync({
+      const result = await loginMutation.mutateAsync({
         username: username.trim() || undefined,
         password,
       });
+      // Guarda o marcador da sessão do navegador antes de seguir; sem ele o
+      // servidor recusa o cookie recém-criado.
+      if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
       setPassword('');
       onSuccess();
     } catch (err) {

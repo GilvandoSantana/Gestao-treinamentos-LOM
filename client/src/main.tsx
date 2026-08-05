@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
+import { getSessionMarker } from "@/lib/session-marker";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,12 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
+      // Marcador da sessão do navegador: sem ele o servidor não aceita o
+      // cookie de login (ver client/src/lib/session-marker.ts).
+      headers() {
+        const marker = getSessionMarker();
+        return marker ? { "x-session-marker": marker } : {};
+      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

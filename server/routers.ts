@@ -11,7 +11,7 @@ import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls } from "./supabase-storage";
-import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { logActivity, listActivity } from "./db-activity";
@@ -95,7 +95,15 @@ export const appRouter = router({
           action: "login",
         });
 
-        const token = await createSiteSessionToken(sessionUsername, sessionRole, sessionAdminId);
+        // Marcador devolvido ao cliente, que o guarda no sessionStorage. O
+        // acesso só vale enquanto os dois (cookie + marcador) existirem.
+        const sessionMarker = generateSessionMarker();
+        const token = await createSiteSessionToken(
+          sessionUsername,
+          sessionRole,
+          sessionAdminId,
+          sessionMarker
+        );
         const cookieOptions = getSessionCookieOptions(ctx.req);
         // Sem maxAge: vira cookie de sessão do navegador, ou seja, ao fechar o
         // navegador o acesso é encerrado e é preciso entrar de novo. O token em
@@ -103,7 +111,7 @@ export const appRouter = router({
         // aba deixada aberta também não fica válida para sempre.
         ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
 
-        return { success: true } as const;
+        return { success: true, sessionMarker } as const;
       }),
 
     siteLogout: publicProcedure.mutation(({ ctx }) => {

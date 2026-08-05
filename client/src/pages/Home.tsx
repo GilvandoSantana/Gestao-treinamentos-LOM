@@ -19,6 +19,7 @@ import ActivityLogModal from '@/components/ActivityLogModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
+import { clearSessionMarker } from '@/lib/session-marker';
 import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
@@ -481,6 +482,7 @@ export default function Home() {
             } catch (error) {
               console.error('Erro ao encerrar sessão:', error);
             }
+            clearSessionMarker();
             await session.refetch();
             await utils.invalidate();
             toast.info('Sessão encerrada.');
