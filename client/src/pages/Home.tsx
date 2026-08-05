@@ -16,7 +16,6 @@ import AdminManagementModal from '@/components/AdminManagementModal';
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
-import SwipeActions from '@/components/SwipeActions';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
@@ -552,33 +551,24 @@ export default function Home() {
         ) : viewMode === 'grid' ? (
           <div id="lista-colaboradores" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {paginatedEmployees.map((employee, index) => (
-              <SwipeActions
+              <EmployeeCard
                 key={employee.id}
-                enabled={session.can('editEmployees') || session.can('deleteEmployees')}
-                onEdit={() => openModal(employee)}
-                onDelete={() => {
-                  setDeleteConfirmId(employee.id);
+                employee={employee}
+                index={index}
+                onEdit={(emp) => openModal(emp)}
+                onDelete={(id) => {
+                  setDeleteConfirmId(id);
                   setShowDeleteConfirm(true);
                 }}
-              >
-                <EmployeeCard
-                  employee={employee}
-                  index={index}
-                  onEdit={(emp) => openModal(emp)}
-                  onDelete={(id) => {
-                    setDeleteConfirmId(id);
-                    setShowDeleteConfirm(true);
-                  }}
-                  onDismiss={
-                    session.can('editEmployees') ? (emp: Employee) => requestSetDismissed(emp, true) : undefined
-                  }
-                  onViewAudit={(emp) => {
-                    setSelectedEmployeeForAudit(emp);
-                    setShowAuditHistory(true);
-                  }}
-                  isAdmin={session.can('editEmployees')}
-                />
-              </SwipeActions>
+                onDismiss={
+                  session.can('editEmployees') ? (emp: Employee) => requestSetDismissed(emp, true) : undefined
+                }
+                onViewAudit={(emp) => {
+                  setSelectedEmployeeForAudit(emp);
+                  setShowAuditHistory(true);
+                }}
+                isAdmin={session.can('editEmployees')}
+              />
             ))}
           </div>
         ) : (
