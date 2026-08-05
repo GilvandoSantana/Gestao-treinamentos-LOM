@@ -162,3 +162,22 @@ export const activityLogs = mysqlTable("activityLogs", {
 
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = typeof activityLogs.$inferInsert;
+
+/**
+ * FDS — Ficha de Dados de Segurança.
+ * O PDF fica no Supabase; `roles` guarda em JSON as funções que utilizam a
+ * ficha, para o colaborador ver apenas as FDS da função dele.
+ */
+export const safetySheets = mysqlTable("safetySheets", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  fileSize: int("fileSize"),
+  roles: text("roles"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SafetySheet = typeof safetySheets.$inferSelect;
+export type InsertSafetySheet = typeof safetySheets.$inferInsert;

@@ -22,7 +22,10 @@ export type ActivityAction =
   | "certificate.delete"
   | "account.create"
   | "account.delete"
-  | "account.permissions";
+  | "account.permissions"
+  | "fds.upload"
+  | "fds.update"
+  | "fds.delete";
 
 export type LogActivityInput = {
   username: string | null;

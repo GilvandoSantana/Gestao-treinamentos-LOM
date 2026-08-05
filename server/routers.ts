@@ -10,7 +10,8 @@ import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
-import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls } from "./supabase-storage";
+import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls, uploadFdsToSupabase, deleteFdsFromSupabase } from "./supabase-storage";
+import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySheetRoles, deleteSafetySheet } from "./db-fds";
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
@@ -274,6 +275,95 @@ export const appRouter = router({
           return { success: true } as const;
         }),
     }),
+  }),
+
+  // FDS — Ficha de Dados de Segurança
+  fds: router({
+    list: requirePermission('viewCertificates').query(async () => {
+      return listSafetySheets();
+    }),
+
+    upload: requirePermission('manageCertificates')
+      .input(
+        z.object({
+          name: z.string().trim().min(1, "Informe o nome da FDS").max(255),
+          fileName: z.string(),
+          fileData: z.string(),
+          roles: z.array(z.string()).default([]),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const fileBuffer = Buffer.from(input.fileData, "base64");
+
+        const MAX_FDS_BYTES = 10 * 1024 * 1024;
+        if (fileBuffer.length > MAX_FDS_BYTES) {
+          throw new TRPCError({
+            code: "PAYLOAD_TOO_LARGE",
+            message: "O arquivo excede o limite de 10MB.",
+          });
+        }
+
+        const upload = await uploadFdsToSupabase(fileBuffer, input.fileName, "application/pdf");
+
+        const sheet = await createSafetySheet({
+          id: uuidv4(),
+          name: input.name,
+          fileName: input.fileName,
+          fileUrl: upload.url,
+          fileSize: fileBuffer.length,
+          roles: input.roles,
+        });
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "fds.upload",
+          targetType: "fds",
+          targetId: sheet.id,
+          targetName: sheet.name,
+          details: input.roles.length ? `${input.roles.length} função(ões)` : "sem função vinculada",
+        });
+
+        return sheet;
+      }),
+
+    setRoles: requirePermission('manageCertificates')
+      .input(z.object({ id: z.string(), roles: z.array(z.string()) }))
+      .mutation(async ({ input, ctx }) => {
+        const sheet = await getSafetySheetById(input.id);
+        if (!sheet) throw new TRPCError({ code: "NOT_FOUND", message: "FDS não encontrada." });
+
+        await updateSafetySheetRoles(input.id, input.roles);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "fds.update",
+          targetType: "fds",
+          targetId: input.id,
+          targetName: sheet.name,
+        });
+        return { success: true } as const;
+      }),
+
+    delete: requirePermission('manageCertificates')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const sheet = await getSafetySheetById(input.id);
+        if (!sheet) return { success: true } as const;
+
+        await deleteFdsFromSupabase(sheet.fileUrl);
+        await deleteSafetySheet(input.id);
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "fds.delete",
+          targetType: "fds",
+          targetId: input.id,
+          targetName: sheet.name,
+        });
+        return { success: true } as const;
+      }),
   }),
 
   employees: router({

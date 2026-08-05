@@ -16,6 +16,7 @@ import AdminManagementModal from '@/components/AdminManagementModal';
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
+import FdsModal from '@/components/FdsModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
@@ -60,6 +61,7 @@ export default function Home() {
   const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
+  const [showFds, setShowFds] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
   const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
@@ -490,6 +492,7 @@ export default function Home() {
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
+          onShowFds={session.can('viewCertificates') ? () => setShowFds(true) : undefined}
           dismissedCount={dismissedEmployees.length}
         />
 
@@ -669,6 +672,13 @@ export default function Home() {
               }
             : undefined
         }
+      />
+
+      <FdsModal
+        isOpen={showFds}
+        onClose={() => setShowFds(false)}
+        employees={activeEmployees}
+        canManage={session.can('manageCertificates')}
       />
 
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />

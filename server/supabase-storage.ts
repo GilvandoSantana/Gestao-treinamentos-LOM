@@ -218,3 +218,55 @@ export async function getAllPhotoUrls(): Promise<Map<string, string>> {
     return urls;
   }
 }
+
+/**
+ * Upload de FDS (Ficha de Dados de Segurança).
+ * Usa o mesmo bucket dos certificados, em pasta separada, para não exigir
+ * criação de um bucket novo no Supabase.
+ */
+export async function uploadFdsToSupabase(
+  file: Buffer | Uint8Array,
+  fileName: string,
+  mimeType: string = "application/pdf"
+): Promise<UploadResult> {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Supabase is not configured");
+    }
+
+    const uniqueFileName = `${Date.now()}-${fileName}`;
+    const filePath = `fds/${uniqueFileName}`;
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(filePath, file, { contentType: mimeType, upsert: false });
+
+    if (error) throw new Error(`Supabase upload error: ${error.message}`);
+    if (!data) throw new Error("No data returned from Supabase upload");
+
+    const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+
+    return {
+      path: filePath,
+      url: publicUrlData.publicUrl,
+      fileName: uniqueFileName,
+      size: file.length,
+    };
+  } catch (error) {
+    console.error("Error uploading FDS to Supabase:", error);
+    throw error;
+  }
+}
+
+export async function deleteFdsFromSupabase(fileUrl: string): Promise<void> {
+  try {
+    if (!supabaseUrl || !supabaseAnonKey) return;
+    const marker = `/${BUCKET_NAME}/`;
+    const idx = fileUrl.indexOf(marker);
+    if (idx === -1) return;
+    const filePath = fileUrl.slice(idx + marker.length);
+    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+  } catch (error) {
+    console.error("Error deleting FDS from Supabase:", error);
+  }
+}
