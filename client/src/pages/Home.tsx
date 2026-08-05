@@ -394,18 +394,10 @@ export default function Home() {
     return filteredEmployees.slice(start, start + PAGE_SIZE);
   }, [filteredEmployees, currentPage]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-navy/20 border-t-orange rounded-full animate-spin" />
-          <p className="text-muted-foreground font-medium">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
-
   // Porta de entrada: sem sessão válida, só a tela de login.
+  // A verificação da sessão vem ANTES do carregamento da lista: enquanto não
+  // há login, não existe lista para carregar, e checar na ordem inversa
+  // deixava a página presa em "Carregando..." sem nunca mostrar o login.
   if (session.isLoading) {
     return (
       <div className="min-h-screen bg-navy flex items-center justify-center">
@@ -424,6 +416,17 @@ export default function Home() {
           await utils.invalidate();
         }}
       />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-navy/20 border-t-orange rounded-full animate-spin" />
+          <p className="text-muted-foreground font-medium">Carregando...</p>
+        </div>
+      </div>
     );
   }
 

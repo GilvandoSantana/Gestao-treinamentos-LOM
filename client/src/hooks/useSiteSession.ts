@@ -12,7 +12,12 @@ const NO_PERMISSIONS = Object.keys(ALL_PERMISSIONS).reduce(
  * administrador valem imediatamente.
  */
 export function useSiteSession() {
-  const query = trpc.auth.siteSession.useQuery();
+  const query = trpc.auth.siteSession.useQuery(undefined, {
+    // Poucas tentativas: se a verificação falhar, é melhor cair na tela de
+    // login do que deixar a pessoa presa num "Carregando..." indefinido.
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
 
   const isLoggedIn = query.data?.isSiteAdmin ?? false;
   const role = query.data?.role ?? null;
@@ -25,7 +30,8 @@ export function useSiteSession() {
   };
 
   return {
-    isLoading: query.isLoading,
+    // Em caso de erro, não fica carregando para sempre — trata como deslogado.
+    isLoading: query.isPending && !query.isError,
     isLoggedIn,
     role,
     username: query.data?.username ?? null,
