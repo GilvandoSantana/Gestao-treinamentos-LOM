@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
-import EmployeeFdsButton from '@/components/EmployeeFdsButton';
+import EmployeeDocumentsButton from '@/components/EmployeeDocumentsButton';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import { generateBadgePDF } from './BadgeGenerator';
@@ -183,7 +183,7 @@ export default function EmployeeCardWithCertificates({
 	                </DropdownMenuContent>
 	              </DropdownMenu>
 	            )}
-            <EmployeeFdsButton role={employee.role} variant="onDark" />
+            <EmployeeDocumentsButton role={employee.role} variant="onDark" />
 
             {isAdmin && onDismiss && (
               <button

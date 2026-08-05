@@ -1,24 +1,26 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * EmployeeFdsButton: mostra as FDS vinculadas à função do colaborador e
- * permite baixá-las direto do cartão.
+ * EmployeeDocumentsButton: mostra os documentos (ARA, Checklist, FDS, LTCAT, PGR,
+ * POS) vinculados à função do colaborador e permite baixá-los do cartão.
  *
- * Aparece só quando existe alguma ficha para aquela função — assim o cartão
- * não ganha um botão inútil para quem não tem FDS cadastrada.
+ * Aparece só quando existe algum documento para aquela função — assim o cartão
+ * não ganha um botão inútil para quem não tem nada cadastrado.
  */
 
 import { useMemo, useState } from 'react';
 import { FileWarning, Download, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { DOCUMENT_LABELS } from '@shared/document-types';
 
-interface EmployeeFdsButtonProps {
+interface EmployeeDocumentsButtonProps {
   role?: string | null;
   /** Aparência do botão: no cabeçalho escuro do cartão ou em fundo claro. */
   variant?: 'onDark' | 'onLight';
 }
 
-export default function EmployeeFdsButton({ role, variant = 'onDark' }: EmployeeFdsButtonProps) {
+export default function EmployeeDocumentsButton({ role, variant = 'onDark' }: EmployeeDocumentsButtonProps) {
   const [open, setOpen] = useState(false);
+  // Sem filtro de tipo: o cartão lista todos os documentos da função.
   const listQuery = trpc.fds.list.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const sheets = useMemo(() => {
@@ -41,10 +43,10 @@ export default function EmployeeFdsButton({ role, variant = 'onDark' }: Employee
       <button
         onClick={() => setOpen((v) => !v)}
         className={`${buttonClass} px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium`}
-        title="Fichas de segurança da função"
+        title="Documentos da função"
       >
         <FileWarning size={14} />
-        FDS
+        Documentos
         <span className="font-technical text-[10px] opacity-80">({sheets.length})</span>
         <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -62,7 +64,10 @@ export default function EmployeeFdsButton({ role, variant = 'onDark' }: Employee
               className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted transition-colors border-b border-border last:border-b-0"
             >
               <Download size={15} className="text-orange shrink-0" />
-              <span className="min-w-0 truncate">{sheet.name}</span>
+              <span className="min-w-0 flex-1 truncate">{sheet.name}</span>
+              <span className="font-technical text-[9px] uppercase bg-muted text-muted-foreground px-1.5 py-0.5 rounded shrink-0">
+                {DOCUMENT_LABELS[sheet.type].label}
+              </span>
             </a>
           ))}
         </div>

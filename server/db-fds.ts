@@ -2,12 +2,14 @@
  * Database helpers para FDS (Ficha de Dados de Segurança)
  */
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { safetySheets, type SafetySheet } from "../drizzle/schema";
 import { getDb } from "./db";
+import { type DocumentType, isDocumentType } from "@shared/document-types";
 
 export type PublicSafetySheet = {
   id: string;
+  type: DocumentType;
   name: string;
   fileName: string;
   fileUrl: string;
@@ -28,6 +30,7 @@ function toPublic(row: SafetySheet): PublicSafetySheet {
   }
   return {
     id: row.id,
+    type: isDocumentType(row.type) ? row.type : 'fds',
     name: row.name,
     fileName: row.fileName,
     fileUrl: row.fileUrl,
@@ -37,11 +40,13 @@ function toPublic(row: SafetySheet): PublicSafetySheet {
   };
 }
 
-export async function listSafetySheets(): Promise<PublicSafetySheet[]> {
+export async function listSafetySheets(type?: DocumentType): Promise<PublicSafetySheet[]> {
   const db = await getDb();
   if (!db) return [];
   try {
-    const rows = await db.select().from(safetySheets).orderBy(desc(safetySheets.createdAt));
+    const rows = await (type
+      ? db.select().from(safetySheets).where(eq(safetySheets.type, type)).orderBy(desc(safetySheets.createdAt))
+      : db.select().from(safetySheets).orderBy(desc(safetySheets.createdAt)));
     return rows.map(toPublic);
   } catch (error) {
     console.error("[FDS] Falha ao listar fichas:", error);
@@ -58,6 +63,7 @@ export async function getSafetySheetById(id: string): Promise<PublicSafetySheet 
 
 export async function createSafetySheet(input: {
   id: string;
+  type: DocumentType;
   name: string;
   fileName: string;
   fileUrl: string;
@@ -69,6 +75,7 @@ export async function createSafetySheet(input: {
 
   await db.insert(safetySheets).values({
     id: input.id,
+    type: input.type,
     name: input.name,
     fileName: input.fileName,
     fileUrl: input.fileUrl,
@@ -78,6 +85,7 @@ export async function createSafetySheet(input: {
 
   return {
     id: input.id,
+    type: input.type,
     name: input.name,
     fileName: input.fileName,
     fileUrl: input.fileUrl,

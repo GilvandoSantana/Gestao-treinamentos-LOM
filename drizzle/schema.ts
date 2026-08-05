@@ -170,6 +170,9 @@ export type InsertActivityLog = typeof activityLogs.$inferInsert;
  */
 export const safetySheets = mysqlTable("safetySheets", {
   id: varchar("id", { length: 64 }).primaryKey(),
+  // Tipo do documento: fds, ara, checklist, ltcat, pgr, pos
+  // (ver shared/document-types.ts). Registros antigos ficam como "fds".
+  type: varchar("type", { length: 20 }).default("fds").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileUrl: text("fileUrl").notNull(),

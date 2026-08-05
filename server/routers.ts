@@ -15,6 +15,7 @@ import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySh
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
+import { DOCUMENT_TYPES } from "@shared/document-types";
 import { logActivity, listActivity } from "./db-activity";
 
 export const appRouter = router({
@@ -279,14 +280,17 @@ export const appRouter = router({
 
   // FDS — Ficha de Dados de Segurança
   fds: router({
-    list: requirePermission('viewCertificates').query(async () => {
-      return listSafetySheets();
-    }),
+    list: requirePermission('viewCertificates')
+      .input(z.object({ type: z.enum(DOCUMENT_TYPES).optional() }).optional())
+      .query(async ({ input }) => {
+        return listSafetySheets(input?.type);
+      }),
 
     upload: requirePermission('manageCertificates')
       .input(
         z.object({
-          name: z.string().trim().min(1, "Informe o nome da FDS").max(255),
+          type: z.enum(DOCUMENT_TYPES).default('fds'),
+          name: z.string().trim().min(1, "Informe o nome do documento").max(255),
           fileName: z.string(),
           fileData: z.string(),
           roles: z.array(z.string()).default([]),
@@ -307,6 +311,7 @@ export const appRouter = router({
 
         const sheet = await createSafetySheet({
           id: uuidv4(),
+          type: input.type,
           name: input.name,
           fileName: input.fileName,
           fileUrl: upload.url,

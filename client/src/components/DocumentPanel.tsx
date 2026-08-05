@@ -1,6 +1,8 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * FdsModal: cadastro e consulta das Fichas de Dados de Segurança (FDS).
+ * DocumentPanel: cadastro e consulta de um tipo de documento (FDS, ARA,
+ * Checklist, LTCAT, PGR ou POS). Todos compartilham a mesma estrutura:
+ * um PDF com nome e, opcionalmente, as funções que o utilizam.
  *
  * Ao anexar um PDF é obrigatório informar o nome da ficha; marcar as funções
  * que a utilizam é opcional, mas é o que faz a ficha aparecer para o
@@ -12,16 +14,19 @@ import { Upload, Trash2, Download, Loader, Users } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
+import { DOCUMENT_LABELS, type DocumentType } from '@shared/document-types';
 
-interface FdsPanelProps {
-  /** Conteúdo do painel FDS, exibido dentro de DocumentsModal. */
+interface DocumentPanelProps {
+  /** Conteúdo de uma aba da central de Documentos. */
+  type: DocumentType;
   employees: Employee[];
   canManage: boolean;
 }
 
 const MAX_MB = 10;
 
-export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
+export default function DocumentPanel({ type, employees, canManage }: DocumentPanelProps) {
+  const typeLabel = DOCUMENT_LABELS[type].label;
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -30,7 +35,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
 
   const utils = trpc.useUtils();
-  const listQuery = trpc.fds.list.useQuery();
+  const listQuery = trpc.fds.list.useQuery({ type });
   const uploadMutation = trpc.fds.upload.useMutation();
   const deleteMutation = trpc.fds.delete.useMutation();
   const setRolesMutation = trpc.fds.setRoles.useMutation();
@@ -51,7 +56,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
     const selected = e.target.files?.[0];
     if (!selected) return;
     if (selected.type !== 'application/pdf') {
-      toast.error('A FDS deve ser um arquivo PDF.');
+      toast.error(`O ${typeLabel} deve ser um arquivo PDF.`);
       return;
     }
     if (selected.size > MAX_MB * 1024 * 1024) {
@@ -64,7 +69,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      toast.error('Informe o nome da FDS.');
+      toast.error(`Informe o nome do ${typeLabel}.`);
       return;
     }
     if (!file) {
@@ -82,29 +87,30 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
       });
 
       await uploadMutation.mutateAsync({
+        type,
         name: name.trim(),
         fileName: file.name,
         fileData: base64,
         roles: selectedRoles,
       });
 
-      toast.success('FDS salva com sucesso!');
+      toast.success(`${typeLabel} salvo com sucesso!`);
       setName('');
       setFile(null);
       setSelectedRoles([]);
       await utils.fds.list.invalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar a FDS');
+      toast.error(error instanceof Error ? error.message : `Erro ao salvar o ${typeLabel}`);
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleDelete = async (id: string, sheetName: string) => {
-    if (!window.confirm(`Excluir a FDS "${sheetName}"?`)) return;
+    if (!window.confirm(`Excluir o ${typeLabel} "${sheetName}"?`)) return;
     try {
       await deleteMutation.mutateAsync({ id });
-      toast.success('FDS excluída.');
+      toast.success(`${typeLabel} excluído.`);
       await utils.fds.list.invalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao excluir');
@@ -156,7 +162,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
   return (
     <>
       <p className="text-xs text-muted-foreground px-1 pb-2">
-        {listQuery.data?.length ?? 0} ficha(s) cadastrada(s)
+        {listQuery.data?.length ?? 0} documento(s) de {typeLabel} cadastrado(s)
       </p>
 
       <div className="space-y-2">
@@ -168,7 +174,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
 
           {listQuery.data?.length === 0 && !listQuery.isLoading && (
             <p className="text-sm text-muted-foreground text-center py-8">
-              Nenhuma FDS cadastrada ainda.
+              Nenhum documento de {typeLabel} cadastrado ainda.
             </p>
           )}
 
@@ -240,18 +246,18 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
         {canManage && (
           <form onSubmit={handleUpload} className="border-t border-border p-4 space-y-3">
             <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <Upload size={16} /> Nova FDS
+              <Upload size={16} /> Novo {typeLabel}
             </p>
 
             <div>
               <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
-                Nome da FDS <span className="text-danger">*</span>
+                Nome do {typeLabel} <span className="text-danger">*</span>
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Óleo lubrificante ISO 68"
+                placeholder={`Nome do ${typeLabel}`}
                 disabled={isUploading}
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
               />
@@ -284,7 +290,7 @@ export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
               disabled={isUploading || !name.trim() || !file}
               className="w-full bg-orange text-white rounded-lg py-2.5 font-semibold hover:opacity-90 disabled:opacity-50 transition"
             >
-              {isUploading ? 'Enviando...' : 'Salvar FDS'}
+              {isUploading ? 'Enviando...' : `Salvar ${typeLabel}`}
             </button>
           </form>
         )}
