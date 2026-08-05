@@ -58,10 +58,27 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Os arquivos de /assets têm hash no nome a cada build, então podem ser
+  // guardados em cache por muito tempo com segurança.
+  app.use(
+    express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          // index.html e demais arquivos sem hash: sempre revalidar, senão o
+          // navegador continua rodando uma versão antiga do site depois de um
+          // deploy (foi o que aconteceu em dispositivos que já tinham aberto
+          // o site antes).
+          res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        }
+      },
+    })
+  );
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
