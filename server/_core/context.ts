@@ -2,6 +2,8 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { getSiteSession } from "../site-auth";
+import { getAdminById } from "../db-admins";
+import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -9,6 +11,8 @@ export type TrpcContext = {
   user: User | null;
   isSiteAdmin: boolean;
   siteAdminUsername: string | null;
+  siteRole: SiteRole | null;
+  sitePermissions: Permissions | null;
 };
 
 export async function createContext(
@@ -25,11 +29,39 @@ export async function createContext(
 
   const siteSession = await getSiteSession(opts.req);
 
+  // As permissões vêm SEMPRE do banco, nunca do cookie: assim, se o
+  // administrador mudar o que alguém pode fazer, vale na hora, sem precisar
+  // esperar a sessão daquela pessoa expirar.
+  let sitePermissions: Permissions | null = null;
+  let siteRole: SiteRole | null = siteSession.role;
+
+  if (siteSession.isSiteAdmin) {
+    if (siteSession.adminId) {
+      const account = await getAdminById(siteSession.adminId);
+      if (account) {
+        siteRole = account.role;
+        sitePermissions = account.permissions;
+      } else {
+        // Conta removida enquanto a sessão ainda estava válida.
+        siteRole = null;
+        sitePermissions = null;
+      }
+    } else {
+      // Login pela senha mestra (recuperação): acesso total.
+      siteRole = "admin";
+      sitePermissions = { ...ALL_PERMISSIONS };
+    }
+  }
+
+  const stillValid = siteSession.isSiteAdmin && siteRole !== null;
+
   return {
     req: opts.req,
     res: opts.res,
     user,
-    isSiteAdmin: siteSession.isSiteAdmin,
-    siteAdminUsername: siteSession.username,
+    isSiteAdmin: stillValid,
+    siteAdminUsername: stillValid ? siteSession.username : null,
+    siteRole: stillValid ? siteRole : null,
+    sitePermissions: stillValid ? sitePermissions : null,
   };
 }

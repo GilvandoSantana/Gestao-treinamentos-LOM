@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, siteAdminProcedure, router } from "./_core/trpc";
+import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, deleteTraining, deleteTrainingsExcept } from "./db-employees";
@@ -12,7 +12,8 @@ import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl } from "./supabase-storage";
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
-import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdmins } from "./db-admins";
+import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
+import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 
 export const appRouter = router({
   system: systemRouter,
@@ -54,12 +55,16 @@ export const appRouter = router({
 
         let isValid = false;
         let sessionUsername = "master";
+        let sessionRole: "admin" | "user" = "admin";
+        let sessionAdminId: string | null = null;
 
         if (input.username) {
           const admin = await getAdminByUsername(input.username);
           if (admin) {
             isValid = await verifyAdminPassword(input.password, admin.passwordHash);
             sessionUsername = admin.username;
+            sessionRole = admin.role === "user" ? "user" : "admin";
+            sessionAdminId = admin.id;
           }
         } else {
           try {
@@ -83,7 +88,7 @@ export const appRouter = router({
 
         clearLoginAttempts(clientKey);
 
-        const token = await createSiteSessionToken(sessionUsername);
+        const token = await createSiteSessionToken(sessionUsername, sessionRole, sessionAdminId);
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(SITE_SESSION_COOKIE, token, {
           ...cookieOptions,
@@ -102,16 +107,17 @@ export const appRouter = router({
     siteSession: publicProcedure.query(({ ctx }) => ({
       isSiteAdmin: ctx.isSiteAdmin,
       username: ctx.siteAdminUsername,
+      role: ctx.siteRole,
+      permissions: ctx.sitePermissions,
     })),
 
-    // Gerenciamento de admins nomeados — só quem já está autenticado pode
-    // ver/cadastrar/remover outros admins.
+    // Gerenciamento de contas — SOMENTE o administrador principal.
     admins: router({
-      list: siteAdminProcedure.query(async () => {
+      list: masterAdminProcedure.query(async () => {
         return listAdmins();
       }),
 
-      create: siteAdminProcedure
+      create: masterAdminProcedure
         .input(
           z.object({
             username: z
@@ -121,6 +127,8 @@ export const appRouter = router({
               .max(50)
               .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
             password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
+            role: z.enum(["admin", "user"]).default("user"),
+            permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
         .mutation(async ({ input }) => {
@@ -130,28 +138,63 @@ export const appRouter = router({
           }
 
           const passwordHash = await hashAdminPassword(input.password);
-          return createAdmin({ id: uuidv4(), username: input.username, passwordHash });
+          return createAdmin({
+            id: uuidv4(),
+            username: input.username,
+            passwordHash,
+            role: input.role,
+            permissions:
+              input.role === "user"
+                ? normalizePermissions(input.permissions ?? DEFAULT_USER_PERMISSIONS, "user")
+                : undefined,
+          });
         }),
 
-      delete: siteAdminProcedure
+      setPermissions: masterAdminProcedure
+        .input(
+          z.object({
+            id: z.string(),
+            permissions: z.record(z.string(), z.boolean()),
+          })
+        )
+        .mutation(async ({ input }) => {
+          const target = await getAdminById(input.id);
+          if (!target) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
+          }
+          if (target.role === "admin") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "O administrador principal sempre tem acesso total.",
+            });
+          }
+
+          const permissions: Permissions = normalizePermissions(input.permissions, "user");
+          await updateAdminPermissions(input.id, permissions);
+          return { success: true, permissions } as const;
+        }),
+
+      delete: masterAdminProcedure
         .input(z.object({ id: z.string() }))
         .mutation(async ({ input, ctx }) => {
-          const remaining = await countAdmins();
-          const admins = await listAdmins();
-          const target = admins.find(a => a.id === input.id);
+          const target = await getAdminById(input.id);
+          if (!target) return { success: true } as const;
 
-          if (target && target.username === ctx.siteAdminUsername) {
+          if (target.username === ctx.siteAdminUsername) {
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: "Você não pode remover a própria conta enquanto estiver logado com ela.",
             });
           }
 
-          if (remaining <= 1 && target) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Não é possível remover o último admin cadastrado.",
-            });
+          if (target.role === "admin") {
+            const adminCount = await countAdminsByRole("admin");
+            if (adminCount <= 1) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Não é possível remover o último administrador principal.",
+              });
+            }
           }
 
           await deleteAdmin(input.id);
@@ -161,7 +204,7 @@ export const appRouter = router({
   }),
 
   employees: router({
-    upsertOne: siteAdminProcedure
+    upsertOne: requirePermission('editEmployees')
       .input(
         z.object({
           id: z.string(),
@@ -215,7 +258,7 @@ export const appRouter = router({
         }
       }),
 
-    delete: siteAdminProcedure
+    delete: requirePermission('deleteEmployees')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
@@ -226,7 +269,7 @@ export const appRouter = router({
           throw error;
         }
       }),
-    sync: siteAdminProcedure
+    sync: requirePermission('editEmployees')
       .input(
         z.object({
           employees: z.array(
@@ -288,7 +331,7 @@ export const appRouter = router({
           throw error;
         }
       }),
-    list: publicProcedure.query(async () => {
+    list: requirePermission('viewEmployees').query(async () => {
       const employeeList = await getAllEmployees();
       // Busca trainings e foto em paralelo para cada colaborador (muito mais rápido)
       const result = await Promise.all(
@@ -303,7 +346,7 @@ export const appRouter = router({
       return result;
     }),
 
-    uploadPhoto: siteAdminProcedure
+    uploadPhoto: requirePermission('editEmployees')
       .input(
         z.object({
           employeeId: z.string(),
@@ -345,7 +388,7 @@ export const appRouter = router({
   }),
 
   trainings: router({
-    delete: siteAdminProcedure
+    delete: requirePermission('editEmployees')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {
@@ -359,7 +402,7 @@ export const appRouter = router({
   }),
 
   emailHistory: router({
-    list: publicProcedure.query(async () => {
+    list: requirePermission('viewEmployees').query(async () => {
       const db = await getDb();
       if (!db) {
         return [];
@@ -395,7 +438,7 @@ export const appRouter = router({
   }),
 
   certificates: router({
-    upload: siteAdminProcedure
+    upload: requirePermission('manageCertificates')
       .input(
         z.object({
           trainingId: z.string(),
@@ -461,7 +504,7 @@ export const appRouter = router({
         }
       }),
 
-    getByTraining: publicProcedure
+    getByTraining: requirePermission('viewCertificates')
       .input(z.object({ trainingId: z.string() }))
       .query(async ({ input }) => {
         try {
@@ -472,7 +515,7 @@ export const appRouter = router({
         }
       }),
 
-    getByEmployee: publicProcedure
+    getByEmployee: requirePermission('viewCertificates')
       .input(z.object({ employeeId: z.string() }))
       .query(async ({ input }) => {
         try {
@@ -483,7 +526,7 @@ export const appRouter = router({
         }
       }),
 
-    delete: siteAdminProcedure
+    delete: requirePermission('manageCertificates')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input }) => {
         try {

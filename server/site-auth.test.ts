@@ -13,6 +13,8 @@ function createMockContext(overrides: Partial<TrpcContext> = {}) {
     user: null,
     isSiteAdmin: false,
     siteAdminUsername: null,
+    siteRole: 'admin',
+    sitePermissions: null,
     req: {
       protocol: "https",
       headers: {},
@@ -130,7 +132,7 @@ describe("auth.siteSession", () => {
     const caller = appRouter.createCaller(ctx);
 
     const result = await caller.auth.siteSession();
-    expect(result).toEqual({ isSiteAdmin: true });
+    expect(result.isSiteAdmin).toBe(true);
   });
 });
 

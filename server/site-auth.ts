@@ -40,15 +40,24 @@ export async function verifyAdminPassword(password: string, hash: string): Promi
   return bcrypt.compare(password, hash);
 }
 
-export async function createSiteSessionToken(username: string = "master"): Promise<string> {
-  return new SignJWT({ scope: "site-admin", username })
+export async function createSiteSessionToken(
+  username: string = "master",
+  role: "admin" | "user" = "admin",
+  adminId: string | null = null
+): Promise<string> {
+  return new SignJWT({ scope: "site-admin", username, role, adminId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .sign(getSecretKey());
 }
 
-export type SiteSession = { isSiteAdmin: boolean; username: string | null };
+export type SiteSession = {
+  isSiteAdmin: boolean;
+  username: string | null;
+  role: "admin" | "user" | null;
+  adminId: string | null;
+};
 
 export async function verifySiteSessionToken(token: string): Promise<boolean> {
   try {
@@ -59,20 +68,29 @@ export async function verifySiteSessionToken(token: string): Promise<boolean> {
   }
 }
 
+const EMPTY_SESSION: SiteSession = {
+  isSiteAdmin: false,
+  username: null,
+  role: null,
+  adminId: null,
+};
+
 export async function getSiteSession(req: Request): Promise<SiteSession> {
   const cookies = parseCookieHeader(req.headers.cookie ?? "");
   const token = cookies[SITE_SESSION_COOKIE];
-  if (!token) return { isSiteAdmin: false, username: null };
+  if (!token) return { ...EMPTY_SESSION };
 
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
-    if (payload.scope !== "site-admin") return { isSiteAdmin: false, username: null };
+    if (payload.scope !== "site-admin") return { ...EMPTY_SESSION };
     return {
       isSiteAdmin: true,
       username: typeof payload.username === "string" ? payload.username : null,
+      role: payload.role === "user" ? "user" : "admin",
+      adminId: typeof payload.adminId === "string" ? payload.adminId : null,
     };
   } catch {
-    return { isSiteAdmin: false, username: null };
+    return { ...EMPTY_SESSION };
   }
 }
 

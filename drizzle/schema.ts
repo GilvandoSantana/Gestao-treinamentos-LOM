@@ -128,6 +128,11 @@ export const admins = mysqlTable("admins", {
   id: varchar("id", { length: 64 }).primaryKey(),
   username: varchar("username", { length: 100 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  // "admin" = administrador principal (tudo liberado, gerencia contas)
+  // "user"  = usuário comum, limitado ao que estiver em permissions
+  role: varchar("role", { length: 20 }).notNull().default("user"),
+  // JSON com as permissões concedidas a usuários comuns
+  permissions: text("permissions"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

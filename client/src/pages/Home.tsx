@@ -15,6 +15,8 @@ import Header from '@/components/Header';
 import AdminManagementModal from '@/components/AdminManagementModal';
 import SwipeActions from '@/components/SwipeActions';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
+import LoginPage from '@/pages/LoginPage';
+import { useSiteSession } from '@/hooks/useSiteSession';
 import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
@@ -76,15 +78,12 @@ export default function Home() {
   });
   const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
 
-  // Verifica autenticação ao montar consultando o servidor (fonte da verdade),
-  // já que a sessão real agora vive num cookie httpOnly assinado, não no
-  // sessionStorage do navegador.
-  const siteSessionQuery = trpc.auth.siteSession.useQuery();
+  // Sessão do site (quem é, papel e permissões). O site inteiro fica atrás
+  // do login — nada é exibido antes de entrar.
+  const session = useSiteSession();
   useEffect(() => {
-    if (siteSessionQuery.data) {
-      setIsAuthenticated(siteSessionQuery.data.isSiteAdmin);
-    }
-  }, [siteSessionQuery.data]);
+    setIsAuthenticated(session.isLoggedIn);
+  }, [session.isLoggedIn]);
 
   // Carrega dados reais assim que o servidor responde (o app não guarda mais
   // um "cache" de colaboradores no localStorage do navegador para evitar
@@ -397,6 +396,19 @@ export default function Home() {
     );
   }
 
+  // Porta de entrada: sem sessão válida, só a tela de login.
+  if (session.isLoading) {
+    return (
+      <div className="min-h-screen bg-navy flex items-center justify-center">
+        <div className="text-white/60 font-technical text-sm">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!session.isLoggedIn) {
+    return <LoginPage onSuccess={() => session.refetch()} />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {showPasswordModal && (
@@ -445,7 +457,7 @@ export default function Home() {
             setIsAuthenticated(false);
             toast.info('Modo administrativo desativado.');
           }}
-          onManageAdmins={() => setShowAdminManagement(true)}
+          onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
         />
 
         {showAdminManagement && (
@@ -485,7 +497,7 @@ export default function Home() {
             {paginatedEmployees.map((employee, index) => (
               <SwipeActions
                 key={employee.id}
-                enabled={isAuthenticated}
+                enabled={session.can('editEmployees') || session.can('deleteEmployees')}
                 onEdit={() => openModal(employee)}
                 onDelete={() => {
                   setDeleteConfirmId(employee.id);
@@ -504,7 +516,7 @@ export default function Home() {
                     setSelectedEmployeeForAudit(emp);
                     setShowAuditHistory(true);
                   }}
-                  isAdmin={isAuthenticated}
+                  isAdmin={session.can('editEmployees')}
                 />
               </SwipeActions>
             ))}
