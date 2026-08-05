@@ -70,7 +70,18 @@ export default function Home() {
   const upsertOneMutation = trpc.employees.upsertOne.useMutation();
   const syncMutation = trpc.employees.sync.useMutation();
   const deleteMutation = trpc.employees.delete.useMutation();
+  // Sessão do site (quem é, papel e permissões). O site inteiro fica atrás
+  // do login — nada é exibido antes de entrar.
+  const session = useSiteSession();
+  const utils = trpc.useUtils();
+
   const listQuery = trpc.employees.list.useQuery(undefined, {
+    // Só busca depois que há sessão válida. Antes a consulta disparava junto
+    // com o carregamento da página, ainda sem login, falhava com "não
+    // autorizado" e ficava presa nesse erro mesmo depois de entrar — era o
+    // erro que aparecia logo após o login e sumia ao clicar em "tentar
+    // novamente".
+    enabled: session.isLoggedIn,
     // Antes buscava do servidor a cada 30s por polling fixo; agora só
     // recarrega quando uma mutação (salvar/excluir/sincronizar) termina,
     // reduzindo carga no banco sem perder atualização.
@@ -78,9 +89,6 @@ export default function Home() {
   });
   const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
 
-  // Sessão do site (quem é, papel e permissões). O site inteiro fica atrás
-  // do login — nada é exibido antes de entrar.
-  const session = useSiteSession();
   useEffect(() => {
     setIsAuthenticated(session.isLoggedIn);
   }, [session.isLoggedIn]);
@@ -90,13 +98,14 @@ export default function Home() {
   // mostrar uma contagem antiga/de teste antes da real).
   useEffect(() => {
     if (isSavingRef.current) return;
+    if (!session.isLoggedIn) return;
     if (listQuery.isSuccess) {
       setEmployees((listQuery.data ?? []) as Employee[]);
       setIsLoading(false);
     } else if (listQuery.isError) {
       setIsLoading(false);
     }
-  }, [listQuery.data, listQuery.isSuccess, listQuery.isError]);
+  }, [listQuery.data, listQuery.isSuccess, listQuery.isError, session.isLoggedIn]);
 
   const handleExcelImport = async (importedEmployees: Employee[]) => {
     try {
@@ -406,7 +415,16 @@ export default function Home() {
   }
 
   if (!session.isLoggedIn) {
-    return <LoginPage onSuccess={() => session.refetch()} />;
+    return (
+      <LoginPage
+        onSuccess={async () => {
+          // Recarrega a sessão e limpa o cache de consultas para que a lista
+          // seja buscada já com o cookie novo, sem passar por um estado de erro.
+          await session.refetch();
+          await utils.invalidate();
+        }}
+      />
+    );
   }
 
   return (

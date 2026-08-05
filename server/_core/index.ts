@@ -7,7 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { scheduleTrainingAlerts, sendTrainingAlerts } from "../email-service";
+import { sendTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
 import { hasValidSiteSession } from "../site-auth";
 
@@ -195,7 +195,12 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
     
     // Start email service for training alerts (check every 24 hours)
-    scheduleTrainingAlerts(1440);
+    // Os alertas de treinamento agora são disparados pelo agendador externo
+    // (GitHub Actions -> POST /api/cron/training-alerts), que é confiável mesmo
+    // se o serviço reiniciar. O agendamento dentro do processo foi removido:
+    // ele reenviava tudo a cada deploy e concorria com as primeiras
+    // requisições dos usuários na subida do servidor, deixando a tela de login
+    // lenta logo após cada publicação.
   });
 }
 

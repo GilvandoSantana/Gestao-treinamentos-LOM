@@ -4,7 +4,7 @@ import type { Request } from "express";
 import bcrypt from "bcryptjs";
 
 export const SITE_SESSION_COOKIE = "site_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 horas
+const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8 horas (uma jornada de trabalho)
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;

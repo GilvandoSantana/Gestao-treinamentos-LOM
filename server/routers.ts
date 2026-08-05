@@ -11,7 +11,7 @@ import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls } from "./supabase-storage";
-import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, SITE_SESSION_MAX_AGE_MS, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 
@@ -90,10 +90,11 @@ export const appRouter = router({
 
         const token = await createSiteSessionToken(sessionUsername, sessionRole, sessionAdminId);
         const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(SITE_SESSION_COOKIE, token, {
-          ...cookieOptions,
-          maxAge: SITE_SESSION_MAX_AGE_MS,
-        });
+        // Sem maxAge: vira cookie de sessão do navegador, ou seja, ao fechar o
+        // navegador o acesso é encerrado e é preciso entrar de novo. O token em
+        // si continua expirando pelo prazo definido em site-auth.ts, então uma
+        // aba deixada aberta também não fica válida para sempre.
+        ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
 
         return { success: true } as const;
       }),
