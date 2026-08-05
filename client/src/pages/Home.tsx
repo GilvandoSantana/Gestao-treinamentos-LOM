@@ -15,6 +15,7 @@ import Header from '@/components/Header';
 import AdminManagementModal from '@/components/AdminManagementModal';
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
+import ActivityLogModal from '@/components/ActivityLogModal';
 import SwipeActions from '@/components/SwipeActions';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
@@ -58,6 +59,7 @@ export default function Home() {
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
   const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
@@ -486,6 +488,7 @@ export default function Home() {
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
           onShowDismissed={() => setShowDismissed(true)}
+          onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           dismissedCount={dismissedEmployees.length}
         />
 
@@ -675,6 +678,8 @@ export default function Home() {
             : undefined
         }
       />
+
+      <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}

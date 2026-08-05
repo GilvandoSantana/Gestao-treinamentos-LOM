@@ -21,6 +21,7 @@ import {
   LogOut,
   MoreHorizontal,
   UserRoundX,
+  Footprints,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -41,6 +42,7 @@ interface HeaderProps {
   canImportExport?: boolean;
   onManageAdmins?: () => void;
   onShowDismissed?: () => void;
+  onShowActivity?: () => void;
   dismissedCount?: number;
 }
 
@@ -58,6 +60,7 @@ export default function Header({
   canImportExport = false,
   onManageAdmins,
   onShowDismissed,
+  onShowActivity,
   dismissedCount = 0,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
@@ -251,6 +254,12 @@ export default function Header({
                             {dismissedCount}
                           </span>
                         )}
+                      </button>
+                    )}
+                    {onShowActivity && (
+                      <button onClick={runAndClose(onShowActivity)} className={menuItemClass} role="menuitem">
+                        <Footprints size={16} className="text-muted-foreground" />
+                        Rastros dos usuários
                       </button>
                     )}
                     {onManageAdmins && (

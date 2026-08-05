@@ -14,6 +14,7 @@ import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhoto
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
+import { logActivity, listActivity } from "./db-activity";
 
 export const appRouter = router({
   system: systemRouter,
@@ -88,6 +89,12 @@ export const appRouter = router({
 
         clearLoginAttempts(clientKey);
 
+        void logActivity({
+          username: sessionUsername,
+          role: sessionRole,
+          action: "login",
+        });
+
         const token = await createSiteSessionToken(sessionUsername, sessionRole, sessionAdminId);
         const cookieOptions = getSessionCookieOptions(ctx.req);
         // Sem maxAge: vira cookie de sessão do navegador, ou seja, ao fechar o
@@ -112,6 +119,20 @@ export const appRouter = router({
       permissions: ctx.sitePermissions,
     })),
 
+    // Rastro de atividades — SOMENTE o administrador principal.
+    activity: router({
+      list: masterAdminProcedure
+        .input(
+          z.object({
+            limit: z.number().min(1).max(500).default(200),
+            username: z.string().optional(),
+          })
+        )
+        .query(async ({ input }) => {
+          return listActivity({ limit: input.limit, username: input.username });
+        }),
+    }),
+
     // Gerenciamento de contas — SOMENTE o administrador principal.
     admins: router({
       list: masterAdminProcedure.query(async () => {
@@ -132,11 +153,20 @@ export const appRouter = router({
             permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
           const existing = await getAdminByUsername(input.username);
           if (existing) {
             throw new TRPCError({ code: "CONFLICT", message: "Esse usuário já existe." });
           }
+
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "account.create",
+            targetType: "account",
+            targetName: input.username,
+            details: input.role === "admin" ? "administrador" : "usuário",
+          });
 
           const passwordHash = await hashAdminPassword(input.password);
           return createAdmin({
@@ -158,7 +188,7 @@ export const appRouter = router({
             permissions: z.record(z.string(), z.boolean()),
           })
         )
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
           const target = await getAdminById(input.id);
           if (!target) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
@@ -172,6 +202,18 @@ export const appRouter = router({
 
           const permissions: Permissions = normalizePermissions(input.permissions, "user");
           await updateAdminPermissions(input.id, permissions);
+
+          const granted = PERMISSION_KEYS.filter(k => permissions[k]);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "account.permissions",
+            targetType: "account",
+            targetId: input.id,
+            targetName: target.username,
+            details: granted.length ? granted.join(", ") : "nenhuma permissão",
+          });
+
           return { success: true, permissions } as const;
         }),
 
@@ -197,6 +239,15 @@ export const appRouter = router({
               });
             }
           }
+
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "account.delete",
+            targetType: "account",
+            targetId: input.id,
+            targetName: target.username,
+          });
 
           await deleteAdmin(input.id);
           return { success: true } as const;
@@ -226,7 +277,7 @@ export const appRouter = router({
           ),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
             await upsertEmployee({
               id: input.id,
@@ -252,6 +303,16 @@ export const appRouter = router({
             });
           }
 
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "employee.update",
+            targetType: "employee",
+            targetId: input.id,
+            targetName: input.name,
+            details: `${input.trainings.length} treinamento(s)`,
+          });
+
           return { success: true };
         } catch (error) {
           console.error("UpsertOne error:", error);
@@ -263,16 +324,30 @@ export const appRouter = router({
     // nada. Usa a permissão de edição, não a de exclusão, porque é reversível.
     setDismissed: requirePermission('editEmployees')
       .input(z.object({ id: z.string(), dismissed: z.boolean() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         await setEmployeeDismissed(input.id, input.dismissed);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: input.dismissed ? "employee.dismiss" : "employee.restore",
+          targetType: "employee",
+          targetId: input.id,
+        });
         return { success: true } as const;
       }),
 
     delete: requirePermission('deleteEmployees')
       .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
           await deleteEmployee(input.id);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "employee.delete",
+            targetType: "employee",
+            targetId: input.id,
+          });
           return { success: true };
         } catch (error) {
           console.error("Delete employee error:", error);
@@ -304,8 +379,15 @@ export const appRouter = router({
           ),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "employee.import",
+            details: `${input.employees.length} colaborador(es) sincronizado(s)`,
+          });
+
           for (const employee of input.employees) {
             // Upsert employee
             await upsertEmployee({
@@ -403,9 +485,16 @@ export const appRouter = router({
   trainings: router({
     delete: requirePermission('editEmployees')
       .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
           await deleteTraining(input.id);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "training.delete",
+            targetType: "training",
+            targetId: input.id,
+          });
           return { success: true };
         } catch (error) {
           console.error("Delete training error:", error);
@@ -541,7 +630,7 @@ export const appRouter = router({
 
     delete: requirePermission('manageCertificates')
       .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
           const certificate = await getCertificateById(input.id);
           if (!certificate) {
@@ -553,6 +642,15 @@ export const appRouter = router({
 
           // Delete from database
           await deleteCertificate(input.id);
+
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "certificate.delete",
+            targetType: "certificate",
+            targetId: input.id,
+            targetName: certificate.fileName,
+          });
 
           return { success: true };
         } catch (error) {

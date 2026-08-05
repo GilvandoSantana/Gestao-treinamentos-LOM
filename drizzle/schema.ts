@@ -142,3 +142,23 @@ export const admins = mysqlTable("admins", {
 
 export type Admin = typeof admins.$inferSelect;
 export type InsertAdmin = typeof admins.$inferInsert;
+
+/**
+ * Rastro de atividades: quem fez o quê no site.
+ * Separado de auditLogs (que registra alterações de um colaborador específico
+ * sem identificar o autor) — aqui o foco é a pessoa que executou a ação.
+ */
+export const activityLogs = mysqlTable("activityLogs", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  username: varchar("username", { length: 100 }).notNull(),
+  role: varchar("role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 60 }).notNull(),
+  targetType: varchar("targetType", { length: 40 }),
+  targetId: varchar("targetId", { length: 64 }),
+  targetName: varchar("targetName", { length: 255 }),
+  details: text("details"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = typeof activityLogs.$inferInsert;
