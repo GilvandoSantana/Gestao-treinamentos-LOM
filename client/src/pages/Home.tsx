@@ -490,7 +490,22 @@ export default function Home() {
         <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
         <FilterBar filter={filter} onFilterChange={setFilter} onPrintFilter={handlePrintFilter} isAdmin={isAuthenticated} employees={employees} />
 
-        {filteredEmployees.length === 0 ? (
+        {listQuery.isError ? (
+          <div className="bg-card border border-danger/30 rounded-xl p-6 text-center">
+            <p className="font-display font-bold text-danger text-lg mb-1">
+              Não foi possível carregar os colaboradores
+            </p>
+            <p className="text-sm text-muted-foreground mb-3">
+              {listQuery.error?.message || 'Erro desconhecido ao consultar o servidor.'}
+            </p>
+            <button
+              onClick={() => listQuery.refetch()}
+              className="px-4 py-2 rounded-lg bg-orange text-white text-sm font-semibold hover:opacity-90"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        ) : filteredEmployees.length === 0 ? (
           <EmptyState filter={filter} />
         ) : viewMode === 'grid' ? (
           <div id="lista-colaboradores" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
