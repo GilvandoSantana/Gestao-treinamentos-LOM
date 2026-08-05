@@ -92,9 +92,12 @@ export default function Header({
   };
 
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-lg mb-6 animate-fade-in-up">
+    // Sem overflow-hidden aqui: o menu suspenso abre para fora do cabeçalho e
+    // era recortado por ele. O arredondamento da imagem de fundo passou a ser
+    // feito no próprio contêiner do fundo, logo abaixo.
+    <div className="relative rounded-2xl shadow-lg mb-6 animate-fade-in-up">
       {/* Fundo */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 rounded-2xl overflow-hidden">
         <img src={HERO_IMAGE} alt="" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-navy/95 via-navy/88 to-navy/65" />
       </div>
