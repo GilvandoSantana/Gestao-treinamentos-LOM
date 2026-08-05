@@ -677,7 +677,6 @@ export default function Home() {
       <DocumentsModal
         isOpen={showDocuments}
         onClose={() => setShowDocuments(false)}
-        employees={activeEmployees}
         canManage={session.can('manageCertificates')}
       />
 

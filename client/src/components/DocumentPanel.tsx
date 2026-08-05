@@ -2,55 +2,36 @@
  * Design: Industrial Blueprint — Neo-Industrial
  * DocumentPanel: cadastro e consulta de um tipo de documento (FDS, ARA,
  * Checklist, LTCAT, PGR ou POS). Todos compartilham a mesma estrutura:
- * um PDF com nome e, opcionalmente, as funções que o utilizam.
+ * um PDF com um nome obrigatório.
  *
- * Ao anexar um PDF é obrigatório informar o nome da ficha; marcar as funções
- * que a utilizam é opcional, mas é o que faz a ficha aparecer para o
- * colaborador daquela função.
+ * Os documentos não são vinculados a funções — ficam disponíveis para
+ * consulta e download por qualquer pessoa com permissão de ver certificados.
  */
 
 import { useMemo, useState } from 'react';
-import { Upload, Trash2, Download, Loader, Users } from 'lucide-react';
+import { Upload, Trash2, Download, Loader } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import type { Employee } from '@/lib/types';
 import { DOCUMENT_LABELS, type DocumentType } from '@shared/document-types';
 
 interface DocumentPanelProps {
   /** Conteúdo de uma aba da central de Documentos. */
   type: DocumentType;
-  employees: Employee[];
   canManage: boolean;
 }
 
 const MAX_MB = 10;
 
-export default function DocumentPanel({ type, employees, canManage }: DocumentPanelProps) {
+export default function DocumentPanel({ type, canManage }: DocumentPanelProps) {
   const typeLabel = DOCUMENT_LABELS[type].label;
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftRoles, setDraftRoles] = useState<string[]>([]);
 
   const utils = trpc.useUtils();
   const listQuery = trpc.fds.list.useQuery({ type });
   const uploadMutation = trpc.fds.upload.useMutation();
   const deleteMutation = trpc.fds.delete.useMutation();
-  const setRolesMutation = trpc.fds.setRoles.useMutation();
-
-  /** Funções existentes no cadastro de colaboradores. */
-  const roles = useMemo(
-    () =>
-      Array.from(new Set(employees.map((e) => e.role?.trim()).filter((r): r is string => !!r))).sort(
-        (a, b) => a.localeCompare(b)
-      ),
-    [employees]
-  );
-
-  const toggle = (list: string[], role: string) =>
-    list.includes(role) ? list.filter((r) => r !== role) : [...list, role];
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -91,13 +72,11 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
         name: name.trim(),
         fileName: file.name,
         fileData: base64,
-        roles: selectedRoles,
       });
 
       toast.success(`${typeLabel} salvo com sucesso!`);
       setName('');
       setFile(null);
-      setSelectedRoles([]);
       await utils.fds.list.invalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `Erro ao salvar o ${typeLabel}`);
@@ -116,48 +95,6 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
       toast.error(error instanceof Error ? error.message : 'Erro ao excluir');
     }
   };
-
-  const handleSaveRoles = async (id: string) => {
-    try {
-      await setRolesMutation.mutateAsync({ id, roles: draftRoles });
-      toast.success('Funções atualizadas.');
-      setEditingId(null);
-      await utils.fds.list.invalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao salvar funções');
-    }
-  };
-
-  const RolePicker = ({
-    value,
-    onChange,
-  }: {
-    value: string[];
-    onChange: (next: string[]) => void;
-  }) => (
-    <div className="max-h-40 overflow-y-auto border border-border rounded-xl p-2 space-y-0.5">
-      {roles.length === 0 ? (
-        <p className="text-xs text-muted-foreground p-2">
-          Nenhuma função cadastrada ainda nos colaboradores.
-        </p>
-      ) : (
-        roles.map((role) => (
-          <label
-            key={role}
-            className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-muted cursor-pointer"
-          >
-            <input
-              type="checkbox"
-              checked={value.includes(role)}
-              onChange={() => onChange(toggle(value, role))}
-              className="w-4 h-4 accent-orange shrink-0"
-            />
-            <span className="text-sm text-foreground truncate">{role}</span>
-          </label>
-        ))
-      )}
-    </div>
-  );
 
   return (
     <>
@@ -179,16 +116,13 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
           )}
 
           {listQuery.data?.map((sheet) => {
-            const isEditing = editingId === sheet.id;
             return (
               <div key={sheet.id} className="border border-border rounded-xl overflow-hidden">
                 <div className="flex items-center gap-2 p-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-foreground truncate">{sheet.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {sheet.roles.length === 0
-                        ? 'Nenhuma função vinculada'
-                        : `${sheet.roles.length} função(ões): ${sheet.roles.join(', ')}`}
+                    <p className="text-xs text-muted-foreground truncate font-technical">
+                      {sheet.fileName}
                     </p>
                   </div>
 
@@ -205,16 +139,6 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
                   {canManage && (
                     <>
                       <button
-                        onClick={() => {
-                          setEditingId(isEditing ? null : sheet.id);
-                          setDraftRoles([...sheet.roles]);
-                        }}
-                        className="shrink-0 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                        title="Definir funções"
-                      >
-                        <Users size={17} />
-                      </button>
-                      <button
                         onClick={() => handleDelete(sheet.id, sheet.name)}
                         disabled={deleteMutation.isPending}
                         className="shrink-0 p-2 text-danger hover:opacity-70 disabled:opacity-40"
@@ -225,19 +149,6 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
                     </>
                   )}
                 </div>
-
-                {isEditing && (
-                  <div className="p-3 border-t border-border">
-                    <RolePicker value={draftRoles} onChange={setDraftRoles} />
-                    <button
-                      onClick={() => handleSaveRoles(sheet.id)}
-                      disabled={setRolesMutation.isPending}
-                      className="w-full mt-2 bg-orange text-white rounded-lg py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                    >
-                      {setRolesMutation.isPending ? 'Salvando...' : 'Salvar funções'}
-                    </button>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -261,13 +172,6 @@ export default function DocumentPanel({ type, employees, canManage }: DocumentPa
                 disabled={isUploading}
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
               />
-            </div>
-
-            <div>
-              <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
-                Funções que utilizam <span className="normal-case tracking-normal">(opcional)</span>
-              </label>
-              <RolePicker value={selectedRoles} onChange={setSelectedRoles} />
             </div>
 
             <div>

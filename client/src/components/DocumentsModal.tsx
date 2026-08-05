@@ -10,23 +10,16 @@
 
 import { useState } from 'react';
 import { X, FolderOpen } from 'lucide-react';
-import type { Employee } from '@/lib/types';
 import DocumentPanel from '@/components/DocumentPanel';
 import { DOCUMENT_TYPES, DOCUMENT_LABELS, type DocumentType } from '@shared/document-types';
 
 interface DocumentsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  employees: Employee[];
   canManage: boolean;
 }
 
-export default function DocumentsModal({
-  isOpen,
-  onClose,
-  employees,
-  canManage,
-}: DocumentsModalProps) {
+export default function DocumentsModal({ isOpen, onClose, canManage }: DocumentsModalProps) {
   const [tab, setTab] = useState<DocumentType>('ara');
 
   if (!isOpen) return null;
@@ -67,7 +60,7 @@ export default function DocumentsModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <DocumentPanel key={tab} type={tab} employees={employees} canManage={canManage} />
+          <DocumentPanel key={tab} type={tab} canManage={canManage} />
         </div>
       </div>
     </div>

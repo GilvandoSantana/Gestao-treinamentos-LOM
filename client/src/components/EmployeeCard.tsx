@@ -7,7 +7,6 @@
 import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, UserRoundX } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
-import EmployeeDocumentsButton from '@/components/EmployeeDocumentsButton';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import ComplianceStamp from '@/components/ComplianceStamp';
 
@@ -115,7 +114,6 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onDism
             </button>
           )}
 
-          <EmployeeDocumentsButton role={employee.role} variant="onDark" />
 
           {isAdmin && onDismiss && (
             <button
