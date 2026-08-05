@@ -23,9 +23,26 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Os dois campos são obrigatórios. Além de evitar envio incompleto, isso
+    // mantém a interface uniforme para todos os acessos.
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername && !password) {
+      setError('Informe o usuário e a senha.');
+      return;
+    }
+    if (!trimmedUsername) {
+      setError('Informe o usuário.');
+      return;
+    }
+    if (!password) {
+      setError('Informe a senha.');
+      return;
+    }
+
     try {
       const result = await loginMutation.mutateAsync({
-        username: username.trim() || undefined,
+        username: trimmedUsername,
         password,
       });
       // Guarda o marcador da sessão do navegador antes de seguir; sem ele o
@@ -118,7 +135,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
 
             <button
               type="submit"
-              disabled={isLoading || !password}
+              disabled={isLoading}
               className="w-full bg-orange text-white font-semibold py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
             >
               {isLoading ? (

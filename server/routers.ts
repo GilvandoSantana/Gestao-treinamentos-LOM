@@ -59,8 +59,17 @@ export const appRouter = router({
         let sessionRole: "admin" | "user" = "admin";
         let sessionAdminId: string | null = null;
 
-        if (input.username) {
-          const admin = await getAdminByUsername(input.username);
+        // Acesso mestre de recuperação. Aceita o usuário definido em
+        // MASTER_USERNAME (se configurado) ou usuário em branco — o segundo
+        // caminho fica só como retaguarda e não é oferecido pela interface,
+        // que exige os dois campos.
+        const masterUsername = process.env.MASTER_USERNAME?.trim().toLowerCase();
+        const typedUsername = input.username?.trim().toLowerCase();
+        const isMasterAttempt =
+          !typedUsername || (!!masterUsername && typedUsername === masterUsername);
+
+        if (typedUsername && !isMasterAttempt) {
+          const admin = await getAdminByUsername(typedUsername);
           if (admin) {
             isValid = await verifyAdminPassword(input.password, admin.passwordHash);
             sessionUsername = admin.username;
@@ -70,6 +79,7 @@ export const appRouter = router({
         } else {
           try {
             isValid = checkSitePassword(input.password);
+            sessionUsername = masterUsername ?? "master";
           } catch (error) {
             console.error("siteLogin config error:", error);
             throw new TRPCError({
