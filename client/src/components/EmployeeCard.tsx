@@ -4,7 +4,7 @@
  * Navy header gradient, training items with status badges.
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, UserRoundX } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -15,6 +15,7 @@ interface EmployeeCardProps {
   index: number;
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
+  onDismiss?: (employee: Employee) => void;
   onViewAudit?: (employee: Employee) => void;
   isAdmin?: boolean;
 }
@@ -33,7 +34,7 @@ const statusBgMap = {
   unknown: 'bg-muted text-muted-foreground border-border',
 };
 
-export default function EmployeeCard({ employee, index, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeCardProps) {
+export default function EmployeeCard({ employee, index, onEdit, onDelete, onDismiss, onViewAudit, isAdmin = false }: EmployeeCardProps) {
   const [isTrainingsExpanded, setIsTrainingsExpanded] = useState(false);
   const worstStatus = getWorstStatus(employee);
 
@@ -110,6 +111,17 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onView
             >
               <Edit2 size={14} />
               Editar
+            </button>
+          )}
+
+          {isAdmin && onDismiss && (
+            <button
+              onClick={() => onDismiss(employee)}
+              className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+              title="Marcar como demitido (mantém o cadastro e os treinamentos)"
+            >
+              <UserRoundX size={14} />
+              Demitido
             </button>
           )}
 

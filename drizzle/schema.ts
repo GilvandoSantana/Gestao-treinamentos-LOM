@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -37,6 +37,10 @@ export const employees = mysqlTable("employees", {
   birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
+  // Demissão: o colaborador sai das listas e das contagens, mas o registro e
+  // os treinamentos ficam guardados (diferente de excluir).
+  dismissed: boolean("dismissed").default(false).notNull(),
+  dismissedAt: timestamp("dismissedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

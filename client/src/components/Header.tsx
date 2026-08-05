@@ -20,6 +20,7 @@ import {
   Users,
   LogOut,
   MoreHorizontal,
+  UserRoundX,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -39,6 +40,8 @@ interface HeaderProps {
   canEdit?: boolean;
   canImportExport?: boolean;
   onManageAdmins?: () => void;
+  onShowDismissed?: () => void;
+  dismissedCount?: number;
 }
 
 export default function Header({
@@ -54,6 +57,8 @@ export default function Header({
   canEdit = false,
   canImportExport = false,
   onManageAdmins,
+  onShowDismissed,
+  dismissedCount = 0,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const scrolled = useScrolled(40);
@@ -237,6 +242,17 @@ export default function Header({
                   )}
 
                   <div className="py-1 border-b border-border">
+                    {onShowDismissed && (
+                      <button onClick={runAndClose(onShowDismissed)} className={menuItemClass} role="menuitem">
+                        <UserRoundX size={16} className="text-muted-foreground" />
+                        Demitidos
+                        {dismissedCount > 0 && (
+                          <span className="ml-auto font-technical text-[11px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">
+                            {dismissedCount}
+                          </span>
+                        )}
+                      </button>
+                    )}
                     {onManageAdmins && (
                       <button onClick={runAndClose(onManageAdmins)} className={menuItemClass} role="menuitem">
                         <Users size={16} className="text-muted-foreground" />

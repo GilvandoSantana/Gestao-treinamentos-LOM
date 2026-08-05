@@ -15,6 +15,9 @@ export interface Employee {
   role: string;
   phone?: string;
   photoUrl?: string | null;
+  /** Demitido: sai das listas e contagens, mas o registro é preservado. */
+  dismissed?: boolean;
+  dismissedAt?: string | Date | null;
   trainings: Training[];
 }
 

@@ -3,7 +3,7 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, CreditCard, Lock, Droplets } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, CreditCard, Lock, Droplets, UserRoundX } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,7 @@ interface EmployeeCardWithCertificatesProps {
   index: number;
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
+  onDismiss?: (employee: Employee) => void;
   onViewAudit?: (employee: Employee) => void;
   isAdmin?: boolean;
 }
@@ -53,6 +54,7 @@ export default function EmployeeCardWithCertificates({
   index,
   onEdit,
   onDelete,
+  onDismiss,
   onViewAudit,
   isAdmin = false,
 }: EmployeeCardWithCertificatesProps) {
@@ -180,6 +182,17 @@ export default function EmployeeCardWithCertificates({
 	                </DropdownMenuContent>
 	              </DropdownMenu>
 	            )}
+            {isAdmin && onDismiss && (
+              <button
+                onClick={() => onDismiss(employee)}
+                className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
+                title="Marcar como demitido (mantém o cadastro e os treinamentos)"
+              >
+                <UserRoundX size={14} />
+                Demitido
+              </button>
+            )}
+
             {isAdmin && (
               <button
                 onClick={() => onDelete(employee.id)}

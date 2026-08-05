@@ -206,3 +206,21 @@ export async function getTrainingsGroupedByEmployee(): Promise<Map<string, typeo
     return grouped;
   }
 }
+
+/**
+ * Marca ou desmarca um colaborador como demitido.
+ * Não apaga nada: o registro e os treinamentos continuam no banco, apenas
+ * saem das listas e das contagens do dia a dia.
+ */
+export async function setEmployeeDismissed(id: string, dismissed: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(employees)
+    .set({
+      dismissed,
+      dismissedAt: dismissed ? new Date() : null,
+    })
+    .where(eq(employees.id, id));
+}

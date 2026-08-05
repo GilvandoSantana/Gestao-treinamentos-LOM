@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -257,6 +257,15 @@ export const appRouter = router({
           console.error("UpsertOne error:", error);
           throw error;
         }
+      }),
+
+    // Demitir/readmitir: tira o colaborador das listas e contagens sem apagar
+    // nada. Usa a permissão de edição, não a de exclusão, porque é reversível.
+    setDismissed: requirePermission('editEmployees')
+      .input(z.object({ id: z.string(), dismissed: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await setEmployeeDismissed(input.id, input.dismissed);
+        return { success: true } as const;
       }),
 
     delete: requirePermission('deleteEmployees')

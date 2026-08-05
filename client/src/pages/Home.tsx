@@ -13,6 +13,7 @@ import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
 import AdminManagementModal from '@/components/AdminManagementModal';
+import DismissedModal from '@/components/DismissedModal';
 import SwipeActions from '@/components/SwipeActions';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
@@ -55,6 +56,7 @@ export default function Home() {
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
@@ -84,6 +86,7 @@ export default function Home() {
     refetchOnWindowFocus: false,
   });
   const siteLogoutMutation = trpc.auth.siteLogout.useMutation();
+  const setDismissedMutation = trpc.employees.setDismissed.useMutation();
 
   // Carrega dados reais assim que o servidor responde (o app não guarda mais
   // um "cache" de colaboradores no localStorage do navegador para evitar
@@ -184,6 +187,20 @@ export default function Home() {
       isSavingRef.current = false;
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
+    }
+  };
+
+  const handleSetDismissed = async (employee: Employee, dismissed: boolean) => {
+    try {
+      await setDismissedMutation.mutateAsync({ id: employee.id, dismissed });
+      await listQuery.refetch();
+      toast.success(
+        dismissed
+          ? `${employee.name} foi movido para Demitidos.`
+          : `${employee.name} voltou para a lista ativa.`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível concluir a ação.');
     }
   };
 
@@ -340,27 +357,32 @@ export default function Home() {
   };
 
   // Memoizado para evitar recálculo em cada re-render
-  const stats = useMemo(() => getStatistics(employees), [employees]);
+  // Demitidos ficam fora de tudo: listas, filtros, contagens e estatísticas.
+  // O registro continua no banco, apenas não entra no dia a dia.
+  const activeEmployees = useMemo(() => employees.filter((e) => !e.dismissed), [employees]);
+  const dismissedEmployees = useMemo(() => employees.filter((e) => e.dismissed), [employees]);
+
+  const stats = useMemo(() => getStatistics(activeEmployees), [activeEmployees]);
 
   // Contagem por COLABORADOR (pela pior situação dele), para os selos da barra
   // inferior baterem com o tamanho da lista que cada aba mostra. O `stats`
   // acima conta treinamentos, que é outro número.
   const statusCounts = useMemo(() => {
     const counts = { expired: 0, expiring: 0, valid: 0 };
-    for (const emp of employees) {
+    for (const emp of activeEmployees) {
       const worst = getWorstStatus(emp);
       if (worst === 'expired') counts.expired++;
       else if (worst === 'expiring') counts.expiring++;
       else if (worst === 'valid') counts.valid++;
     }
     return counts;
-  }, [employees]);
+  }, [activeEmployees]);
 
   const filteredEmployees = useMemo(() => {
-    let result = getFilteredEmployees(employees, filter, searchQuery);
+    let result = getFilteredEmployees(activeEmployees, filter, searchQuery);
     if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
     return result;
-  }, [employees, filter, searchQuery, selectedRole]);
+  }, [activeEmployees, filter, searchQuery, selectedRole]);
 
   // Paginação: evita renderizar centenas de cartões/linhas de uma vez só
   // quando a lista de colaboradores crescer.
@@ -434,7 +456,7 @@ export default function Home() {
           onExport={exportData}
           onExportPDF={handleExportPDF}
           isSyncing={isSyncing}
-          employeeCount={employees.length}
+          employeeCount={activeEmployees.length}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           username={session.username}
@@ -451,6 +473,8 @@ export default function Home() {
             toast.info('Sessão encerrada.');
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
+          onShowDismissed={() => setShowDismissed(true)}
+          dismissedCount={dismissedEmployees.length}
         />
 
         {showAdminManagement && (
@@ -466,8 +490,8 @@ export default function Home() {
         </div>
 
         <StatCards stats={stats} />
-        <ComplianceCharts employees={employees} />
-        <ExpiringNotifications employees={employees} />
+        <ComplianceCharts employees={activeEmployees} />
+        <ExpiringNotifications employees={activeEmployees} />
 
         <AdvancedSearch
           searchTerm={searchQuery}
@@ -480,7 +504,7 @@ export default function Home() {
           <EmailHistoryPanel />
         </div>
 
-        <RoleFilter employees={employees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
+        <RoleFilter employees={activeEmployees} selectedRole={selectedRole} onRoleChange={setSelectedRole} />
         {/* No celular as situações viraram abas da barra inferior, então as
             pílulas só aparecem no desktop, onde essa barra não existe. */}
         <div className="hidden lg:block">
@@ -489,7 +513,7 @@ export default function Home() {
             onFilterChange={setFilter}
             onPrintFilter={handlePrintFilter}
             isAdmin={session.can('importExport')}
-            employees={employees}
+            employees={activeEmployees}
           />
         </div>
 
@@ -530,6 +554,9 @@ export default function Home() {
                     setDeleteConfirmId(id);
                     setShowDeleteConfirm(true);
                   }}
+                  onDismiss={
+                    session.can('editEmployees') ? (emp: Employee) => handleSetDismissed(emp, true) : undefined
+                  }
                   onViewAudit={(emp) => {
                     setSelectedEmployeeForAudit(emp);
                     setShowAuditHistory(true);
@@ -620,7 +647,16 @@ export default function Home() {
         />
       )}
 
-      <TrainingNotifications employees={employees} />
+      <DismissedModal
+        isOpen={showDismissed}
+        onClose={() => setShowDismissed(false)}
+        employees={dismissedEmployees}
+        canEdit={session.can('editEmployees')}
+        isRestoring={setDismissedMutation.isPending}
+        onRestore={(emp) => handleSetDismissed(emp, false)}
+      />
+
+      <TrainingNotifications employees={activeEmployees} />
 
       {/* Navegação inferior (celular). Cada aba leva à seção correspondente
           da página, que já existe — não há troca de rota. */}
