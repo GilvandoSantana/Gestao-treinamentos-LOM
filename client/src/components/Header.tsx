@@ -22,7 +22,7 @@ import {
   MoreHorizontal,
   UserRoundX,
   Footprints,
-  FileWarning,
+  FolderOpen,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -44,7 +44,7 @@ interface HeaderProps {
   onManageAdmins?: () => void;
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
-  onShowFds?: () => void;
+  onShowDocuments?: () => void;
   dismissedCount?: number;
 }
 
@@ -63,7 +63,7 @@ export default function Header({
   onManageAdmins,
   onShowDismissed,
   onShowActivity,
-  onShowFds,
+  onShowDocuments,
   dismissedCount = 0,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
@@ -259,10 +259,10 @@ export default function Header({
                         )}
                       </button>
                     )}
-                    {onShowFds && (
-                      <button onClick={runAndClose(onShowFds)} className={menuItemClass} role="menuitem">
-                        <FileWarning size={16} className="text-muted-foreground" />
-                        FDS (Ficha de Segurança)
+                    {onShowDocuments && (
+                      <button onClick={runAndClose(onShowDocuments)} className={menuItemClass} role="menuitem">
+                        <FolderOpen size={16} className="text-muted-foreground" />
+                        Documentos
                       </button>
                     )}
                     {onShowActivity && (

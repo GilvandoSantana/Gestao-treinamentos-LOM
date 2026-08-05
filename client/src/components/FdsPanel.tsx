@@ -8,21 +8,20 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, FileText, Upload, Trash2, Download, Loader, Users } from 'lucide-react';
+import { Upload, Trash2, Download, Loader, Users } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 
-interface FdsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface FdsPanelProps {
+  /** Conteúdo do painel FDS, exibido dentro de DocumentsModal. */
   employees: Employee[];
   canManage: boolean;
 }
 
 const MAX_MB = 10;
 
-export default function FdsModal({ isOpen, onClose, employees, canManage }: FdsModalProps) {
+export default function FdsPanel({ employees, canManage }: FdsPanelProps) {
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -31,7 +30,7 @@ export default function FdsModal({ isOpen, onClose, employees, canManage }: FdsM
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
 
   const utils = trpc.useUtils();
-  const listQuery = trpc.fds.list.useQuery(undefined, { enabled: isOpen });
+  const listQuery = trpc.fds.list.useQuery();
   const uploadMutation = trpc.fds.upload.useMutation();
   const deleteMutation = trpc.fds.delete.useMutation();
   const setRolesMutation = trpc.fds.setRoles.useMutation();
@@ -154,29 +153,13 @@ export default function FdsModal({ isOpen, onClose, employees, canManage }: FdsM
     </div>
   );
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <FileText className="text-orange shrink-0" size={21} />
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">
-                FDS — Ficha de Segurança
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {listQuery.data?.length ?? 0} ficha(s) cadastrada(s)
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X size={23} />
-          </button>
-        </div>
+    <>
+      <p className="text-xs text-muted-foreground px-1 pb-2">
+        {listQuery.data?.length ?? 0} ficha(s) cadastrada(s)
+      </p>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div className="space-y-2">
           {listQuery.isLoading && (
             <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
               <Loader size={14} className="animate-spin" /> Carregando...
@@ -305,7 +288,6 @@ export default function FdsModal({ isOpen, onClose, employees, canManage }: FdsM
             </button>
           </form>
         )}
-      </div>
-    </div>
+    </>
   );
 }
