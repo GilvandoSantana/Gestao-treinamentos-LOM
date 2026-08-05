@@ -96,11 +96,25 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
     }
   });
 
-  const roleData = Object.entries(roleCounts).map(([name, value]) => ({
+  // Só as funções mais comuns entram individualmente; o resto vira "Outros".
+  // Com uma função por fatia a legenda passava de 15 itens e estourava o
+  // espaço do gráfico, cobrindo o conteúdo abaixo.
+  const TOP_ROLES = 6;
+  const allRoles = Object.entries(roleCounts)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  const topRoles = allRoles.slice(0, TOP_ROLES);
+  const otherRolesTotal = allRoles.slice(TOP_ROLES).reduce((sum, r) => sum + r.value, 0);
+
+  const roleData = [
+    ...topRoles,
+    ...(otherRolesTotal > 0 ? [{ name: `Outras (${allRoles.length - TOP_ROLES})`, value: otherRolesTotal }] : []),
+  ].map(({ name, value }) => ({
     name,
     value,
-    percentage: employees.length > 0 ? Math.round((value / employees.length) * 100) : 0
-  })).sort((a, b) => b.value - a.value);
+    percentage: employees.length > 0 ? Math.round((value / employees.length) * 100) : 0,
+  }));
 
   const hasRoleData = roleData.length > 0;
 
@@ -109,8 +123,10 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
   const AGE_COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444'];
   const ROLE_COLORS = ['#1e3a8a', '#e8772e', '#2d9f7f', '#6366f1', '#ec4899', '#f59e0b', '#ef4444', '#06b6d4'];
 
+  // Fatias pequenas ficam sem rótulo: com muitas categorias os "2%" se
+  // amontoavam e ficavam ilegíveis. O valor exato segue no tooltip.
   const renderCustomLabel = (entry: any) => {
-    return `${entry.percentage}%`;
+    return entry.percentage >= 5 ? `${entry.percentage}%` : '';
   };
 
   return (
@@ -136,12 +152,12 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
         {/* Chart Content - Hidden by Default */}
         {showChart && (
           <div className="px-6 pb-8 border-t border-gray-100 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-12 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-8 mt-6">
               
               {/* Training Status Chart */}
               <div className="flex flex-col items-center">
                 <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Status de Treinamentos</h4>
-                <div className="w-full h-[250px]">
+                <div className="w-full h-[320px] overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -166,7 +182,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                           name,
                         ]}
                       />
-                      <Legend verticalAlign="bottom" height={36}/>
+                      <Legend verticalAlign="bottom" height={72} wrapperStyle={{ fontSize: 12, lineHeight: "18px" }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -178,7 +194,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                   <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Nível de Escolaridade</h4>
                 </div>
                 {hasEducationData ? (
-                  <div className="w-full h-[250px]">
+                  <div className="w-full h-[320px] overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -203,7 +219,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                             name,
                           ]}
                         />
-                        <Legend verticalAlign="bottom" height={36}/>
+                        <Legend verticalAlign="bottom" height={72} wrapperStyle={{ fontSize: 12, lineHeight: "18px" }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -221,7 +237,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
               <div className="flex flex-col items-center">
                 <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Faixa Etária</h4>
                 {hasAgeData ? (
-                  <div className="w-full h-[250px]">
+                  <div className="w-full h-[320px] overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -246,7 +262,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                             name,
                           ]}
                         />
-                        <Legend verticalAlign="bottom" height={36}/>
+                        <Legend verticalAlign="bottom" height={72} wrapperStyle={{ fontSize: 12, lineHeight: "18px" }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -264,7 +280,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
               <div className="flex flex-col items-center">
                 <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Distribuição por Função</h4>
                 {hasRoleData ? (
-                  <div className="w-full h-[250px]">
+                  <div className="w-full h-[320px] overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -289,7 +305,7 @@ export default function ComplianceCharts({ employees }: ComplianceChartsProps) {
                             name,
                           ]}
                         />
-                        <Legend verticalAlign="bottom" height={36}/>
+                        <Legend verticalAlign="bottom" height={72} wrapperStyle={{ fontSize: 12, lineHeight: "18px" }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
