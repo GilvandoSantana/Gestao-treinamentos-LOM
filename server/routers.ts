@@ -81,9 +81,12 @@ export const appRouter = router({
 
         if (!isValid) {
           registerFailedLoginAttempt(clientKey);
+          // Mensagem idêntica nos dois casos: variar o texto conforme o
+          // usuário estar preenchido ou não revelaria que existe um caminho de
+          // acesso sem usuário.
           throw new TRPCError({
             code: "UNAUTHORIZED",
-            message: input.username ? "Usuário ou senha incorretos." : "Senha incorreta.",
+            message: "Usuário ou senha incorretos.",
           });
         }
 

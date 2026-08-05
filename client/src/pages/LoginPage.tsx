@@ -132,9 +132,6 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
             </button>
           </form>
 
-          <p className="text-center text-muted-foreground/70 text-xs mt-6 font-technical">
-            Deixe o usuário em branco para entrar com a senha mestra
-          </p>
         </div>
 
         <p className="text-center text-white/30 text-xs mt-5 font-technical tracking-wide">

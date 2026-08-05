@@ -31,7 +31,6 @@ export default function PasswordModal({
       // A verificação agora acontece no servidor (auth.siteLogin), que define
       // um cookie de sessão assinado. Isso substitui a checagem que antes era
       // feita só no navegador com a senha exposta no código do cliente.
-      // Usuário em branco = usa a senha mestra (recuperação).
       await loginMutation.mutateAsync({
         username: username.trim() || undefined,
         password,
@@ -83,7 +82,7 @@ export default function PasswordModal({
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Deixe em branco para usar a senha mestra"
+              placeholder="Usuário"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               autoFocus
               disabled={isLoading}

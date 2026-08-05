@@ -279,9 +279,6 @@ export default function AdminManagementModal({
           </button>
         </form>
 
-        <p className="text-xs text-muted-foreground/70 mt-4 font-technical">
-          A senha mestra continua funcionando como acesso de recuperação (login sem usuário).
-        </p>
       </div>
     </div>
   );
