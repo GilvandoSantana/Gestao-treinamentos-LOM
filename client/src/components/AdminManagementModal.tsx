@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { CONTRACTS, CONTRACT_LABELS, contractLabel, type Contract } from '@shared/contracts';
 import { toast } from 'sonner';
 import {
   PERMISSION_KEYS,
@@ -31,6 +32,7 @@ export default function AdminManagementModal({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPermissions, setNewPermissions] = useState<Permissions>({ ...DEFAULT_USER_PERMISSIONS });
+  const [newContract, setNewContract] = useState<Contract>('lom');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftPermissions, setDraftPermissions] = useState<Permissions | null>(null);
 
@@ -57,6 +59,7 @@ export default function AdminManagementModal({
       await createMutation.mutateAsync({
         username: newUsername,
         password: newPassword,
+        contract: newContract,
         permissions: newPermissions,
       });
       toast.success('Usuário cadastrado!');
@@ -168,7 +171,7 @@ export default function AdminManagementModal({
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Usuário
+                        Usuário · {contractLabel(account.contract)}
                       </p>
                     </div>
                   </div>
@@ -254,6 +257,24 @@ export default function AdminManagementModal({
             className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
             disabled={createMutation.isPending}
           />
+          <div>
+            <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+              Contrato
+            </label>
+            <select
+              value={newContract}
+              onChange={(e) => setNewContract(e.target.value as Contract)}
+              disabled={createMutation.isPending}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+            >
+              {CONTRACTS.map((c) => (
+                <option key={c} value={c}>
+                  {CONTRACT_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <input
             type="password"
             value={newPassword}

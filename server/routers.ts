@@ -16,6 +16,7 @@ import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generat
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
+import { CONTRACTS, DEFAULT_CONTRACT, type Contract } from "@shared/contracts";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
 
@@ -186,6 +187,7 @@ export const appRouter = router({
               .max(50)
               .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
             password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
+            contract: z.enum(CONTRACTS),
             permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
@@ -213,6 +215,7 @@ export const appRouter = router({
             // Railway (MASTER_USERNAME + APP_PASSWORD). Contas criadas por
             // aqui são sempre usuários, com permissões definidas na criação.
             role: "user",
+            contract: input.contract,
             permissions: normalizePermissions(input.permissions ?? DEFAULT_USER_PERMISSIONS, "user"),
           });
         }),
@@ -295,14 +298,15 @@ export const appRouter = router({
   fds: router({
     list: requirePermission('viewCertificates')
       .input(z.object({ type: z.enum(DOCUMENT_TYPES).optional() }).optional())
-      .query(async ({ input }) => {
-        return listSafetySheets(input?.type);
+      .query(async ({ input, ctx }) => {
+        return listSafetySheets(input?.type, ctx.siteContract ?? undefined);
       }),
 
     upload: requirePermission('manageCertificates')
       .input(
         z.object({
           type: z.enum(DOCUMENT_TYPES).default('fds'),
+          contract: z.enum(CONTRACTS).optional(),
           name: z.string().trim().min(1, "Informe o nome do documento").max(255),
           fileName: z.string(),
           fileData: z.string(),
@@ -325,6 +329,7 @@ export const appRouter = router({
         const sheet = await createSafetySheet({
           id: uuidv4(),
           type: input.type,
+          contract: ctx.siteContract ?? input.contract ?? DEFAULT_CONTRACT,
           name: input.name,
           fileName: input.fileName,
           fileUrl: upload.url,
@@ -396,6 +401,7 @@ export const appRouter = router({
           birthDate: z.string().optional(),
           role: z.string(),
           phone: z.string().optional(),
+          contract: z.enum(CONTRACTS).optional(),
           trainings: z.array(
             z.object({
               id: z.string(),
@@ -417,6 +423,9 @@ export const appRouter = router({
               birthDate: input.birthDate,
               role: input.role,
               phone: input.phone,
+              // Usuário comum só cadastra no próprio contrato, mesmo que
+              // envie outro pela API; o administrador escolhe livremente.
+              contract: ctx.siteContract ?? input.contract ?? DEFAULT_CONTRACT,
             });
 
           const currentTrainingIds = input.trainings.map(t => t.id);
@@ -552,13 +561,14 @@ export const appRouter = router({
           throw error;
         }
       }),
-    list: requirePermission('viewEmployees').query(async () => {
+    list: requirePermission('viewEmployees').query(async ({ ctx }) => {
       // Três operações no total, independente do número de colaboradores:
       // 1 consulta de colaboradores, 1 de treinamentos e 1 listagem de fotos.
       // Antes eram 2 chamadas POR colaborador (uma ao banco e uma de rede ao
       // Supabase), o que deixava a abertura da lista muito lenta.
       const [employeeList, trainingsByEmployee, photoUrls] = await Promise.all([
-        getAllEmployees(),
+        // Usuário comum recebe só o próprio contrato; administrador recebe tudo.
+        getAllEmployees(ctx.siteContract ?? undefined),
         getTrainingsGroupedByEmployee(),
         getAllPhotoUrls(),
       ]);

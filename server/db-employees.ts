@@ -52,7 +52,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
   }
 }
 
-export async function getAllEmployees() {
+export async function getAllEmployees(contract?: string) {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot get employees: database not available");
@@ -60,7 +60,9 @@ export async function getAllEmployees() {
   }
 
   try {
-    const result = await db.select().from(employees);
+    const result = contract
+      ? await db.select().from(employees).where(eq(employees.contract, contract))
+      : await db.select().from(employees);
     return result;
   } catch (error) {
     console.error("[Database] Failed to get employees:", error);

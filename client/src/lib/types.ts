@@ -14,6 +14,8 @@ export interface Employee {
   birthDate?: string;
   role: string;
   phone?: string;
+  /** Contrato ao qual o colaborador pertence (ver shared/contracts.ts) */
+  contract?: string;
   photoUrl?: string | null;
   /** Demitido: sai das listas e contagens, mas o registro é preservado. */
   dismissed?: boolean;

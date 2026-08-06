@@ -4,6 +4,7 @@ import { sdk } from "./sdk";
 import { getSiteSession } from "../site-auth";
 import { getAdminById } from "../db-admins";
 import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
+import { type Contract } from "@shared/contracts";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -13,6 +14,8 @@ export type TrpcContext = {
   siteAdminUsername: string | null;
   siteRole: SiteRole | null;
   sitePermissions: Permissions | null;
+  /** Contrato do usuário. null = administrador principal (vê todos). */
+  siteContract: Contract | null;
 };
 
 export async function createContext(
@@ -34,6 +37,7 @@ export async function createContext(
   // esperar a sessão daquela pessoa expirar.
   let sitePermissions: Permissions | null = null;
   let siteRole: SiteRole | null = siteSession.role;
+  let siteContract: Contract | null = null;
 
   if (siteSession.isSiteAdmin) {
     if (siteSession.adminId) {
@@ -41,6 +45,7 @@ export async function createContext(
       if (account) {
         siteRole = account.role;
         sitePermissions = account.permissions;
+        siteContract = account.contract;
       } else {
         // Conta removida enquanto a sessão ainda estava válida.
         siteRole = null;
@@ -63,5 +68,7 @@ export async function createContext(
     siteAdminUsername: stillValid ? siteSession.username : null,
     siteRole: stillValid ? siteRole : null,
     sitePermissions: stillValid ? sitePermissions : null,
+    // Administrador principal não tem contrato: enxerga tudo.
+    siteContract: stillValid && siteRole !== "admin" ? siteContract : null,
   };
 }

@@ -37,6 +37,8 @@ export const employees = mysqlTable("employees", {
   birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
+  // Contrato ao qual o colaborador pertence (ver shared/contracts.ts)
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
   // Demissão: o colaborador sai das listas e das contagens, mas o registro e
   // os treinamentos ficam guardados (diferente de excluir).
   dismissed: boolean("dismissed").default(false).notNull(),
@@ -135,6 +137,8 @@ export const admins = mysqlTable("admins", {
   // "admin" = administrador principal (tudo liberado, gerencia contas)
   // "user"  = usuário comum, limitado ao que estiver em permissions
   role: varchar("role", { length: 20 }).notNull().default("user"),
+  // Contrato do usuário: ele só enxerga dados deste contrato
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
   // JSON com as permissões concedidas a usuários comuns
   permissions: text("permissions"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -173,6 +177,7 @@ export const safetySheets = mysqlTable("safetySheets", {
   // Tipo do documento: fds, ara, checklist, ltcat, pgr, pos
   // (ver shared/document-types.ts). Registros antigos ficam como "fds".
   type: varchar("type", { length: 20 }).default("fds").notNull(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileUrl: text("fileUrl").notNull(),
