@@ -3,8 +3,8 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX } from 'lucide-react';
-import { useState } from 'react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
@@ -18,6 +18,15 @@ interface EmployeeCardWithCertificatesProps {
   onViewAudit?: (employee: Employee) => void;
   isAdmin?: boolean;
 }
+
+// Anel da foto na cor da situação — o mesmo código de cor da borda esquerda,
+// reforçado onde o olho bate primeiro.
+const statusRingMap = {
+  expired: 'bg-danger',
+  expiring: 'bg-warning',
+  valid: 'bg-teal',
+  none: 'bg-white/20',
+};
 
 const statusBorderMap = {
   expired: 'border-l-danger',
@@ -54,6 +63,42 @@ export default function EmployeeCardWithCertificates({
   const [certificatesRefresh, setCertificatesRefresh] = useState(0);
 
   const worstStatus = getWorstStatus(employee);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // Fecha o menu de ações ao clicar fora ou apertar Esc.
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setActionsOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActionsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [actionsOpen]);
+
+  // Resumo por situação, exibido como etiquetas no cabeçalho.
+  const trainingSummary = useMemo(() => {
+    const summary = { total: 0, expired: 0, expiring: 0, valid: 0 };
+    (employee.trainings ?? []).forEach((t) => {
+      summary.total++;
+      const status = getTrainingStatus(t.expirationDate).status;
+      if (status === 'expired') summary.expired++;
+      else if (status === 'expiring') summary.expiring++;
+      else if (status === 'valid') summary.valid++;
+    });
+    return summary;
+  }, [employee.trainings]);
 
   const handleCertificatesChange = () => {
     setCertificatesRefresh(prev => prev + 1);
@@ -66,95 +111,156 @@ export default function EmployeeCardWithCertificates({
         style={{ animationDelay: `${index * 60}ms` }}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-navy to-navy-light p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="bg-white/15 w-12 h-12 rounded-lg shrink-0 overflow-hidden flex items-center justify-center border border-white/20">
+        <div className="relative bg-gradient-to-br from-navy via-navy to-navy-light p-5">
+          {/* Marcas de canto (desenho técnico) — mesma linguagem do cabeçalho */}
+          <div className="absolute top-2.5 left-2.5 w-2.5 h-2.5 border-t border-l border-white/20 pointer-events-none" />
+          <div className="absolute bottom-2.5 right-2.5 w-2.5 h-2.5 border-b border-r border-white/20 pointer-events-none" />
+
+          <div className="flex items-start gap-4">
+            {/* Foto maior, com anel na cor da situação */}
+            <div
+              className={`shrink-0 rounded-xl p-[2.5px] ${statusRingMap[worstStatus]}`}
+            >
+              <div className="bg-white/10 w-[68px] h-[68px] rounded-[10px] overflow-hidden flex items-center justify-center">
                 {employee.photoUrl ? (
-                  <img src={employee.photoUrl} alt={employee.name} className="w-full h-full object-cover" />
+                  <img
+                    src={employee.photoUrl}
+                    alt={employee.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <User size={24} className="text-white" />
+                  <User size={32} className="text-white/70" />
                 )}
               </div>
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-white truncate">{employee.name}</h3>
-                <div className="flex items-center gap-2 text-white/70 text-sm truncate">
-                  {employee.registration && (
-                    <>
-                      <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-mono border border-white/20">
-                        #{employee.registration}
-                      </span>
-                      <span className="opacity-40">•</span>
-                    </>
-                  )}
-                  <span>{employee.role}</span>
-                </div>
-                <div className="flex items-center gap-2 text-white/50 text-[10px] mt-0.5">
-                  {employee.educationLevel && (
-                    <>
-                      <p className="flex items-center gap-1">
-                        <span className="w-1 h-1 rounded-full bg-white/30" />
-                        {employee.educationLevel}
-                      </p>
-                      <span className="opacity-40">•</span>
-                    </>
-                  )}
-                  {(() => {
-                    const bd = employee.birthDate;
-                    if (!bd) return employee.age ? (
-                      <p className="flex items-center gap-1">
-                        <span className="w-1 h-1 rounded-full bg-white/30" />
-                        {employee.age} anos
-                      </p>
-                    ) : null;
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display text-[19px] leading-tight font-bold text-white truncate tracking-tight">
+                {employee.name}
+              </h3>
+
+              <p className="text-white/75 text-[15px] truncate mt-1">{employee.role}</p>
+
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                {employee.registration && (
+                  <span className="bg-white/10 border border-white/20 px-2 py-0.5 rounded text-[11px] font-technical text-white/80">
+                    Mat. {employee.registration}
+                  </span>
+                )}
+                {employee.educationLevel && (
+                  <span className="bg-white/[0.07] px-2 py-0.5 rounded text-[11px] text-white/60">
+                    {employee.educationLevel}
+                  </span>
+                )}
+                {(() => {
+                  const bd = employee.birthDate;
+                  let age: number | undefined = employee.age ?? undefined;
+                  if (bd) {
                     const birth = new Date(bd);
                     const today = new Date();
                     let a = today.getFullYear() - birth.getFullYear();
                     const m = today.getMonth() - birth.getMonth();
                     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
-                    return (
-                      <p className="flex items-center gap-1">
-                        <span className="w-1 h-1 rounded-full bg-white/30" />
-                        {a} anos
-                      </p>
-                    );
-                  })()}
-                </div>
+                    age = a;
+                  }
+                  return age !== undefined ? (
+                    <span className="bg-white/[0.07] px-2 py-0.5 rounded text-[11px] text-white/60">
+                      {age} anos
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
-          </div>
-          <div className="flex gap-2 mt-3 flex-wrap">
-            {isAdmin && (
-              <button
-                onClick={() => onEdit(employee)}
-                className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
-              >
-                <Edit2 size={14} />
-                Editar
-              </button>
-            )}
 
-            {isAdmin && onDismiss && (
-              <button
-                onClick={() => onDismiss(employee)}
-                className="bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
-                title="Marcar como demitido (mantém o cadastro e os treinamentos)"
-              >
-                <UserRoundX size={14} />
-                Demitido
-              </button>
-            )}
-
+            {/* Ações reunidas num menu, para o cabeçalho não virar uma fileira
+                de botões coloridos */}
             {isAdmin && (
-              <button
-                onClick={() => onDelete(employee.id)}
-                className="bg-danger/80 hover:bg-danger text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
-              >
-                <Trash2 size={14} />
-                Excluir
-              </button>
+              <div className="relative shrink-0" ref={actionsRef}>
+                <button
+                  onClick={() => setActionsOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={actionsOpen}
+                  aria-label="Ações do colaborador"
+                  className={`p-2 rounded-lg border transition-all ${
+                    actionsOpen
+                      ? 'bg-white text-navy border-white'
+                      : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                  }`}
+                >
+                  <MoreVertical size={17} />
+                </button>
+
+                {actionsOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-1.5 w-48 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-30"
+                  >
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        onEdit(employee);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+                    >
+                      <Edit2 size={15} className="text-muted-foreground" />
+                      Editar
+                    </button>
+
+                    {onDismiss && (
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          onDismiss(employee);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        <UserRoundX size={15} className="text-muted-foreground" />
+                        Demitido
+                      </button>
+                    )}
+
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        onDelete(employee.id);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-danger hover:bg-danger/10 transition-colors text-left border-t border-border"
+                    >
+                      <Trash2 size={15} />
+                      Excluir
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
+
+          {/* Resumo da situação dos treinamentos */}
+          {trainingSummary.total > 0 && (
+            <div className="flex items-center gap-1.5 mt-3.5 flex-wrap">
+              {trainingSummary.expired > 0 && (
+                <span className="flex items-center gap-1 bg-danger/20 text-danger-light px-2 py-1 rounded-md text-[11px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-danger" />
+                  {trainingSummary.expired} vencido{trainingSummary.expired !== 1 ? 's' : ''}
+                </span>
+              )}
+              {trainingSummary.expiring > 0 && (
+                <span className="flex items-center gap-1 bg-warning/20 text-warning px-2 py-1 rounded-md text-[11px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-warning" />
+                  {trainingSummary.expiring} vencendo
+                </span>
+              )}
+              {trainingSummary.valid > 0 && (
+                <span className="flex items-center gap-1 bg-teal/20 text-teal-light px-2 py-1 rounded-md text-[11px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal" />
+                  {trainingSummary.valid} em dia
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Trainings */}
