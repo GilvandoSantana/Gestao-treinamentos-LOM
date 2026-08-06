@@ -4,7 +4,7 @@
  * Dimensions: 55mm x 85mm (Portrait)
  */
 
-import { jsPDF } from 'jspdf';
+import { createBadgeDoc } from './badgeLayout';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 import logoMining from '@/assets/logo-support-mining.png';
@@ -41,11 +41,8 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
   const toastId = toast.loading(`Gerando crachá de água para ${employee.name}...`);
   
   try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: [55, 85]
-    });
+    // Folha A4 retrato com o cartão em 54 x 86 mm (só frente).
+    const doc = createBadgeDoc(55, 85, false);
 
     const black = '#000000';
     const white = '#ffffff';

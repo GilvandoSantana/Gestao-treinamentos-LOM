@@ -4,7 +4,7 @@
  * Dimensions: 55mm x 85mm (Portrait)
  */
 
-import { jsPDF } from 'jspdf';
+import { createBadgeDoc } from './badgeLayout';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 import logoMining from '@/assets/logo-support-mining.png';
@@ -41,11 +41,8 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
   const toastId = toast.loading(`Gerando crachá de bloqueio para ${employee.name}...`);
   
   try {
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: [110, 85]
-    });
+    // Folha A4 retrato com o cartão em 109 x 86 mm (frente + verso).
+    const doc = createBadgeDoc(110, 85, true);
 
     const black = '#000000';
     const white = '#ffffff';

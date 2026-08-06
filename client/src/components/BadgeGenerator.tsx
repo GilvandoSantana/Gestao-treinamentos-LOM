@@ -13,7 +13,7 @@
  * BACK face offset: +55mm (was +100mm)
  */
 
-import { jsPDF } from 'jspdf';
+import { createBadgeDoc } from './badgeLayout';
 import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus } from '@/lib/training-utils';
@@ -70,11 +70,10 @@ export const generateBadgePDF = async (employee: Employee) => {
     // ------------------------------------------------------------------
     // Novo formato: landscape 170x85mm  →  cada face = 55x85mm (5,5x8,5cm)
     // ------------------------------------------------------------------
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: [170, 85]   // largura total x altura  (landscape: width > height)
-    });
+    // Folha A4 retrato com o cartão em 109 x 86 mm (frente + verso).
+    // O desenho abaixo segue as coordenadas originais (170 x 85); o adaptador
+    // converte tudo para o tamanho e a posição corretos na folha.
+    const doc = createBadgeDoc(170, 85, true);
 
     const black = '#000000';
     const white = '#ffffff';
