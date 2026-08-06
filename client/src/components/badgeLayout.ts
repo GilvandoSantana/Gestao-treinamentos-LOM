@@ -38,6 +38,8 @@ export type BadgeLayout = {
   h: (value: number) => number;
   /** Converte um tamanho de fonte (pt) proporcionalmente. */
   f: (value: number) => number;
+  /** Área física do cartão na folha, em mm. */
+  card: { x: number; y: number; width: number; height: number };
 };
 
 /**
@@ -61,15 +63,27 @@ export function createBadgeSheet(
   const targetWidth = doubleSided ? BADGE_MM.doubleWidth : BADGE_MM.singleWidth;
   const targetHeight = BADGE_MM.height;
 
-  const scaleX = targetWidth / sourceWidth;
-  const scaleY = targetHeight / sourceHeight;
+  // Escala ÚNICA para os dois eixos. Usar escalas diferentes em X e Y
+  // esticava/achatava fotos, logos e textos — era o que deixava o crachá
+  // desorganizado. Aqui o desenho mantém a proporção original e apenas é
+  // ampliado ou reduzido até caber no cartão.
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
 
-  // Cartão centralizado horizontalmente na folha.
-  const offsetX = (A4_WIDTH_MM - targetWidth) / 2;
-  const offsetY = Math.min(TOP_MARGIN_MM, (A4_HEIGHT_MM - targetHeight) / 2);
+  const drawnWidth = sourceWidth * scale;
+  const drawnHeight = sourceHeight * scale;
 
-  // A fonte acompanha a menor das escalas para não distorcer o texto.
-  const fontScale = Math.min(scaleX, scaleY);
+  // Cartão (área de corte) centralizado na folha…
+  const cardX = (A4_WIDTH_MM - targetWidth) / 2;
+  const cardY = Math.min(TOP_MARGIN_MM, (A4_HEIGHT_MM - targetHeight) / 2);
+
+  // …e o desenho centralizado dentro do cartão, caso sobre espaço por causa
+  // da diferença de proporção.
+  const offsetX = cardX + (targetWidth - drawnWidth) / 2;
+  const offsetY = cardY + (targetHeight - drawnHeight) / 2;
+
+  const scaleX = scale;
+  const scaleY = scale;
+  const fontScale = scale;
 
   return {
     doc,
@@ -78,6 +92,7 @@ export function createBadgeSheet(
     w: (value: number) => value * scaleX,
     h: (value: number) => value * scaleY,
     f: (value: number) => value * fontScale,
+    card: { x: cardX, y: cardY, width: targetWidth, height: targetHeight },
   };
 }
 
@@ -85,12 +100,12 @@ export function createBadgeSheet(
  * Desenha uma marca de corte discreta em volta do cartão, para facilitar
  * recortar depois de imprimir.
  */
-export function drawCutMarks(layout: BadgeLayout, sourceWidth: number, sourceHeight: number) {
-  const { doc } = layout;
-  const left = layout.x(0);
-  const top = layout.y(0);
-  const right = layout.x(sourceWidth);
-  const bottom = layout.y(sourceHeight);
+export function drawCutMarks(layout: BadgeLayout, _sourceWidth: number, _sourceHeight: number) {
+  const { doc, card } = layout;
+  const left = card.x;
+  const top = card.y;
+  const right = card.x + card.width;
+  const bottom = card.y + card.height;
 
   doc.setDrawColor(170, 170, 170);
   doc.setLineWidth(0.1);
