@@ -17,6 +17,7 @@ import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsBy
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
 import { logActivity, listActivity } from "./db-activity";
+import { sendTestEmail } from "./mailer";
 
 export const appRouter = router({
   system: systemRouter,
@@ -141,6 +142,19 @@ export const appRouter = router({
       role: ctx.siteRole,
       permissions: ctx.sitePermissions,
     })),
+
+    // Teste de envio de e-mail — SOMENTE o administrador principal.
+    testEmail: masterAdminProcedure.mutation(async ({ ctx }) => {
+      const result = await sendTestEmail();
+      void logActivity({
+        username: ctx.siteAdminUsername,
+        role: ctx.siteRole,
+        action: "email.test",
+        targetType: "email",
+        details: result.success ? "teste de e-mail enviado" : `teste de e-mail falhou: ${result.message}`,
+      });
+      return result;
+    }),
 
     // Rastro de atividades — SOMENTE o administrador principal.
     activity: router({

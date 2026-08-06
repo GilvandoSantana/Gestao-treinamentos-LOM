@@ -66,3 +66,52 @@ export async function sendEmail(params: {
     return false;
   }
 }
+
+/**
+ * Envia um e-mail de teste e devolve o motivo exato de eventual falha.
+ *
+ * Diferente de sendEmail(), que apenas registra o erro no log e segue, aqui a
+ * mensagem volta para a tela — o objetivo é justamente diagnosticar a
+ * configuração sem precisar abrir os logs do Railway.
+ */
+export async function sendTestEmail(): Promise<{ success: boolean; message: string }> {
+  const missing = [
+    ["SMTP_HOST", process.env.SMTP_HOST],
+    ["SMTP_PORT", process.env.SMTP_PORT],
+    ["SMTP_USER", process.env.SMTP_USER],
+    ["SMTP_PASSWORD", process.env.SMTP_PASSWORD],
+    ["ALERT_RECIPIENT_EMAIL", process.env.ALERT_RECIPIENT_EMAIL],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    return {
+      success: false,
+      message: `Falta configurar no Railway: ${missing.join(", ")}.`,
+    };
+  }
+
+  const recipients = process.env.ALERT_RECIPIENT_EMAIL as string;
+
+  try {
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: `"Gestão de Treinamentos" <${process.env.SMTP_USER}>`,
+      to: recipients,
+      subject: "Teste de envio — Gestão de Treinamentos LOM",
+      html: `
+        <p>Este é um e-mail de teste do sistema de Gestão de Treinamentos LOM.</p>
+        <p>Se você recebeu esta mensagem, o envio automático de alertas de
+        treinamentos vencendo está configurado corretamente.</p>
+        <p style="color:#777;font-size:12px">Enviado em ${new Date().toLocaleString("pt-BR")}</p>
+      `,
+    });
+
+    return { success: true, message: `E-mail de teste enviado para ${recipients}.` };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[Mailer] Teste de envio falhou:", error);
+    return { success: false, message: `Falha ao enviar: ${detail}` };
+  }
+}

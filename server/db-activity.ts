@@ -23,6 +23,7 @@ export type ActivityAction =
   | "account.create"
   | "account.delete"
   | "account.permissions"
+  | "email.test"
   | "fds.upload"
   | "fds.update"
   | "fds.delete";

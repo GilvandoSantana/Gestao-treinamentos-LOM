@@ -29,6 +29,7 @@ const ACTION_INFO: Record<string, { label: string; className: string }> = {
   'account.create': { label: 'Criou conta de acesso', className: 'bg-orange/10 text-orange' },
   'account.delete': { label: 'Removeu conta de acesso', className: 'bg-danger/10 text-danger' },
   'account.permissions': { label: 'Alterou permissões', className: 'bg-orange/10 text-orange' },
+  'email.test': { label: 'Testou envio de e-mail', className: 'bg-muted text-muted-foreground' },
 };
 
 function formatWhen(value: Date | string): string {

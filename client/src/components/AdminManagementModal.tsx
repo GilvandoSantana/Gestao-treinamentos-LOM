@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2 } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import {
@@ -39,6 +39,17 @@ export default function AdminManagementModal({
   const createMutation = trpc.auth.admins.create.useMutation();
   const deleteMutation = trpc.auth.admins.delete.useMutation();
   const setPermissionsMutation = trpc.auth.admins.setPermissions.useMutation();
+  const testEmailMutation = trpc.auth.testEmail.useMutation();
+
+  const handleTestEmail = async () => {
+    try {
+      const result = await testEmailMutation.mutateAsync();
+      if (result.success) toast.success(result.message);
+      else toast.error(result.message, { duration: 8000 });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao testar o envio.');
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +211,33 @@ export default function AdminManagementModal({
               </div>
             );
           })}
+        </div>
+
+        {/* Diagnóstico do envio de e-mail — só o administrador principal chega
+            até aqui, e é ele quem configura o SMTP no Railway. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Mail size={15} /> Alertas por e-mail
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Envia uma mensagem de teste para o endereço configurado, para conferir se os alertas de
+            treinamentos vencendo vão chegar.
+          </p>
+          <button
+            onClick={handleTestEmail}
+            disabled={testEmailMutation.isPending}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {testEmailMutation.isPending ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Enviando...
+              </>
+            ) : (
+              <>
+                <Send size={14} /> Enviar e-mail de teste
+              </>
+            )}
+          </button>
         </div>
 
         {/* Nova conta */}
