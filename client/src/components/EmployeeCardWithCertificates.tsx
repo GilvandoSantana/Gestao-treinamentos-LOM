@@ -3,20 +3,11 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, CreditCard, Lock, Droplets, UserRoundX } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX } from 'lucide-react';
 import { useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
-import { generateBadgePDF } from './BadgeGenerator';
-import { generateBadgeLockPDF } from './BadgeLockGenerator';
-import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
 
 interface EmployeeCardWithCertificatesProps {
   employee: Employee;
@@ -66,18 +57,6 @@ export default function EmployeeCardWithCertificates({
 
   const handleCertificatesChange = () => {
     setCertificatesRefresh(prev => prev + 1);
-  };
-
-  const handleGenerateBadge = () => {
-    generateBadgePDF(employee);
-  };
-
-  const handleGenerateLockBadge = () => {
-    generateBadgeLockPDF(employee);
-  };
-
-  const handleGenerateWaterBadge = () => {
-    generateBadgeWaterPDF(employee);
   };
 
   return (
@@ -154,34 +133,6 @@ export default function EmployeeCardWithCertificates({
                 Editar
               </button>
             )}
-	            {isAdmin && (
-	              <DropdownMenu>
-	                <DropdownMenuTrigger asChild>
-	                  <button
-	                    className="bg-orange/80 hover:bg-orange text-white px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1.5 text-sm font-medium animate-in fade-in zoom-in duration-300"
-	                    title="Opções de Crachá"
-	                  >
-	                    <CreditCard size={14} />
-	                    Crachás
-	                    <ChevronDown size={14} />
-	                  </button>
-	                </DropdownMenuTrigger>
-	                <DropdownMenuContent align="end">
-	                  <DropdownMenuItem onClick={handleGenerateBadge}>
-	                    <CreditCard className="mr-2 h-4 w-4" />
-	                    <span>Crachá Padrão</span>
-	                  </DropdownMenuItem>
-<DropdownMenuItem onClick={handleGenerateLockBadge}>
-                    <Lock className="mr-2 h-4 w-4" />
-                    <span>Crachá de Bloqueio</span>
-                  </DropdownMenuItem>
-<DropdownMenuItem onClick={handleGenerateWaterBadge}>
-                    <Droplets className="mr-2 h-4 w-4" />
-                    <span>Crachá de Água</span>
-                  </DropdownMenuItem>
-	                </DropdownMenuContent>
-	              </DropdownMenu>
-	            )}
 
             {isAdmin && onDismiss && (
               <button
