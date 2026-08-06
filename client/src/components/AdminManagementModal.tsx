@@ -30,7 +30,6 @@ export default function AdminManagementModal({
 }: AdminManagementModalProps) {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
   const [newPermissions, setNewPermissions] = useState<Permissions>({ ...DEFAULT_USER_PERMISSIONS });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftPermissions, setDraftPermissions] = useState<Permissions | null>(null);
@@ -47,13 +46,11 @@ export default function AdminManagementModal({
       await createMutation.mutateAsync({
         username: newUsername,
         password: newPassword,
-        role: newRole,
-        permissions: newRole === 'user' ? newPermissions : undefined,
+        permissions: newPermissions,
       });
-      toast.success(newRole === 'admin' ? 'Administrador cadastrado!' : 'Usuário cadastrado!');
+      toast.success('Usuário cadastrado!');
       setNewUsername('');
       setNewPassword('');
-      setNewRole('user');
       setNewPermissions({ ...DEFAULT_USER_PERMISSIONS });
       await utils.auth.admins.list.invalidate();
     } catch (error) {
@@ -128,7 +125,7 @@ export default function AdminManagementModal({
         <div className="flex items-center justify-between mb-5 sticky top-0 bg-card pb-2">
           <div className="flex items-center gap-2">
             <ShieldCheck className="text-orange" size={22} />
-            <h2 className="font-display text-xl font-bold text-foreground">Contas e permissões</h2>
+            <h2 className="font-display text-xl font-bold text-foreground">Usuários e permissões</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X size={24} />
@@ -143,7 +140,7 @@ export default function AdminManagementModal({
             </p>
           )}
           {listQuery.data?.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nenhuma conta cadastrada ainda.</p>
+            <p className="text-sm text-muted-foreground">Nenhum usuário cadastrado ainda.</p>
           )}
           {listQuery.data?.map((account) => {
             const isEditing = editingId === account.id;
@@ -151,11 +148,7 @@ export default function AdminManagementModal({
               <div key={account.id} className="border border-border rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between p-3 bg-muted/40">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    {account.role === 'admin' ? (
-                      <ShieldCheck size={17} className="text-orange shrink-0" />
-                    ) : (
-                      <UserIcon size={17} className="text-muted-foreground shrink-0" />
-                    )}
+                    <UserIcon size={17} className="text-muted-foreground shrink-0" />
                     <div className="min-w-0">
                       <p className="font-medium text-foreground truncate">
                         {account.username}
@@ -164,12 +157,12 @@ export default function AdminManagementModal({
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {account.role === 'admin' ? 'Administrador principal' : 'Usuário'}
+                        Usuário
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {account.role === 'user' && (
+                    {(
                       <button
                         onClick={() => {
                           setEditingId(isEditing ? null : account.id);
@@ -212,33 +205,8 @@ export default function AdminManagementModal({
         {/* Nova conta */}
         <form onSubmit={handleCreate} className="space-y-3 border-t border-border pt-4">
           <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <UserPlus size={16} /> Cadastrar nova conta
+            <UserPlus size={16} /> Cadastrar novo usuário
           </p>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setNewRole('user')}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition ${
-                newRole === 'user'
-                  ? 'bg-navy text-white border-navy'
-                  : 'bg-card text-muted-foreground border-border'
-              }`}
-            >
-              Usuário
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewRole('admin')}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition ${
-                newRole === 'admin'
-                  ? 'bg-orange text-white border-orange'
-                  : 'bg-card text-muted-foreground border-border'
-              }`}
-            >
-              Administrador
-            </button>
-          </div>
 
           <input
             type="text"
@@ -257,25 +225,19 @@ export default function AdminManagementModal({
             disabled={createMutation.isPending}
           />
 
-          {newRole === 'user' ? (
-            <div className="border border-border rounded-xl p-2">
-              <p className="text-xs font-semibold text-muted-foreground px-2 pt-1 pb-1.5 uppercase tracking-wide font-technical">
-                O que esta pessoa pode fazer
-              </p>
-              <PermissionChecklist value={newPermissions} onChange={setNewPermissions} />
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground bg-muted rounded-lg p-3">
-              Administradores têm acesso total e podem gerenciar contas e permissões.
+          <div className="border border-border rounded-xl p-2">
+            <p className="text-xs font-semibold text-muted-foreground px-2 pt-1 pb-1.5 uppercase tracking-wide font-technical">
+              O que esta pessoa pode fazer
             </p>
-          )}
+            <PermissionChecklist value={newPermissions} onChange={setNewPermissions} />
+          </div>
 
           <button
             type="submit"
             disabled={createMutation.isPending || !newUsername || !newPassword}
             className="w-full px-4 py-2.5 bg-orange text-white rounded-lg hover:opacity-90 disabled:opacity-50 font-semibold transition"
           >
-            {createMutation.isPending ? 'Cadastrando...' : 'Cadastrar conta'}
+            {createMutation.isPending ? 'Cadastrando...' : 'Cadastrar usuário'}
           </button>
         </form>
 

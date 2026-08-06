@@ -172,7 +172,6 @@ export const appRouter = router({
               .max(50)
               .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
             password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
-            role: z.enum(["admin", "user"]).default("user"),
             permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
@@ -188,7 +187,7 @@ export const appRouter = router({
             action: "account.create",
             targetType: "account",
             targetName: input.username,
-            details: input.role === "admin" ? "administrador" : "usuário",
+            details: "usuário",
           });
 
           const passwordHash = await hashAdminPassword(input.password);
@@ -196,11 +195,11 @@ export const appRouter = router({
             id: uuidv4(),
             username: input.username,
             passwordHash,
-            role: input.role,
-            permissions:
-              input.role === "user"
-                ? normalizePermissions(input.permissions ?? DEFAULT_USER_PERMISSIONS, "user")
-                : undefined,
+            // Só existe um administrador: a conta mestra configurada no
+            // Railway (MASTER_USERNAME + APP_PASSWORD). Contas criadas por
+            // aqui são sempre usuários, com permissões definidas na criação.
+            role: "user",
+            permissions: normalizePermissions(input.permissions ?? DEFAULT_USER_PERMISSIONS, "user"),
           });
         }),
 
