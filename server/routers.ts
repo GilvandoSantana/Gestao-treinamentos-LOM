@@ -306,7 +306,6 @@ export const appRouter = router({
       .input(
         z.object({
           type: z.enum(DOCUMENT_TYPES).default('fds'),
-          contract: z.enum(CONTRACTS).optional(),
           name: z.string().trim().min(1, "Informe o nome do documento").max(255),
           fileName: z.string(),
           fileData: z.string(),
@@ -329,7 +328,7 @@ export const appRouter = router({
         const sheet = await createSafetySheet({
           id: uuidv4(),
           type: input.type,
-          contract: ctx.siteContract ?? input.contract ?? DEFAULT_CONTRACT,
+          contract: ctx.siteContract ?? DEFAULT_CONTRACT,
           name: input.name,
           fileName: input.fileName,
           fileUrl: upload.url,
@@ -401,7 +400,6 @@ export const appRouter = router({
           birthDate: z.string().optional(),
           role: z.string(),
           phone: z.string().optional(),
-          contract: z.enum(CONTRACTS).optional(),
           trainings: z.array(
             z.object({
               id: z.string(),
@@ -423,9 +421,9 @@ export const appRouter = router({
               birthDate: input.birthDate,
               role: input.role,
               phone: input.phone,
-              // Usuário comum só cadastra no próprio contrato, mesmo que
-              // envie outro pela API; o administrador escolhe livremente.
-              contract: ctx.siteContract ?? input.contract ?? DEFAULT_CONTRACT,
+              // O contrato vem sempre da conta que está cadastrando — não é
+              // escolhido no formulário, para não haver como errar nem burlar.
+              contract: ctx.siteContract ?? DEFAULT_CONTRACT,
             });
 
           const currentTrainingIds = input.trainings.map(t => t.id);

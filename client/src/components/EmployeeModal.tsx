@@ -7,7 +7,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, Camera } from 'lucide-react';
-import { CONTRACTS, CONTRACT_LABELS, type Contract } from '@shared/contracts';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -35,7 +34,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [birthDate, setBirthDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
-  const [contract, setContract] = useState<Contract>('lom');
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
@@ -71,7 +69,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setAge(birthDateValue ? calculateAge(birthDateValue) : undefined);
       setRole(employee.role);
       setPhone(employee.phone || '');
-      setContract((employee.contract as Contract) || 'lom');
       setPhotoPreview(employee.photoUrl || null);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
@@ -291,7 +288,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
         birthDate: birthDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
-        contract,
         trainings,
       });
 
@@ -472,20 +468,6 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
                   placeholder="Digite a função personalizada"
                 />
               )}
-            </div>
-            <div>
-              <label className="block text-foreground font-semibold mb-2 text-sm">Contrato</label>
-              <select
-                value={contract}
-                onChange={(e) => setContract(e.target.value as Contract)}
-                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-              >
-                {CONTRACTS.map((c) => (
-                  <option key={c} value={c}>
-                    {CONTRACT_LABELS[c]}
-                  </option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Celular</label>
