@@ -1,7 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
-import { getSiteSession } from "../site-auth";
+import { getSiteSession, getRawCookie, IMPERSONATION_BACKUP_COOKIE } from "../site-auth";
 import { getAdminById } from "../db-admins";
 import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
 
@@ -16,6 +16,8 @@ export type TrpcContext = {
   sitePermissions: Permissions | null;
   /** Contrato do usuário. null = administrador principal (vê todos). */
   siteContract: string | null;
+  /** Um administrador está "vendo como" outro usuário nesta sessão. */
+  isImpersonating: boolean;
 };
 
 export async function createContext(
@@ -82,5 +84,6 @@ export async function createContext(
     // Usuário comum: sempre o próprio contrato. Administrador: o que ele
     // escolheu no cabeçalho, ou null (todos).
     siteContract: stillValid ? siteContract : null,
+    isImpersonating: !!getRawCookie(opts.req, IMPERSONATION_BACKUP_COOKIE),
   };
 }

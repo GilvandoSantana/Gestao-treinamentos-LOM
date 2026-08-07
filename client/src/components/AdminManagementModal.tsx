@@ -6,9 +6,10 @@
  */
 
 import { useState } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { setSessionMarker } from '@/lib/session-marker';
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
@@ -44,6 +45,7 @@ export default function AdminManagementModal({
   const createMutation = trpc.auth.admins.create.useMutation();
   const deleteMutation = trpc.auth.admins.delete.useMutation();
   const setPermissionsMutation = trpc.auth.admins.setPermissions.useMutation();
+  const impersonateMutation = trpc.auth.admins.impersonate.useMutation();
   const testEmailMutation = trpc.auth.testEmail.useMutation();
 
   const handleTestEmail = async () => {
@@ -73,6 +75,18 @@ export default function AdminManagementModal({
       await utils.auth.admins.list.invalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao cadastrar');
+    }
+  };
+
+  const handleImpersonate = async (id: string, username: string) => {
+    if (!window.confirm(`Entrar como "${username}"? Você vai ver o site exatamente como essa pessoa vê, até clicar em "Voltar para admin".`)) return;
+    try {
+      const result = await impersonateMutation.mutateAsync({ id });
+      setSessionMarker(result.sessionMarker);
+      await utils.invalidate();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao entrar como este usuário.');
     }
   };
 
@@ -180,6 +194,14 @@ export default function AdminManagementModal({
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleImpersonate(account.id, account.username)}
+                      disabled={impersonateMutation.isPending}
+                      className="p-2 text-muted-foreground hover:text-teal transition-colors disabled:opacity-40"
+                      title="Ver como este usuário"
+                    >
+                      <Eye size={17} />
+                    </button>
                     {(
                       <button
                         onClick={() => {

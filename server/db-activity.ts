@@ -32,7 +32,9 @@ export type ActivityAction =
   | "contract.delete"
   | "contract.restore"
   | "contract.permanentDelete"
-  | "employee.changeContract";
+  | "employee.changeContract"
+  | "account.impersonate"
+  | "account.stopImpersonate";
 
 export type LogActivityInput = {
   username: string | null;

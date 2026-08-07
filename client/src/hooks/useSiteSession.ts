@@ -41,6 +41,9 @@ export function useSiteSession() {
     // administrador principal (que não pertence a nenhum), reflete o que ele
     // escolheu no seletor do cabeçalho; null = "todos os contratos".
     contract: (query.data?.contract as ContractInfo | null) ?? null,
+    // Um administrador está "vendo como" este usuário — a sessão real (a
+    // salva para voltar) ainda existe, guardada em cookie no servidor.
+    isImpersonating: query.data?.isImpersonating ?? false,
     can,
     refetch: query.refetch,
   };

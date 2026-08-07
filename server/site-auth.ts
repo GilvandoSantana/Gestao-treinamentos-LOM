@@ -5,6 +5,10 @@ import type { Request } from "express";
 import bcrypt from "bcryptjs";
 
 export const SITE_SESSION_COOKIE = "site_session";
+// Guarda o token do administrador enquanto ele está "vendo como" um usuário.
+// Existir este cookie é o próprio sinal de que há uma sessão de admin para
+// voltar — não precisa consultar o banco para saber.
+export const IMPERSONATION_BACKUP_COOKIE = "site_admin_backup";
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8 horas (uma jornada de trabalho)
 
 function getSecretKey() {
@@ -123,6 +127,31 @@ export async function hasValidSiteSession(req: Request): Promise<boolean> {
   const token = cookies[SITE_SESSION_COOKIE];
   if (!token) return false;
   return verifySiteSessionToken(token);
+}
+
+/** Lê um cookie bruto (sem validar) — usado para o cookie de retaguarda. */
+export function getRawCookie(req: Request, name: string): string | undefined {
+  const cookies = parseCookieHeader(req.headers.cookie ?? "");
+  return cookies[name];
+}
+
+/**
+ * Decodifica o token de retaguarda para restaurar a sessão do administrador
+ * ao encerrar o "ver como". Verifica a assinatura antes de confiar nele.
+ */
+export async function verifyBackupToken(
+  token: string
+): Promise<{ username: string; marker: string | null } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.scope !== "site-admin") return null;
+    return {
+      username: typeof payload.username === "string" ? payload.username : "master",
+      marker: typeof payload.marker === "string" ? payload.marker : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export const SITE_SESSION_MAX_AGE_MS = SESSION_TTL_SECONDS * 1000;

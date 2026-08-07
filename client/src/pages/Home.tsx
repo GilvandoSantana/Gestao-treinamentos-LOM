@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
+import { Eye } from 'lucide-react';
 import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics, getWorstStatus } from '@/lib/training-utils';
 import { generateComprehensivePDF, generateFilteredPDF } from '@/lib/pdf-export';
@@ -22,7 +23,7 @@ import BadgesModal from '@/components/BadgesModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
-import { clearSessionMarker } from '@/lib/session-marker';
+import { clearSessionMarker, setSessionMarker } from '@/lib/session-marker';
 import StatCards from '@/components/StatCards';
 import FilterBar from '@/components/FilterBar';
 import AdvancedSearch from '@/components/AdvancedSearch';
@@ -472,8 +473,34 @@ export default function Home() {
     );
   }
 
+  const stopImpersonatingMutation = trpc.auth.stopImpersonating.useMutation();
+  const handleStopImpersonating = async () => {
+    try {
+      const result = await stopImpersonatingMutation.mutateAsync();
+      if (result.sessionMarker) setSessionMarker(result.sessionMarker);
+      await utils.invalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível voltar para o administrador.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
+      {session.isImpersonating && (
+        <div className="sticky top-0 z-[70] bg-orange text-white text-sm font-semibold px-4 py-2.5 flex items-center justify-center gap-3 shadow-md">
+          <Eye size={15} className="shrink-0" />
+          <span className="truncate">
+            Visualizando como <strong>{session.username}</strong>
+          </span>
+          <button
+            onClick={handleStopImpersonating}
+            disabled={stopImpersonatingMutation.isPending}
+            className="shrink-0 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {stopImpersonatingMutation.isPending ? 'Voltando...' : 'Voltar para admin'}
+          </button>
+        </div>
+      )}
       <div className="container py-6 md:py-8">
         {/* Input oculto para importação de JSON */}
         <input

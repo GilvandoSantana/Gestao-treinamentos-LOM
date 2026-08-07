@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls, uploadFdsToSupabase, deleteFdsFromSupabase } from "./supabase-storage";
 import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySheetRoles, deleteSafetySheet, setSafetySheetContract } from "./db-fds";
-import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
+import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, IMPERSONATION_BACKUP_COOKIE, getRawCookie, verifyBackupToken, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
@@ -146,7 +146,43 @@ export const appRouter = router({
     siteLogout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(SITE_SESSION_COOKIE, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(IMPERSONATION_BACKUP_COOKIE, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+
+    // Volta da sessão "ver como" para a sessão original do administrador.
+    // Não usa masterAdminProcedure de propósito: durante o impersonate a
+    // sessão ativa é a do usuário (role 'user'), então essa rota precisa
+    // funcionar mesmo sem privilégio de admin — a validação real é o
+    // cookie de retaguarda ter uma assinatura válida.
+    stopImpersonating: publicProcedure.mutation(async ({ ctx }) => {
+      const backupToken = getRawCookie(ctx.req, IMPERSONATION_BACKUP_COOKIE);
+      if (!backupToken) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Não há uma sessão de administrador para retornar.",
+        });
+      }
+
+      const decoded = await verifyBackupToken(backupToken);
+      if (!decoded) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "A sessão de administrador salva expirou. Faça login novamente.",
+        });
+      }
+
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(SITE_SESSION_COOKIE, backupToken, cookieOptions);
+      ctx.res.clearCookie(IMPERSONATION_BACKUP_COOKIE, { ...cookieOptions, maxAge: -1 });
+
+      void logActivity({
+        username: decoded.username,
+        role: "admin",
+        action: "account.stopImpersonate",
+      });
+
+      return { success: true, sessionMarker: decoded.marker } as const;
     }),
 
     siteSession: publicProcedure.query(async ({ ctx }) => ({
@@ -157,6 +193,7 @@ export const appRouter = router({
       // Objeto completo (não só o slug), para o cabeçalho montar o título
       // com o nome certo e a preposição certa sem outra consulta.
       contract: ctx.siteContract ? await getContractBySlug(ctx.siteContract) ?? null : null,
+      isImpersonating: ctx.isImpersonating,
     })),
 
     // Teste de envio de e-mail — SOMENTE o administrador principal.
@@ -310,6 +347,49 @@ export const appRouter = router({
 
           await deleteAdmin(input.id);
           return { success: true } as const;
+        }),
+
+      // "Ver como" um usuário — SOMENTE o administrador principal, e nunca
+      // aninhado: enquanto estiver "vendo como", a sessão passa a ser desse
+      // usuário (role 'user'), então masterAdminProcedure já bloqueia uma
+      // segunda tentativa de impersonar sem precisar de checagem extra.
+      impersonate: masterAdminProcedure
+        .input(z.object({ id: z.string() }))
+        .mutation(async ({ input, ctx }) => {
+          const target = await getAdminById(input.id);
+          if (!target) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
+          }
+
+          const currentToken = getRawCookie(ctx.req, SITE_SESSION_COOKIE);
+          if (!currentToken) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão inválida." });
+          }
+
+          const sessionMarker = generateSessionMarker();
+          const impersonatedToken = await createSiteSessionToken(
+            target.username,
+            "user",
+            target.id,
+            sessionMarker
+          );
+
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          // Guarda a sessão atual do administrador para restaurar depois, e
+          // troca a sessão ativa para a do usuário escolhido.
+          ctx.res.cookie(IMPERSONATION_BACKUP_COOKIE, currentToken, cookieOptions);
+          ctx.res.cookie(SITE_SESSION_COOKIE, impersonatedToken, cookieOptions);
+
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "account.impersonate",
+            targetType: "account",
+            targetId: target.id,
+            targetName: target.username,
+          });
+
+          return { success: true, sessionMarker, username: target.username } as const;
         }),
     }),
   }),
