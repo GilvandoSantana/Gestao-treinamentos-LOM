@@ -1,47 +1,75 @@
-import nodemailer from "nodemailer";
-
 /**
- * Envio real de e-mail via SMTP. Pensado para Gmail com senha de app, mas
- * funciona com qualquer provedor SMTP padrão — só trocar as variáveis de
- * ambiente.
+ * Envio real de e-mail via Resend (API por HTTPS).
+ *
+ * Trocado de SMTP (nodemailer) para cá porque o Railway bloqueia conexões
+ * SMTP diretas (portas 587 e 465 davam "Connection timeout" mesmo com tudo
+ * configurado certo) — comum em plataformas desse tipo, para evitar que virem
+ * fonte de spam. A API do Resend funciona por HTTPS normal, a mesma porta que
+ * já funciona sem problema.
  *
  * Variáveis de ambiente necessárias:
- * - SMTP_HOST (ex: smtp.gmail.com)
- * - SMTP_PORT (ex: 587)
- * - SMTP_USER (o endereço Gmail que envia)
- * - SMTP_PASSWORD (a senha de app do Gmail, NÃO a senha normal da conta)
+ * - RESEND_API_KEY (criada em resend.com, gratuito até 3 mil e-mails/mês)
  * - ALERT_RECIPIENT_EMAIL (para quem os alertas de treinamento vão; aceita
  *   múltiplos endereços separados por vírgula)
+ *
+ * Opcional:
+ * - RESEND_FROM_EMAIL — remetente, se você verificou um domínio próprio no
+ *   Resend (ex: alertas@suaempresa.com). Sem isso, usa o remetente de teste
+ *   onboarding@resend.dev, que só entrega para o e-mail da conta cadastrada
+ *   no Resend — funciona para validar a configuração, mas para enviar a
+ *   qualquer destinatário é preciso verificar um domínio.
  */
 
-let cachedTransporter: nodemailer.Transporter | null = null;
+const RESEND_API_URL = "https://api.resend.com/emails";
+const DEFAULT_FROM = "onboarding@resend.dev";
 
-function getTransporter(): nodemailer.Transporter {
-  if (cachedTransporter) return cachedTransporter;
-
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-
-  if (!host || !port || !user || !pass) {
-    throw new Error(
-      "Configuração de e-mail incompleta. Defina SMTP_HOST, SMTP_PORT, SMTP_USER e SMTP_PASSWORD no Railway."
-    );
+async function callResend(params: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return { ok: false, message: "RESEND_API_KEY não configurado no Railway." };
   }
 
-  cachedTransporter = nodemailer.createTransport({
-    host,
-    port: Number(port),
-    secure: Number(port) === 465, // 465 = SSL direto; 587 = STARTTLS
-    auth: { user, pass },
-    // O padrão do nodemailer já é generoso (2 min), mas deixamos explícito
-    // para não haver dúvida: se isso estourar, é rede mesmo, não timeout curto.
-    connectionTimeout: 20_000,
-    greetingTimeout: 20_000,
-  });
+  const from = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM;
+  const fromHeader = process.env.RESEND_FROM_EMAIL
+    ? `Gestão de Controle dos Contratos <${from}>`
+    : from;
 
-  return cachedTransporter;
+  try {
+    const response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromHeader,
+        to: params.to.split(",").map((s) => s.trim()).filter(Boolean),
+        subject: params.subject,
+        html: params.html,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      let detail = body;
+      try {
+        const parsed = JSON.parse(body);
+        detail = parsed.message || body;
+      } catch {
+        // corpo não era JSON, usa o texto bruto mesmo
+      }
+      return { ok: false, message: `Resend recusou (HTTP ${response.status}): ${detail}` };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: `Falha de rede ao chamar o Resend: ${detail}` };
+  }
 }
 
 export async function sendEmail(params: {
@@ -58,19 +86,12 @@ export async function sendEmail(params: {
     return false;
   }
 
-  try {
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"Gestão de Controle dos Contratos" <${process.env.SMTP_USER}>`,
-      to: recipients,
-      subject: params.subject,
-      html: params.html,
-    });
-    return true;
-  } catch (error) {
-    console.error("[Mailer] Erro ao enviar e-mail:", error);
+  const result = await callResend({ to: recipients, subject: params.subject, html: params.html });
+  if (!result.ok) {
+    console.error("[Mailer] Erro ao enviar e-mail:", result.message);
     return false;
   }
+  return true;
 }
 
 /**
@@ -82,10 +103,7 @@ export async function sendEmail(params: {
  */
 export async function sendTestEmail(): Promise<{ success: boolean; message: string }> {
   const missing = [
-    ["SMTP_HOST", process.env.SMTP_HOST],
-    ["SMTP_PORT", process.env.SMTP_PORT],
-    ["SMTP_USER", process.env.SMTP_USER],
-    ["SMTP_PASSWORD", process.env.SMTP_PASSWORD],
+    ["RESEND_API_KEY", process.env.RESEND_API_KEY],
     ["ALERT_RECIPIENT_EMAIL", process.env.ALERT_RECIPIENT_EMAIL],
   ]
     .filter(([, value]) => !value)
@@ -100,34 +118,31 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
 
   const recipients = process.env.ALERT_RECIPIENT_EMAIL as string;
 
-  try {
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"Gestão de Controle dos Contratos" <${process.env.SMTP_USER}>`,
-      to: recipients,
-      subject: "Teste de envio — Gestão de Controle dos Contratos",
-      html: `
-        <p>Este é um e-mail de teste do sistema de Gestão de Controle dos Contratos.</p>
-        <p>Se você recebeu esta mensagem, o envio automático de alertas de
-        treinamentos vencendo está configurado corretamente.</p>
-        <p style="color:#777;font-size:12px">Enviado em ${new Date().toLocaleString("pt-BR")}</p>
-      `,
-    });
+  const result = await callResend({
+    to: recipients,
+    subject: "Teste de envio — Gestão de Controle dos Contratos",
+    html: `
+      <p>Este é um e-mail de teste do sistema de Gestão de Controle dos Contratos.</p>
+      <p>Se você recebeu esta mensagem, o envio automático de alertas de
+      treinamentos vencendo está configurado corretamente.</p>
+      <p style="color:#777;font-size:12px">Enviado em ${new Date().toLocaleString("pt-BR")}</p>
+    `,
+  });
 
-    return { success: true, message: `E-mail de teste enviado para ${recipients}.` };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error("[Mailer] Teste de envio falhou:", error);
+  if (!result.ok) {
+    console.error("[Mailer] Teste de envio falhou:", result.message);
 
-    // "Connection timeout"/ECONNECTIMEOUT indica que a conexão TCP nunca
-    // completou — quase sempre porta errada ou rede bloqueando aquela porta,
-    // não um problema de usuário/senha. Sugere a alternativa mais comum.
-    const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED/i.test(detail);
-    const attempted = `${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`;
-    const hint = isTimeout
-      ? ` A conexão com ${attempted} não completou. Confira se o host e a porta estão exatos (sem espaço extra). Se a porta configurada é 587, tente 465; se é 465, tente 587 — dependendo da rede, uma das duas costuma funcionar quando a outra trava.`
+    // Sem domínio verificado, o Resend só entrega para o e-mail da conta —
+    // essa mensagem específica costuma indicar exatamente isso.
+    const looksLikeUnverifiedDomain = /verify|domain|not allowed|testing emails/i.test(
+      result.message
+    );
+    const hint = looksLikeUnverifiedDomain
+      ? " Isso costuma acontecer quando o domínio não foi verificado no Resend: sem verificar, só é possível enviar para o e-mail da própria conta cadastrada lá. Verifique um domínio em resend.com/domains para enviar a qualquer destinatário."
       : "";
 
-    return { success: false, message: `Falha ao enviar (tentando ${attempted}): ${detail}.${hint}` };
+    return { success: false, message: `${result.message}${hint}` };
   }
+
+  return { success: true, message: `E-mail de teste enviado para ${recipients}.` };
 }
