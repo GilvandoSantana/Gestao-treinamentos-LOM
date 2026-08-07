@@ -233,3 +233,29 @@ export async function setEmployeeContract(id: string, contract: string): Promise
   if (!db) throw new Error("Database not available");
   await db.update(employees).set({ contract }).where(eq(employees.id, id));
 }
+
+/**
+ * Nomes de treinamento já usados, sem repetição — para sugerir autocompletar
+ * ao cadastrar um novo treinamento e evitar variações do mesmo nome ("NR-35",
+ * "NR 35", "NR35 - Trabalho em Altura") espalhadas pelo sistema.
+ */
+export async function getDistinctTrainingNames(contract?: string): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const rows = contract
+      ? await db
+          .select({ name: trainings.name })
+          .from(trainings)
+          .leftJoin(employees, eq(trainings.employeeId, employees.id))
+          .where(eq(employees.contract, contract))
+      : await db.select({ name: trainings.name }).from(trainings);
+
+    const unique = Array.from(new Set(rows.map((r) => r.name?.trim()).filter(Boolean))) as string[];
+    return unique.sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    console.error("[Database] Failed to get distinct training names:", error);
+    return [];
+  }
+}

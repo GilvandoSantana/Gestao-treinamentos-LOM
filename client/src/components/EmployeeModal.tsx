@@ -39,6 +39,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [reassignContract, setReassignContract] = useState('');
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
+  const trainingNamesQuery = trpc.employees.trainingNames.useQuery(undefined, { enabled: isOpen });
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
@@ -550,13 +551,26 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
                   <option value="CUSTOM">Digitar treinamento personalizado</option>
                 </select>
                 {showCustomTraining && (
-                  <input
-                    type="text"
-                    value={trainingName}
-                    onChange={(e) => setTrainingName(e.target.value)}
-                    className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                    placeholder="Digite o nome do treinamento"
-                  />
+                  <>
+                    <input
+                      type="text"
+                      list="training-name-suggestions"
+                      value={trainingName}
+                      onChange={(e) => setTrainingName(e.target.value)}
+                      className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                      placeholder="Digite o nome do treinamento"
+                    />
+                    {/* Sugestões dos nomes já usados no sistema — evita "NR-35",
+                        "NR 35" e "NR35 - Trabalho em Altura" coexistindo como
+                        treinamentos diferentes. */}
+                    <datalist id="training-name-suggestions">
+                      {trainingNamesQuery.data
+                        ?.filter((n) => !PREDEFINED_TRAININGS.includes(n as any))
+                        .map((n) => (
+                          <option key={n} value={n} />
+                        ))}
+                    </datalist>
+                  </>
                 )}
               </div>
 

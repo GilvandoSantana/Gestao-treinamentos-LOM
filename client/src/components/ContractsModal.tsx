@@ -16,7 +16,18 @@ import {
   AlertTriangle,
   Loader,
   Trash,
+  BarChart3,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import type { ContractInfo, ContractPreposition } from '@shared/contracts';
@@ -26,7 +37,7 @@ interface ContractsModalProps {
   onClose: () => void;
 }
 
-type Tab = 'active' | 'trash';
+type Tab = 'active' | 'trash' | 'overview';
 
 /** Confirmação de exclusão (mover para lixeira ou apagar de vez). */
 type PendingDelete = { contract: ContractInfo; permanent: boolean };
@@ -50,6 +61,10 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     { enabled: isOpen && tab === 'trash' }
   );
   const trashed = (trashQuery.data ?? []).filter((c) => c.deleted);
+
+  const overviewQuery = trpc.contracts.overview.useQuery(undefined, {
+    enabled: isOpen && tab === 'overview',
+  });
 
   const usageQuery = trpc.contracts.usage.useQuery(
     { id: pendingDelete?.contract.id ?? '' },
@@ -144,7 +159,9 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
               <p className="text-xs text-muted-foreground">
                 {tab === 'active'
                   ? `${activeQuery.data?.length ?? 0} contrato(s) ativo(s)`
-                  : `${trashed.length} na lixeira`}
+                  : tab === 'trash'
+                    ? `${trashed.length} na lixeira`
+                    : 'Panorama de colaboradores e treinamentos'}
               </p>
             </div>
           </div>
@@ -175,6 +192,17 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
           >
             <Trash size={14} />
             Excluídos
+          </button>
+          <button
+            onClick={() => setTab('overview')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
+              tab === 'overview'
+                ? 'bg-navy text-white border-navy'
+                : 'bg-card text-muted-foreground border-border hover:border-muted-foreground/40'
+            }`}
+          >
+            <BarChart3 size={14} />
+            Comparativo
           </button>
         </div>
 
@@ -313,7 +341,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                 </button>
               )}
             </>
-          ) : (
+          ) : tab === 'trash' ? (
             <>
               {trashQuery.isLoading && (
                 <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
@@ -360,6 +388,56 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                   </div>
                 ))}
               </div>
+            </>
+          ) : (
+            <>
+              {overviewQuery.isLoading && (
+                <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
+                  <Loader size={14} className="animate-spin" /> Carregando...
+                </p>
+              )}
+              {overviewQuery.data?.length === 0 && !overviewQuery.isLoading && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Nenhum contrato com colaboradores cadastrados ainda.
+                </p>
+              )}
+              {overviewQuery.data && overviewQuery.data.length > 0 && (
+                <div className="space-y-4">
+                  <div className="w-full" style={{ height: Math.max(220, overviewQuery.data.length * 60) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={overviewQuery.data}
+                        layout="vertical"
+                        margin={{ top: 4, right: 12, left: 8, bottom: 4 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.25} />
+                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="expired" stackId="s" name="Vencidos" fill="#d64550" />
+                        <Bar dataKey="expiring" stackId="s" name="Vencendo" fill="#d99a20" />
+                        <Bar dataKey="valid" stackId="s" name="Válidos" fill="#2d9f7f" radius={[0, 5, 5, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="space-y-2">
+                    {overviewQuery.data.map((c) => (
+                      <div
+                        key={c.slug}
+                        className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30"
+                      >
+                        <p className="font-medium text-foreground truncate">{c.name}</p>
+                        <p className="text-xs text-muted-foreground font-technical shrink-0">
+                          {c.employees} colaborador{c.employees !== 1 ? 'es' : ''}
+                          {c.expired > 0 && <span className="text-danger"> · {c.expired} vencido{c.expired !== 1 ? 's' : ''}</span>}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

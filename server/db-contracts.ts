@@ -4,7 +4,7 @@
  */
 
 import { eq, and, count } from "drizzle-orm";
-import { contracts, employees, admins, safetySheets } from "../drizzle/schema";
+import { contracts, employees, admins, safetySheets, trainings } from "../drizzle/schema";
 import { getDb } from "./db";
 import { slugifyContract, type ContractInfo, type ContractPreposition } from "@shared/contracts";
 
@@ -143,4 +143,72 @@ export async function permanentlyDeleteContract(id: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(contracts).where(and(eq(contracts.id, id), eq(contracts.deleted, true)));
+}
+
+/**
+ * Panorama por contrato: colaboradores ativos e a situação dos treinamentos
+ * deles — para o comparativo entre contratos que só o administrador vê.
+ */
+export async function getContractsOverview(): Promise<
+  Array<{
+    slug: string;
+    name: string;
+    employees: number;
+    expired: number;
+    expiring: number;
+    valid: number;
+  }>
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const activeContracts = await listContracts(false);
+
+  const [employeeRows, trainingRows] = await Promise.all([
+    db
+      .select({ id: employees.id, contract: employees.contract, dismissed: employees.dismissed })
+      .from(employees),
+    db
+      .select({
+        expirationDate: trainings.expirationDate,
+        employeeId: trainings.employeeId,
+      })
+      .from(trainings),
+  ]);
+
+  const contractByEmployeeId = new Map(employeeRows.map((e) => [e.id, e.contract]));
+  const activeEmployeeCountByContract = new Map<string, number>();
+  for (const e of employeeRows) {
+    if (e.dismissed) continue;
+    activeEmployeeCountByContract.set(e.contract, (activeEmployeeCountByContract.get(e.contract) ?? 0) + 1);
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const statusCountByContract = new Map<string, { expired: number; expiring: number; valid: number }>();
+  for (const t of trainingRows) {
+    const contract = contractByEmployeeId.get(t.employeeId);
+    if (!contract || !t.expirationDate) continue;
+
+    const expDate = new Date(t.expirationDate);
+    expDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
+
+    const entry = statusCountByContract.get(contract) ?? { expired: 0, expiring: 0, valid: 0 };
+    if (diffDays < 0) entry.expired++;
+    else if (diffDays <= 30) entry.expiring++;
+    else entry.valid++;
+    statusCountByContract.set(contract, entry);
+  }
+
+  return activeContracts.map((c) => {
+    const status = statusCountByContract.get(c.slug) ?? { expired: 0, expiring: 0, valid: 0 };
+    return {
+      slug: c.slug,
+      name: c.name,
+      employees: activeEmployeeCountByContract.get(c.slug) ?? 0,
+      ...status,
+    };
+  });
 }

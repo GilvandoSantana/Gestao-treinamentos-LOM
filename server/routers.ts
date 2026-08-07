@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -27,6 +27,7 @@ import {
   restoreContract,
   permanentlyDeleteContract,
   countContractUsage,
+  getContractsOverview,
 } from "./db-contracts";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
@@ -580,9 +581,21 @@ export const appRouter = router({
         });
         return { success: true } as const;
       }),
+
+    // Panorama comparativo entre contratos — colaboradores e situação dos
+    // treinamentos lado a lado, só para o administrador principal.
+    overview: masterAdminProcedure.query(async () => {
+      return getContractsOverview();
+    }),
   }),
 
   employees: router({
+    // Nomes de treinamento já cadastrados, para sugerir ao digitar um novo e
+    // evitar variações do mesmo treinamento espalhadas pelo sistema.
+    trainingNames: requirePermission('viewEmployees').query(async ({ ctx }) => {
+      return getDistinctTrainingNames(ctx.siteContract ?? undefined);
+    }),
+
     // Reatribuir colaborador para outro contrato — SOMENTE o administrador
     // principal. Não é uma edição normal: move o registro inteiro para outra
     // "gaveta", então fica separado do upsertOne e sempre exige o admin
