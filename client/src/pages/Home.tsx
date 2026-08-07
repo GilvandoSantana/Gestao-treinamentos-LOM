@@ -85,6 +85,19 @@ export default function Home() {
   // do login — nada é exibido antes de entrar.
   const session = useSiteSession();
   const utils = trpc.useUtils();
+  // Precisa ficar aqui, antes de qualquer "return" condicional do
+  // componente (login/loading) — hooks não podem ser chamados
+  // condicionalmente, senão o React perde a contagem entre renders.
+  const stopImpersonatingMutation = trpc.auth.stopImpersonating.useMutation();
+  const handleStopImpersonating = async () => {
+    try {
+      const result = await stopImpersonatingMutation.mutateAsync();
+      if (result.sessionMarker) setSessionMarker(result.sessionMarker);
+      await utils.invalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível voltar para o administrador.');
+    }
+  };
 
   // Contrato em que o administrador está trabalhando no momento. Escolher
   // outro contrato no cabeçalho grava no navegador (lido a cada requisição,
@@ -473,16 +486,6 @@ export default function Home() {
     );
   }
 
-  const stopImpersonatingMutation = trpc.auth.stopImpersonating.useMutation();
-  const handleStopImpersonating = async () => {
-    try {
-      const result = await stopImpersonatingMutation.mutateAsync();
-      if (result.sessionMarker) setSessionMarker(result.sessionMarker);
-      await utils.invalidate();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível voltar para o administrador.');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
