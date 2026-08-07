@@ -1,5 +1,6 @@
 import { trpc } from '@/lib/trpc';
 import { ALL_PERMISSIONS, type PermissionKey, type Permissions } from '@shared/permissions';
+import { isContract, type Contract } from '@shared/contracts';
 
 const NO_PERMISSIONS = Object.keys(ALL_PERMISSIONS).reduce(
   (acc, key) => ({ ...acc, [key]: false }),
@@ -36,6 +37,9 @@ export function useSiteSession() {
     role,
     username: query.data?.username ?? null,
     isMasterAdmin: role === 'admin',
+    // Contrato da conta. Para o administrador principal (que não pertence a
+    // nenhum), reflete o que ele escolheu no seletor do cabeçalho.
+    contract: isContract(query.data?.contract) ? (query.data?.contract as Contract) : null,
     can,
     refetch: query.refetch,
   };

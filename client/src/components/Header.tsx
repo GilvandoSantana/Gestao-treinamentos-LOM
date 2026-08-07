@@ -30,7 +30,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
-import { CONTRACTS, CONTRACT_LABELS, type Contract } from '@shared/contracts';
+import { CONTRACTS, CONTRACT_LABELS, contractSystemTitleParts, type Contract } from '@shared/contracts';
 import { useScrolled } from '@/hooks/useScrolled';
 
 interface HeaderProps {
@@ -50,6 +50,8 @@ interface HeaderProps {
   /** Contrato em que o administrador está trabalhando; null = todos. */
   activeContract?: Contract | null;
   onActiveContractChange?: (contract: Contract | null) => void;
+  /** Contrato exibido no título: o do próprio usuário, ou o que o administrador selecionou. */
+  titleContract?: Contract | null;
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
   onShowDocuments?: () => void;
@@ -73,6 +75,7 @@ export default function Header({
   isMasterAdmin = false,
   activeContract = null,
   onActiveContractChange,
+  titleContract = null,
   onShowDismissed,
   onShowActivity,
   onShowDocuments,
@@ -174,7 +177,10 @@ export default function Header({
                   scrolled ? 'text-lg md:text-2xl' : 'text-xl md:text-3xl'
                 }`}
               >
-                Gestão de Treinamentos <span className="text-orange-light">LOM</span>
+                {contractSystemTitleParts(titleContract ?? null).prefix}{' '}
+                <span className="text-orange-light">
+                  {contractSystemTitleParts(titleContract ?? null).label}
+                </span>
               </h1>
               <div
                 className={`overflow-hidden transition-all duration-300 ${

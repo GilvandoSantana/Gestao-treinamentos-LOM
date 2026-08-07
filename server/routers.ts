@@ -142,6 +142,7 @@ export const appRouter = router({
       username: ctx.siteAdminUsername,
       role: ctx.siteRole,
       permissions: ctx.sitePermissions,
+      contract: ctx.siteContract,
     })),
 
     // Teste de envio de e-mail — SOMENTE o administrador principal.

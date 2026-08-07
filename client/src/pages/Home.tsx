@@ -514,6 +514,7 @@ export default function Home() {
           isMasterAdmin={session.isMasterAdmin}
           activeContract={activeContract}
           onActiveContractChange={handleActiveContractChange}
+          titleContract={session.isMasterAdmin ? activeContract : session.contract}
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
