@@ -35,6 +35,10 @@ function getTransporter(): nodemailer.Transporter {
     port: Number(port),
     secure: Number(port) === 465, // 465 = SSL direto; 587 = STARTTLS
     auth: { user, pass },
+    // O padrão do nodemailer já é generoso (2 min), mas deixamos explícito
+    // para não haver dúvida: se isso estourar, é rede mesmo, não timeout curto.
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
   });
 
   return cachedTransporter;
@@ -114,6 +118,16 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[Mailer] Teste de envio falhou:", error);
-    return { success: false, message: `Falha ao enviar: ${detail}` };
+
+    // "Connection timeout"/ECONNECTIMEOUT indica que a conexão TCP nunca
+    // completou — quase sempre porta errada ou rede bloqueando aquela porta,
+    // não um problema de usuário/senha. Sugere a alternativa mais comum.
+    const isTimeout = /timeout|ETIMEDOUT|ECONNREFUSED/i.test(detail);
+    const attempted = `${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`;
+    const hint = isTimeout
+      ? ` A conexão com ${attempted} não completou. Confira se o host e a porta estão exatos (sem espaço extra). Se a porta configurada é 587, tente 465; se é 465, tente 587 — dependendo da rede, uma das duas costuma funcionar quando a outra trava.`
+      : "";
+
+    return { success: false, message: `Falha ao enviar (tentando ${attempted}): ${detail}.${hint}` };
   }
 }
