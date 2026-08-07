@@ -4,7 +4,7 @@ import { sdk } from "./sdk";
 import { getSiteSession } from "../site-auth";
 import { getAdminById } from "../db-admins";
 import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
-import { type Contract } from "@shared/contracts";
+import { isContract, type Contract } from "@shared/contracts";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -58,6 +58,14 @@ export async function createContext(
     }
   }
 
+  // Administrador escolhe no cabeçalho em qual contrato está trabalhando.
+  // Sem escolha, continua vendo todos. Usuários comuns ignoram este cabeçalho.
+  if (siteRole === "admin") {
+    const header = opts.req.headers["x-active-contract"];
+    const chosen = Array.isArray(header) ? header[0] : header;
+    siteContract = isContract(chosen) ? chosen : null;
+  }
+
   const stillValid = siteSession.isSiteAdmin && siteRole !== null;
 
   return {
@@ -68,7 +76,8 @@ export async function createContext(
     siteAdminUsername: stillValid ? siteSession.username : null,
     siteRole: stillValid ? siteRole : null,
     sitePermissions: stillValid ? sitePermissions : null,
-    // Administrador principal não tem contrato: enxerga tudo.
-    siteContract: stillValid && siteRole !== "admin" ? siteContract : null,
+    // Usuário comum: sempre o próprio contrato. Administrador: o que ele
+    // escolheu no cabeçalho, ou null (todos).
+    siteContract: stillValid ? siteContract : null,
   };
 }

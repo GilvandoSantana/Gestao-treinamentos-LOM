@@ -7,6 +7,7 @@ import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
 import { getSessionMarker } from "@/lib/session-marker";
+import { getActiveContract, ACTIVE_CONTRACT_HEADER } from "@/lib/active-contract";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -46,8 +47,13 @@ const trpcClient = trpc.createClient({
       // Marcador da sessão do navegador: sem ele o servidor não aceita o
       // cookie de login (ver client/src/lib/session-marker.ts).
       headers() {
+        const headers: Record<string, string> = {};
         const marker = getSessionMarker();
-        return marker ? { "x-session-marker": marker } : {};
+        if (marker) headers["x-session-marker"] = marker;
+        // Contrato escolhido pelo administrador no cabeçalho (só ele usa).
+        const contract = getActiveContract();
+        if (contract) headers[ACTIVE_CONTRACT_HEADER] = contract;
+        return headers;
       },
       fetch(input, init) {
         return globalThis.fetch(input, {
