@@ -8,7 +8,6 @@
 import { useState } from 'react';
 import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
-import { CONTRACTS, CONTRACT_LABELS, contractLabel, type Contract } from '@shared/contracts';
 import { toast } from 'sonner';
 import {
   PERMISSION_KEYS,
@@ -32,12 +31,16 @@ export default function AdminManagementModal({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPermissions, setNewPermissions] = useState<Permissions>({ ...DEFAULT_USER_PERMISSIONS });
-  const [newContract, setNewContract] = useState<Contract>('lom');
+  const [newContract, setNewContract] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftPermissions, setDraftPermissions] = useState<Permissions | null>(null);
 
   const utils = trpc.useUtils();
   const listQuery = trpc.auth.admins.list.useQuery(undefined, { enabled: isOpen });
+  // Só contratos ativos entram nas opções de cadastro; um excluído continua
+  // existindo nas contas antigas, mas não pode receber gente nova.
+  const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isOpen });
+  const contractNameBySlug = new Map((contractsQuery.data ?? []).map((c) => [c.slug, c.name]));
   const createMutation = trpc.auth.admins.create.useMutation();
   const deleteMutation = trpc.auth.admins.delete.useMutation();
   const setPermissionsMutation = trpc.auth.admins.setPermissions.useMutation();
@@ -64,6 +67,7 @@ export default function AdminManagementModal({
       });
       toast.success('Usuário cadastrado!');
       setNewUsername('');
+      setNewContract('');
       setNewPassword('');
       setNewPermissions({ ...DEFAULT_USER_PERMISSIONS });
       await utils.auth.admins.list.invalidate();
@@ -171,7 +175,7 @@ export default function AdminManagementModal({
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Usuário · {contractLabel(account.contract)}
+                        Usuário · {contractNameBySlug.get(account.contract) ?? account.contract}
                       </p>
                     </div>
                   </div>
@@ -263,16 +267,24 @@ export default function AdminManagementModal({
             </label>
             <select
               value={newContract}
-              onChange={(e) => setNewContract(e.target.value as Contract)}
+              onChange={(e) => setNewContract(e.target.value)}
               disabled={createMutation.isPending}
               className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
             >
-              {CONTRACTS.map((c) => (
-                <option key={c} value={c}>
-                  {CONTRACT_LABELS[c]}
+              <option value="" disabled>
+                {contractsQuery.isLoading ? 'Carregando...' : 'Selecione um contrato'}
+              </option>
+              {contractsQuery.data?.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {c.name}
                 </option>
               ))}
             </select>
+            {contractsQuery.data?.length === 0 && (
+              <p className="text-xs text-danger mt-1">
+                Nenhum contrato cadastrado ainda — crie um em "Contratos" antes de cadastrar usuários.
+              </p>
+            )}
           </div>
 
           <input
@@ -293,7 +305,7 @@ export default function AdminManagementModal({
 
           <button
             type="submit"
-            disabled={createMutation.isPending || !newUsername || !newPassword}
+            disabled={createMutation.isPending || !newUsername || !newPassword || !newContract}
             className="w-full px-4 py-2.5 bg-orange text-white rounded-lg hover:opacity-90 disabled:opacity-50 font-semibold transition"
           >
             {createMutation.isPending ? 'Cadastrando...' : 'Cadastrar usuário'}

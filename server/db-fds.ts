@@ -5,13 +5,13 @@
 import { and, desc, eq } from "drizzle-orm";
 import { safetySheets, type SafetySheet } from "../drizzle/schema";
 import { getDb } from "./db";
-import { type Contract, isContract, DEFAULT_CONTRACT } from "@shared/contracts";
+import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 import { type DocumentType, isDocumentType } from "@shared/document-types";
 
 export type PublicSafetySheet = {
   id: string;
   type: DocumentType;
-  contract: Contract;
+  contract: string;
   name: string;
   fileName: string;
   fileUrl: string;
@@ -33,7 +33,7 @@ function toPublic(row: SafetySheet): PublicSafetySheet {
   return {
     id: row.id,
     type: isDocumentType(row.type) ? row.type : 'fds',
-    contract: isContract(row.contract) ? row.contract : DEFAULT_CONTRACT,
+    contract: row.contract || DEFAULT_CONTRACT_SLUG,
     name: row.name,
     fileName: row.fileName,
     fileUrl: row.fileUrl,
@@ -43,7 +43,7 @@ function toPublic(row: SafetySheet): PublicSafetySheet {
   };
 }
 
-export async function listSafetySheets(type?: DocumentType, contract?: Contract): Promise<PublicSafetySheet[]> {
+export async function listSafetySheets(type?: DocumentType, contract?: string): Promise<PublicSafetySheet[]> {
   const db = await getDb();
   if (!db) return [];
   try {
@@ -72,7 +72,7 @@ export async function getSafetySheetById(id: string): Promise<PublicSafetySheet 
 export async function createSafetySheet(input: {
   id: string;
   type: DocumentType;
-  contract: Contract;
+  contract: string;
   name: string;
   fileName: string;
   fileUrl: string;

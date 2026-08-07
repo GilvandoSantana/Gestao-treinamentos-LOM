@@ -26,7 +26,12 @@ export type ActivityAction =
   | "email.test"
   | "fds.upload"
   | "fds.update"
-  | "fds.delete";
+  | "fds.delete"
+  | "contract.create"
+  | "contract.update"
+  | "contract.delete"
+  | "contract.restore"
+  | "contract.permanentDelete";
 
 export type LogActivityInput = {
   username: string | null;

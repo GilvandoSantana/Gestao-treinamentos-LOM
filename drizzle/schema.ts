@@ -189,3 +189,23 @@ export const safetySheets = mysqlTable("safetySheets", {
 
 export type SafetySheet = typeof safetySheets.$inferSelect;
 export type InsertSafetySheet = typeof safetySheets.$inferInsert;
+
+/**
+ * Contratos atendidos pelo sistema. Antes era uma lista fixa no código; agora
+ * o administrador cadastra, edita e exclui pela própria interface.
+ */
+export const contracts = mysqlTable("contracts", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  // Identificador estável usado em employees/admins/safetySheets.contract.
+  // Não muda depois de criado, mesmo que o nome seja editado.
+  slug: varchar("slug", { length: 60 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull(),
+  // "do" ou "da" — para o título "Gestão de Controle do Contrato ___ Nome"
+  preposition: varchar("preposition", { length: 2 }).notNull().default("do"),
+  deleted: boolean("deleted").default(false).notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ContractRow = typeof contracts.$inferSelect;
+export type InsertContractRow = typeof contracts.$inferInsert;

@@ -1,72 +1,54 @@
 /**
  * Contratos atendidos pelo sistema.
  *
- * Cada colaborador, usuário e documento pertence a um contrato. Usuários só
- * enxergam os dados do próprio contrato; o administrador principal enxerga
- * todos.
+ * Cadastrados pelo administrador (não é mais uma lista fixa). Cada
+ * colaborador, usuário e documento pertence a um contrato pelo `slug` —
+ * identificador estável que não muda mesmo se o nome for editado depois.
  */
 
-export const CONTRACTS = [
-  'lom',
-  'reflorestamento',
-  'convergencia',
-  'construcao-civil',
-  'geomecanica',
-  'conjunto-mecanizado',
-  'integridade-estrutural',
-] as const;
+export type ContractPreposition = 'do' | 'da';
 
-export type Contract = (typeof CONTRACTS)[number];
-
-export const CONTRACT_LABELS: Record<Contract, string> = {
-  lom: 'LOM',
-  reflorestamento: 'Reflorestamento',
-  convergencia: 'Convergência',
-  'construcao-civil': 'Construção Civil',
-  geomecanica: 'Geomecânica',
-  'conjunto-mecanizado': 'Conjunto Mecanizado',
-  'integridade-estrutural': 'Integridade Estrutural',
-};
+export interface ContractInfo {
+  id: string;
+  slug: string;
+  name: string;
+  preposition: ContractPreposition;
+  deleted: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+}
 
 /** Contrato padrão dos registros que existiam antes desta divisão. */
-export const DEFAULT_CONTRACT: Contract = 'lom';
+export const DEFAULT_CONTRACT_SLUG = 'lom';
 
-/**
- * Preposição que combina com o gênero do nome do contrato, para frases como
- * "Gestão de Controle do Contrato ___".
- */
-export const CONTRACT_PREPOSITION: Record<Contract, 'do' | 'da'> = {
-  lom: 'do',
-  reflorestamento: 'do',
-  convergencia: 'da',
-  'construcao-civil': 'da',
-  geomecanica: 'da',
-  'conjunto-mecanizado': 'do',
-  'integridade-estrutural': 'da',
-};
+/** Gera um identificador estável a partir do nome digitado pelo administrador. */
+export function slugifyContract(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
 
 /** Título de identificação do sistema para o contrato ativo. */
-export function contractSystemTitle(contract: Contract | null): string {
+export function contractSystemTitle(contract: Pick<ContractInfo, 'name' | 'preposition'> | null): string {
   if (!contract) return 'Gestão de Controle de Contratos';
-  return `Gestão de Controle do Contrato ${CONTRACT_PREPOSITION[contract]} ${CONTRACT_LABELS[contract]}`;
+  return `Gestão de Controle do Contrato ${contract.preposition} ${contract.name}`;
 }
 
 /**
  * Mesmo título, separado em prefixo (branco) e nome do contrato (destacado em
  * laranja no cabeçalho) — para poder estilizar só a última parte.
  */
-export function contractSystemTitleParts(contract: Contract | null): { prefix: string; label: string } {
+export function contractSystemTitleParts(
+  contract: Pick<ContractInfo, 'name' | 'preposition'> | null
+): { prefix: string; label: string } {
   if (!contract) return { prefix: 'Gestão de Controle de', label: 'Contratos' };
   return {
-    prefix: `Gestão de Controle do Contrato ${CONTRACT_PREPOSITION[contract]}`,
-    label: CONTRACT_LABELS[contract],
+    prefix: `Gestão de Controle do Contrato ${contract.preposition}`,
+    label: contract.name,
   };
-}
-
-export function isContract(value: unknown): value is Contract {
-  return typeof value === 'string' && (CONTRACTS as readonly string[]).includes(value);
-}
-
-export function contractLabel(value: unknown): string {
-  return isContract(value) ? CONTRACT_LABELS[value] : '—';
 }

@@ -5,7 +5,7 @@
 import { eq } from "drizzle-orm";
 import { admins, type Admin } from "../drizzle/schema";
 import { getDb } from "./db";
-import { type Contract, isContract, DEFAULT_CONTRACT } from "@shared/contracts";
+import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 import {
   normalizePermissions,
   DEFAULT_USER_PERMISSIONS,
@@ -16,7 +16,7 @@ import {
 export type PublicAdmin = {
   id: string;
   username: string;
-  contract: Contract;
+  contract: string;
   role: SiteRole;
   permissions: Permissions;
   createdAt: Date;
@@ -27,7 +27,7 @@ function toPublic(row: Admin): PublicAdmin {
   return {
     id: row.id,
     username: row.username,
-    contract: isContract(row.contract) ? row.contract : DEFAULT_CONTRACT,
+    contract: row.contract || DEFAULT_CONTRACT_SLUG,
     role,
     permissions: normalizePermissions(row.permissions, role),
     createdAt: row.createdAt,
@@ -95,7 +95,7 @@ export async function getAdminById(id: string): Promise<PublicAdmin | undefined>
 export async function createAdmin(input: {
   id: string;
   username: string;
-  contract: Contract;
+  contract: string;
   passwordHash: string;
   role: SiteRole;
   permissions?: Permissions;

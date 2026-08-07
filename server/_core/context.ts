@@ -4,7 +4,7 @@ import { sdk } from "./sdk";
 import { getSiteSession } from "../site-auth";
 import { getAdminById } from "../db-admins";
 import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
-import { isContract, type Contract } from "@shared/contracts";
+
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -15,7 +15,7 @@ export type TrpcContext = {
   siteRole: SiteRole | null;
   sitePermissions: Permissions | null;
   /** Contrato do usuário. null = administrador principal (vê todos). */
-  siteContract: Contract | null;
+  siteContract: string | null;
 };
 
 export async function createContext(
@@ -37,7 +37,7 @@ export async function createContext(
   // esperar a sessão daquela pessoa expirar.
   let sitePermissions: Permissions | null = null;
   let siteRole: SiteRole | null = siteSession.role;
-  let siteContract: Contract | null = null;
+  let siteContract: string | null = null;
 
   if (siteSession.isSiteAdmin) {
     if (siteSession.adminId) {
@@ -61,9 +61,12 @@ export async function createContext(
   // Administrador escolhe no cabeçalho em qual contrato está trabalhando.
   // Sem escolha, continua vendo todos. Usuários comuns ignoram este cabeçalho.
   if (siteRole === "admin") {
+    // Validação leve aqui (não bate no banco a cada request): um slug
+    // inválido ou de um contrato já excluído simplesmente não encontra nada
+    // nas consultas filtradas, sem quebrar a requisição.
     const header = opts.req.headers["x-active-contract"];
     const chosen = Array.isArray(header) ? header[0] : header;
-    siteContract = isContract(chosen) ? chosen : null;
+    siteContract = typeof chosen === "string" && chosen.trim() ? chosen.trim() : null;
   }
 
   const stillValid = siteSession.isSiteAdmin && siteRole !== null;

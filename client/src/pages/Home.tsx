@@ -16,6 +16,7 @@ import AdminManagementModal from '@/components/AdminManagementModal';
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
+import ContractsModal from '@/components/ContractsModal';
 import DocumentsModal from '@/components/DocumentsModal';
 import BadgesModal from '@/components/BadgesModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
@@ -38,8 +39,7 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
-import { getActiveContract, setActiveContract } from '@/lib/active-contract';
-import { isContract, type Contract } from '@shared/contracts';
+import { setActiveContract } from '@/lib/active-contract';
 
 export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -64,6 +64,7 @@ export default function Home() {
   const [showAdminManagement, setShowAdminManagement] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
+  const [showContracts, setShowContracts] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
@@ -84,20 +85,15 @@ export default function Home() {
   const session = useSiteSession();
   const utils = trpc.useUtils();
 
-  // Contrato em que o administrador está trabalhando no momento. Persistido
-  // para não precisar escolher de novo a cada visita; usuários comuns não
-  // usam isso (o contrato deles já vem fixo da conta).
-  const [activeContract, setActiveContractState] = useState<Contract | null>(() => {
-    const stored = getActiveContract();
-    return isContract(stored) ? stored : null;
-  });
-
-  const handleActiveContractChange = (contract: Contract | null) => {
-    setActiveContractState(contract);
-    setActiveContract(contract ?? '');
-    // O contrato viaja num cabeçalho HTTP lido a cada requisição; sem
-    // invalidar, as telas já abertas continuariam mostrando os dados do
-    // contrato anterior até a próxima ação do usuário.
+  // Contrato em que o administrador está trabalhando no momento. Escolher
+  // outro contrato no cabeçalho grava no navegador (lido a cada requisição,
+  // ver client/src/lib/active-contract.ts) e invalida o cache: sem isso,
+  // telas já abertas continuariam mostrando o contrato anterior.
+  // O valor "atual" para exibir vem de session.contract, resolvido pelo
+  // servidor a partir desse mesmo cabeçalho — não precisa de estado local
+  // duplicado aqui. Usuários comuns não usam isso (contrato já vem fixo).
+  const handleActiveContractChange = (slug: string | null) => {
+    setActiveContract(slug ?? '');
     utils.invalidate();
   };
 
@@ -512,11 +508,11 @@ export default function Home() {
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
           isMasterAdmin={session.isMasterAdmin}
-          activeContract={activeContract}
           onActiveContractChange={handleActiveContractChange}
-          titleContract={session.isMasterAdmin ? activeContract : session.contract}
+          titleContract={session.contract}
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
+          onShowContracts={session.isMasterAdmin ? () => setShowContracts(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
           onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
           dismissedCount={dismissedEmployees.length}
@@ -713,6 +709,8 @@ export default function Home() {
       />
 
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />
+
+      <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}

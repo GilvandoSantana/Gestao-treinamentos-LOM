@@ -16,7 +16,18 @@ import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generat
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
-import { CONTRACTS, DEFAULT_CONTRACT, type Contract } from "@shared/contracts";
+import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
+import {
+  listContracts,
+  getContractBySlug,
+  getContractById,
+  createContract,
+  updateContract,
+  softDeleteContract,
+  restoreContract,
+  permanentlyDeleteContract,
+  countContractUsage,
+} from "./db-contracts";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
 
@@ -137,12 +148,14 @@ export const appRouter = router({
       return { success: true } as const;
     }),
 
-    siteSession: publicProcedure.query(({ ctx }) => ({
+    siteSession: publicProcedure.query(async ({ ctx }) => ({
       isSiteAdmin: ctx.isSiteAdmin,
       username: ctx.siteAdminUsername,
       role: ctx.siteRole,
       permissions: ctx.sitePermissions,
-      contract: ctx.siteContract,
+      // Objeto completo (não só o slug), para o cabeçalho montar o título
+      // com o nome certo e a preposição certa sem outra consulta.
+      contract: ctx.siteContract ? await getContractBySlug(ctx.siteContract) ?? null : null,
     })),
 
     // Teste de envio de e-mail — SOMENTE o administrador principal.
@@ -188,7 +201,7 @@ export const appRouter = router({
               .max(50)
               .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
             password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
-            contract: z.enum(CONTRACTS),
+            contract: z.string().min(1),
             permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
@@ -196,6 +209,11 @@ export const appRouter = router({
           const existing = await getAdminByUsername(input.username);
           if (existing) {
             throw new TRPCError({ code: "CONFLICT", message: "Esse usuário já existe." });
+          }
+
+          const contract = await getContractBySlug(input.contract);
+          if (!contract || contract.deleted) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Contrato inválido ou excluído." });
           }
 
           void logActivity({
@@ -336,7 +354,7 @@ export const appRouter = router({
         const sheet = await createSafetySheet({
           id: uuidv4(),
           type: input.type,
-          contract: ctx.siteContract ?? DEFAULT_CONTRACT,
+          contract: ctx.siteContract ?? DEFAULT_CONTRACT_SLUG,
           name: input.name,
           fileName: input.fileName,
           fileUrl: upload.url,
@@ -396,6 +414,147 @@ export const appRouter = router({
       }),
   }),
 
+  // Contratos — SOMENTE o administrador principal gerencia.
+  contracts: router({
+    list: masterAdminProcedure
+      .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
+      .query(async ({ input }) => {
+        return listContracts(input?.includeDeleted ?? false);
+      }),
+
+    create: masterAdminProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
+          preposition: z.enum(["do", "da"]),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const contract = await createContract({
+          id: uuidv4(),
+          name: input.name,
+          preposition: input.preposition,
+        });
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.create",
+          targetType: "contract",
+          targetId: contract.id,
+          targetName: contract.name,
+        });
+        return contract;
+      }),
+
+    update: masterAdminProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
+          preposition: z.enum(["do", "da"]),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        await updateContract(input.id, { name: input.name, preposition: input.preposition });
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.update",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: input.name,
+        });
+        return { success: true } as const;
+      }),
+
+    // Move para a lixeira — reversível pelo restore.
+    delete: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        await softDeleteContract(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.delete",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: existing.name,
+        });
+        return { success: true } as const;
+      }),
+
+    restore: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        await restoreContract(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.restore",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: existing.name,
+        });
+        return { success: true } as const;
+      }),
+
+    // Quantos colaboradores/contas/documentos ainda usam este contrato —
+    // exibido na tela antes de permitir a exclusão definitiva.
+    usage: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .query(async ({ input }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        return countContractUsage(existing.slug);
+      }),
+
+    permanentDelete: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        if (!existing.deleted) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Mova o contrato para a lixeira antes de excluir definitivamente.",
+          });
+        }
+        const usage = await countContractUsage(existing.slug);
+        if (usage.total > 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Ainda há ${usage.total} registro(s) usando este contrato (${usage.employees} colaborador(es), ${usage.admins} conta(s), ${usage.documents} documento(s)). Reatribua-os antes de excluir definitivamente.`,
+          });
+        }
+        await permanentlyDeleteContract(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.permanentDelete",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: existing.name,
+        });
+        return { success: true } as const;
+      }),
+  }),
+
   employees: router({
     upsertOne: requirePermission('editEmployees')
       .input(
@@ -438,7 +597,7 @@ export const appRouter = router({
               phone: input.phone,
               // O contrato vem sempre da conta que está cadastrando — não é
               // escolhido no formulário, para não haver como errar nem burlar.
-              contract: ctx.siteContract ?? DEFAULT_CONTRACT,
+              contract: ctx.siteContract ?? DEFAULT_CONTRACT_SLUG,
             });
 
           const currentTrainingIds = input.trainings.map(t => t.id);

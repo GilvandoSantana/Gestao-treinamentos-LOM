@@ -30,7 +30,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
-import { CONTRACTS, CONTRACT_LABELS, contractSystemTitleParts, type Contract } from '@shared/contracts';
+import { trpc } from '@/lib/trpc';
+import { contractSystemTitleParts, type ContractInfo } from '@shared/contracts';
 import { useScrolled } from '@/hooks/useScrolled';
 
 interface HeaderProps {
@@ -46,12 +47,12 @@ interface HeaderProps {
   canEdit?: boolean;
   canImportExport?: boolean;
   onManageAdmins?: () => void;
+  onShowContracts?: () => void;
   isMasterAdmin?: boolean;
-  /** Contrato em que o administrador está trabalhando; null = todos. */
-  activeContract?: Contract | null;
-  onActiveContractChange?: (contract: Contract | null) => void;
+  /** Chamado quando o administrador escolhe outro contrato (ou "todos" = null). */
+  onActiveContractChange?: (slug: string | null) => void;
   /** Contrato exibido no título: o do próprio usuário, ou o que o administrador selecionou. */
-  titleContract?: Contract | null;
+  titleContract?: ContractInfo | null;
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
   onShowDocuments?: () => void;
@@ -72,8 +73,8 @@ export default function Header({
   canEdit = false,
   canImportExport = false,
   onManageAdmins,
+  onShowContracts,
   isMasterAdmin = false,
-  activeContract = null,
   onActiveContractChange,
   titleContract = null,
   onShowDismissed,
@@ -88,6 +89,12 @@ export default function Header({
   const menuRef = useRef<HTMLDivElement>(null);
   const [contractMenuOpen, setContractMenuOpen] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
+  // Lista de contratos ativos para o seletor — só o administrador principal
+  // usa isso, então só busca quando o menu dele está disponível.
+  const contractsQuery = trpc.contracts.list.useQuery(undefined, {
+    enabled: isMasterAdmin && !!onActiveContractChange,
+    refetchOnWindowFocus: false,
+  });
 
   // Fecha os menus (ações e contrato) ao clicar fora ou apertar Esc.
   useEffect(() => {
@@ -217,7 +224,7 @@ export default function Header({
                 >
                   <Building2 size={15} />
                   <span className="hidden sm:inline">
-                    {activeContract ? CONTRACT_LABELS[activeContract] : 'Todos os contratos'}
+                    {titleContract ? titleContract.name : 'Todos os contratos'}
                   </span>
                   <ChevronDown size={13} className={contractMenuOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
                 </button>
@@ -234,25 +241,28 @@ export default function Header({
                         setContractMenuOpen(false);
                       }}
                       className={`w-full text-left px-3.5 py-2.5 text-sm font-medium hover:bg-muted transition-colors ${
-                        !activeContract ? 'text-orange font-semibold' : 'text-foreground'
+                        !titleContract ? 'text-orange font-semibold' : 'text-foreground'
                       }`}
                     >
                       Todos os contratos
                     </button>
                     <div className="border-t border-border" />
-                    {CONTRACTS.map((c) => (
+                    {contractsQuery.isLoading && (
+                      <p className="px-3.5 py-2.5 text-xs text-muted-foreground">Carregando...</p>
+                    )}
+                    {contractsQuery.data?.map((c) => (
                       <button
-                        key={c}
+                        key={c.id}
                         role="menuitem"
                         onClick={() => {
-                          onActiveContractChange(c);
+                          onActiveContractChange(c.slug);
                           setContractMenuOpen(false);
                         }}
                         className={`w-full text-left px-3.5 py-2.5 text-sm font-medium hover:bg-muted transition-colors ${
-                          activeContract === c ? 'text-orange font-semibold' : 'text-foreground'
+                          titleContract?.slug === c.slug ? 'text-orange font-semibold' : 'text-foreground'
                         }`}
                       >
-                        {CONTRACT_LABELS[c]}
+                        {c.name}
                       </button>
                     ))}
                   </div>
@@ -370,6 +380,12 @@ export default function Header({
                       <button onClick={runAndClose(onManageAdmins)} className={menuItemClass} role="menuitem">
                         <Users size={16} className="text-muted-foreground" />
                         Contas e permissões
+                      </button>
+                    )}
+                    {onShowContracts && (
+                      <button onClick={runAndClose(onShowContracts)} className={menuItemClass} role="menuitem">
+                        <Building2 size={16} className="text-muted-foreground" />
+                        Contratos
                       </button>
                     )}
                     {toggleTheme && (
