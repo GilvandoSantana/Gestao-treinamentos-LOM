@@ -152,7 +152,7 @@ export async function generateEmployeePDF(employee: Employee): Promise<void> {
   yPosition = pageHeight - margin;
   pdf.setFontSize(8);
   pdf.setTextColor(150, 150, 150);
-  pdf.text(`Gestão de Treinamentos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
+  pdf.text(`Gestão de Controle dos Contratos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
 
   // Download
   const fileName = `relatorio_${employee.name.replace(/\s+/g, '_')}.pdf`;
@@ -285,7 +285,7 @@ export async function generateComprehensivePDF(employees: Employee[]): Promise<v
   yPosition = pageHeight - margin;
   pdf.setFontSize(8);
   pdf.setTextColor(150, 150, 150);
-  pdf.text(`Gestão de Treinamentos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
+  pdf.text(`Gestão de Controle dos Contratos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
 
   // Download
   const fileName = `relatorio_geral_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -467,7 +467,7 @@ export async function generateFilteredPDF(employees: Employee[], filter: FilterT
   yPosition = pageHeight - margin;
   pdf.setFontSize(7);
   pdf.setTextColor(150, 150, 150);
-  pdf.text(`Gestão de Treinamentos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
+  pdf.text(`Gestão de Controle dos Contratos - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}`, margin, yPosition);
 
   // Download
   const filterName = filter === 'all' ? 'todos' : filter === 'valid' ? 'validos' : filter === 'expiring' ? 'proximos' : 'vencidos';

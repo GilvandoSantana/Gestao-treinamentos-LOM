@@ -57,7 +57,7 @@ export async function sendEmail(params: {
   try {
     const transporter = getTransporter();
     await transporter.sendMail({
-      from: `"Gestão de Treinamentos" <${process.env.SMTP_USER}>`,
+      from: `"Gestão de Controle dos Contratos" <${process.env.SMTP_USER}>`,
       to: recipients,
       subject: params.subject,
       html: params.html,
@@ -99,11 +99,11 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
   try {
     const transporter = getTransporter();
     await transporter.sendMail({
-      from: `"Gestão de Treinamentos" <${process.env.SMTP_USER}>`,
+      from: `"Gestão de Controle dos Contratos" <${process.env.SMTP_USER}>`,
       to: recipients,
-      subject: "Teste de envio — Gestão de Treinamentos LOM",
+      subject: "Teste de envio — Gestão de Controle dos Contratos",
       html: `
-        <p>Este é um e-mail de teste do sistema de Gestão de Treinamentos LOM.</p>
+        <p>Este é um e-mail de teste do sistema de Gestão de Controle dos Contratos.</p>
         <p>Se você recebeu esta mensagem, o envio automático de alertas de
         treinamentos vencendo está configurado corretamente.</p>
         <p style="color:#777;font-size:12px">Enviado em ${new Date().toLocaleString("pt-BR")}</p>

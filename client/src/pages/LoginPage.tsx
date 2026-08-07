@@ -80,7 +80,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               <Shield size={30} className="text-white" />
             </div>
             <h1 className="font-display font-bold text-2xl tracking-tight text-foreground">
-              Gestão de Treinamentos <span className="text-orange">LOM</span>
+              Gestão de Controle dos Contratos
             </h1>
             <p className="text-muted-foreground text-sm mt-1.5">
               Entre para acessar os registros
