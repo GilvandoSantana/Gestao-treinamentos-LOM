@@ -38,6 +38,8 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
+import { getActiveContract, setActiveContract } from '@/lib/active-contract';
+import { isContract, type Contract } from '@shared/contracts';
 
 export default function Home() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -81,6 +83,23 @@ export default function Home() {
   // do login — nada é exibido antes de entrar.
   const session = useSiteSession();
   const utils = trpc.useUtils();
+
+  // Contrato em que o administrador está trabalhando no momento. Persistido
+  // para não precisar escolher de novo a cada visita; usuários comuns não
+  // usam isso (o contrato deles já vem fixo da conta).
+  const [activeContract, setActiveContractState] = useState<Contract | null>(() => {
+    const stored = getActiveContract();
+    return isContract(stored) ? stored : null;
+  });
+
+  const handleActiveContractChange = (contract: Contract | null) => {
+    setActiveContractState(contract);
+    setActiveContract(contract ?? '');
+    // O contrato viaja num cabeçalho HTTP lido a cada requisição; sem
+    // invalidar, as telas já abertas continuariam mostrando os dados do
+    // contrato anterior até a próxima ação do usuário.
+    utils.invalidate();
+  };
 
   const listQuery = trpc.employees.list.useQuery(undefined, {
     // Só busca depois que há sessão válida. Antes a consulta disparava junto
@@ -492,6 +511,9 @@ export default function Home() {
             toast.info('Sessão encerrada.');
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
+          isMasterAdmin={session.isMasterAdmin}
+          activeContract={activeContract}
+          onActiveContractChange={handleActiveContractChange}
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}

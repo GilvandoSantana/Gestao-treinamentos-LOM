@@ -24,10 +24,13 @@ import {
   Footprints,
   FolderOpen,
   CreditCard,
+  Building2,
+  ChevronDown,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
 import { useTheme } from '@/contexts/ThemeContext';
+import { CONTRACTS, CONTRACT_LABELS, type Contract } from '@shared/contracts';
 import { useScrolled } from '@/hooks/useScrolled';
 
 interface HeaderProps {
@@ -43,6 +46,10 @@ interface HeaderProps {
   canEdit?: boolean;
   canImportExport?: boolean;
   onManageAdmins?: () => void;
+  isMasterAdmin?: boolean;
+  /** Contrato em que o administrador está trabalhando; null = todos. */
+  activeContract?: Contract | null;
+  onActiveContractChange?: (contract: Contract | null) => void;
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
   onShowDocuments?: () => void;
@@ -63,6 +70,9 @@ export default function Header({
   canEdit = false,
   canImportExport = false,
   onManageAdmins,
+  isMasterAdmin = false,
+  activeContract = null,
+  onActiveContractChange,
   onShowDismissed,
   onShowActivity,
   onShowDocuments,
@@ -73,18 +83,30 @@ export default function Header({
   const scrolled = useScrolled(40);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [contractMenuOpen, setContractMenuOpen] = useState(false);
+  const contractRef = useRef<HTMLDivElement>(null);
 
-  // Fecha o menu ao clicar fora ou apertar Esc.
+  // Fecha os menus (ações e contrato) ao clicar fora ou apertar Esc.
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !contractMenuOpen) return;
 
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+      }
+      if (
+        contractMenuOpen &&
+        contractRef.current &&
+        !contractRef.current.contains(e.target as Node)
+      ) {
+        setContractMenuOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setContractMenuOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', onPointerDown);
@@ -95,7 +117,7 @@ export default function Header({
       document.removeEventListener('touchstart', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, contractMenuOpen]);
 
   const menuItemClass =
     'w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed';
@@ -174,6 +196,64 @@ export default function Header({
 
           {/* Ações */}
           <div className="flex items-center gap-2 shrink-0">
+            {isMasterAdmin && onActiveContractChange && (
+              <div className="relative" ref={contractRef}>
+                <button
+                  onClick={() => setContractMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={contractMenuOpen}
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
+                    contractMenuOpen
+                      ? 'bg-white text-navy border-white'
+                      : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                  }`}
+                  title="Contrato em que está trabalhando"
+                >
+                  <Building2 size={15} />
+                  <span className="hidden sm:inline">
+                    {activeContract ? CONTRACT_LABELS[activeContract] : 'Todos os contratos'}
+                  </span>
+                  <ChevronDown size={13} className={contractMenuOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                </button>
+
+                {contractMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full mt-2 w-56 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto"
+                  >
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        onActiveContractChange(null);
+                        setContractMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 text-sm font-medium hover:bg-muted transition-colors ${
+                        !activeContract ? 'text-orange font-semibold' : 'text-foreground'
+                      }`}
+                    >
+                      Todos os contratos
+                    </button>
+                    <div className="border-t border-border" />
+                    {CONTRACTS.map((c) => (
+                      <button
+                        key={c}
+                        role="menuitem"
+                        onClick={() => {
+                          onActiveContractChange(c);
+                          setContractMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-sm font-medium hover:bg-muted transition-colors ${
+                          activeContract === c ? 'text-orange font-semibold' : 'text-foreground'
+                        }`}
+                      >
+                        {CONTRACT_LABELS[c]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {onViewModeChange && (
               <div className="hidden sm:flex bg-white/10 p-1 rounded-xl gap-1 border border-white/15">
                 <button

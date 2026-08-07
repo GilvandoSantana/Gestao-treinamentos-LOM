@@ -313,6 +313,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (ctx.siteRole === "admin" && !ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de cadastrar um documento.",
+          });
+        }
+
         const fileBuffer = Buffer.from(input.fileData, "base64");
 
         const MAX_FDS_BYTES = 10 * 1024 * 1024;
@@ -411,6 +418,13 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (ctx.siteRole === "admin" && !ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de cadastrar.",
+          });
+        }
+
         try {
             await upsertEmployee({
               id: input.id,
