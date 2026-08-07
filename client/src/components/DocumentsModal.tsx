@@ -17,9 +17,10 @@ interface DocumentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   canManage: boolean;
+  isMasterAdmin?: boolean;
 }
 
-export default function DocumentsModal({ isOpen, onClose, canManage }: DocumentsModalProps) {
+export default function DocumentsModal({ isOpen, onClose, canManage, isMasterAdmin = false }: DocumentsModalProps) {
   const [tab, setTab] = useState<DocumentType>('ara');
 
   if (!isOpen) return null;
@@ -60,7 +61,7 @@ export default function DocumentsModal({ isOpen, onClose, canManage }: Documents
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <DocumentPanel key={tab} type={tab} canManage={canManage} />
+          <DocumentPanel key={tab} type={tab} canManage={canManage} isMasterAdmin={isMasterAdmin} />
         </div>
       </div>
     </div>

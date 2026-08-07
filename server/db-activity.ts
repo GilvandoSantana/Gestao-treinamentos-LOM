@@ -31,7 +31,8 @@ export type ActivityAction =
   | "contract.update"
   | "contract.delete"
   | "contract.restore"
-  | "contract.permanentDelete";
+  | "contract.permanentDelete"
+  | "employee.changeContract";
 
 export type LogActivityInput = {
   username: string | null;

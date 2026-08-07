@@ -650,6 +650,7 @@ export default function Home() {
           setEditingEmployee(null);
         }}
         isAdmin={session.can('editEmployees')}
+        isMasterAdmin={session.isMasterAdmin}
       />
 
       <DeleteConfirmModal
@@ -706,6 +707,7 @@ export default function Home() {
         isOpen={showDocuments}
         onClose={() => setShowDocuments(false)}
         canManage={session.can('manageCertificates')}
+        isMasterAdmin={session.isMasterAdmin}
       />
 
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />

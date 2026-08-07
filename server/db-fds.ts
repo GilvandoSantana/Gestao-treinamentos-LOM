@@ -117,3 +117,10 @@ export async function deleteSafetySheet(id: string): Promise<void> {
   if (!db) throw new Error("Database not available");
   await db.delete(safetySheets).where(eq(safetySheets.id, id));
 }
+
+/** Move um documento para outro contrato (uso exclusivo do administrador). */
+export async function setSafetySheetContract(id: string, contract: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(safetySheets).set({ contract }).where(eq(safetySheets.id, id));
+}

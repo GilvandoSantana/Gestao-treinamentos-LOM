@@ -226,3 +226,10 @@ export async function setEmployeeDismissed(id: string, dismissed: boolean) {
     })
     .where(eq(employees.id, id));
 }
+
+/** Move um colaborador para outro contrato (uso exclusivo do administrador). */
+export async function setEmployeeContract(id: string, contract: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(employees).set({ contract }).where(eq(employees.id, id));
+}

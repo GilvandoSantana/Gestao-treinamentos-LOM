@@ -5,13 +5,13 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmployeeId, deleteCertificate, getCertificateById } from "./db-certificates";
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls, uploadFdsToSupabase, deleteFdsFromSupabase } from "./supabase-storage";
-import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySheetRoles, deleteSafetySheet } from "./db-fds";
+import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySheetRoles, deleteSafetySheet, setSafetySheetContract } from "./db-fds";
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
@@ -321,6 +321,26 @@ export const appRouter = router({
         return listSafetySheets(input?.type, ctx.siteContract ?? undefined);
       }),
 
+    // Reatribuir documento para outro contrato — SOMENTE o administrador.
+    changeContract: masterAdminProcedure
+      .input(z.object({ id: z.string(), contractSlug: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const contract = await getContractBySlug(input.contractSlug);
+        if (!contract || contract.deleted) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Contrato inválido ou excluído." });
+        }
+        await setSafetySheetContract(input.id, input.contractSlug);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "fds.update",
+          targetType: "document",
+          targetId: input.id,
+          details: `movido para ${contract.name}`,
+        });
+        return { success: true } as const;
+      }),
+
     upload: requirePermission('manageCertificates')
       .input(
         z.object({
@@ -427,6 +447,7 @@ export const appRouter = router({
         z.object({
           name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
           preposition: z.enum(["do", "da"]),
+          alertEmail: z.string().email().optional().or(z.literal("")),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -434,6 +455,7 @@ export const appRouter = router({
           id: uuidv4(),
           name: input.name,
           preposition: input.preposition,
+          alertEmail: input.alertEmail || null,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -452,6 +474,7 @@ export const appRouter = router({
           id: z.string(),
           name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
           preposition: z.enum(["do", "da"]),
+          alertEmail: z.string().email().optional().or(z.literal("")),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -459,7 +482,11 @@ export const appRouter = router({
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
-        await updateContract(input.id, { name: input.name, preposition: input.preposition });
+        await updateContract(input.id, {
+          name: input.name,
+          preposition: input.preposition,
+          alertEmail: input.alertEmail || null,
+        });
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
@@ -556,6 +583,29 @@ export const appRouter = router({
   }),
 
   employees: router({
+    // Reatribuir colaborador para outro contrato — SOMENTE o administrador
+    // principal. Não é uma edição normal: move o registro inteiro para outra
+    // "gaveta", então fica separado do upsertOne e sempre exige o admin
+    // estar trabalhando naquele contrato específico (não em "Todos").
+    changeContract: masterAdminProcedure
+      .input(z.object({ employeeId: z.string(), contractSlug: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const contract = await getContractBySlug(input.contractSlug);
+        if (!contract || contract.deleted) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Contrato inválido ou excluído." });
+        }
+        await setEmployeeContract(input.employeeId, input.contractSlug);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "employee.changeContract",
+          targetType: "employee",
+          targetId: input.employeeId,
+          details: `movido para ${contract.name}`,
+        });
+        return { success: true } as const;
+      }),
+
     upsertOne: requirePermission('editEmployees')
       .input(
         z.object({

@@ -43,11 +43,13 @@ function getTransporter(): nodemailer.Transporter {
 export async function sendEmail(params: {
   subject: string;
   html: string;
+  /** Destinatário específico (ex: e-mail do contrato); sem isso usa o global. */
+  to?: string;
 }): Promise<boolean> {
-  const recipients = process.env.ALERT_RECIPIENT_EMAIL;
+  const recipients = params.to || process.env.ALERT_RECIPIENT_EMAIL;
   if (!recipients) {
     console.error(
-      "[Mailer] ALERT_RECIPIENT_EMAIL não configurado — não há para quem enviar o e-mail."
+      "[Mailer] Nenhum destinatário: nem e-mail do contrato, nem ALERT_RECIPIENT_EMAIL configurado."
     );
     return false;
   }

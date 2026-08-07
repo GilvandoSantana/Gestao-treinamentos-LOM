@@ -4,6 +4,8 @@ import { getDb } from "./db";
 import { eq, and, gte } from "drizzle-orm";
 import { employees, trainings, emailNotifications } from "../drizzle/schema";
 import { nanoid } from "nanoid";
+import { listContracts } from "./db-contracts";
+import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 
 export interface TrainingAlert {
   employeeName: string;
@@ -13,6 +15,8 @@ export interface TrainingAlert {
   status: "expiring_soon" | "expired";
   trainingId: string;
   employeeId: string;
+  /** Contrato do colaborador — usado para separar os e-mails por contrato. */
+  contract: string;
 }
 
 /**
@@ -114,6 +118,7 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
         name: trainings.name,
         expirationDate: trainings.expirationDate,
         employeeName: employees.name,
+        contract: employees.contract,
       })
       .from(trainings)
       .leftJoin(employees, eq(trainings.employeeId, employees.id));
@@ -139,6 +144,7 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
             status: daysRemaining < 0 ? "expired" : "expiring_soon",
             trainingId: training.id,
             employeeId: training.employeeId,
+            contract: training.contract || DEFAULT_CONTRACT_SLUG,
           });
         }
       }
@@ -152,7 +158,60 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
 }
 
 /**
- * Send email notification for training alerts
+ * Monta o HTML do relatório para um conjunto de alertas (usado por contrato).
+ */
+function buildAlertsEmailHtml(alerts: TrainingAlert[], heading: string): string {
+  const expiringAlerts = alerts.filter((a) => a.status === "expiring_soon");
+  const expiredAlerts = alerts.filter((a) => a.status === "expired");
+
+  let emailContent = `<h2>${heading}</h2>`;
+
+  if (expiredAlerts.length > 0) {
+    emailContent += "<h3 style='color: #dc2626;'>⚠️ Treinamentos Vencidos</h3>";
+    emailContent += "<ul>";
+    for (const alert of expiredAlerts) {
+      emailContent += `
+        <li>
+          <strong>${alert.employeeName}</strong> - ${alert.trainingName}
+          <br/>
+          <span style='color: #dc2626;'>Vencido há ${Math.abs(alert.daysRemaining)} dias (${alert.expirationDate})</span>
+        </li>
+      `;
+    }
+    emailContent += "</ul>";
+  }
+
+  if (expiringAlerts.length > 0) {
+    emailContent += "<h3 style='color: #f59e0b;'>⏰ Treinamentos a Vencer</h3>";
+    emailContent += "<ul>";
+    for (const alert of expiringAlerts) {
+      emailContent += `
+        <li>
+          <strong>${alert.employeeName}</strong> - ${alert.trainingName}
+          <br/>
+          <span style='color: #f59e0b;'>Vence em ${alert.daysRemaining} dias (${alert.expirationDate})</span>
+        </li>
+      `;
+    }
+    emailContent += "</ul>";
+  }
+
+  emailContent += `
+    <hr/>
+    <p><small>Total de alertas: ${alerts.length}</small></p>
+    <p><small>Gerado em: ${new Date().toLocaleString("pt-BR")}</small></p>
+  `;
+
+  return emailContent;
+}
+
+/**
+ * Send email notification for training alerts.
+ *
+ * Um e-mail POR CONTRATO: cada contrato pode ter um destinatário próprio
+ * (contract.alertEmail); quando não tem, cai no endereço global
+ * (ALERT_RECIPIENT_EMAIL). Contratos sem nenhum dos dois configurados são
+ * pulados, sem derrubar o envio dos demais.
  */
 export async function sendTrainingAlerts(): Promise<boolean> {
   try {
@@ -163,72 +222,54 @@ export async function sendTrainingAlerts(): Promise<boolean> {
       return true;
     }
 
-    // Group alerts by status
-    const expiringAlerts = alerts.filter((a) => a.status === "expiring_soon");
-    const expiredAlerts = alerts.filter((a) => a.status === "expired");
+    const contracts = await listContracts(false);
+    const contractBySlug = new Map(contracts.map((c) => [c.slug, c]));
 
-    let emailContent = "<h2>Relatório de Treinamentos</h2>";
-
-    if (expiredAlerts.length > 0) {
-      emailContent += "<h3 style='color: #dc2626;'>⚠️ Treinamentos Vencidos</h3>";
-      emailContent += "<ul>";
-      for (const alert of expiredAlerts) {
-        emailContent += `
-          <li>
-            <strong>${alert.employeeName}</strong> - ${alert.trainingName}
-            <br/>
-            <span style='color: #dc2626;'>Vencido há ${Math.abs(alert.daysRemaining)} dias (${alert.expirationDate})</span>
-          </li>
-        `;
-      }
-      emailContent += "</ul>";
+    const alertsByContract = new Map<string, TrainingAlert[]>();
+    for (const alert of alerts) {
+      const list = alertsByContract.get(alert.contract);
+      if (list) list.push(alert);
+      else alertsByContract.set(alert.contract, [alert]);
     }
 
-    if (expiringAlerts.length > 0) {
-      emailContent += "<h3 style='color: #f59e0b;'>⏰ Treinamentos a Vencer</h3>";
-      emailContent += "<ul>";
-      for (const alert of expiringAlerts) {
-        emailContent += `
-          <li>
-            <strong>${alert.employeeName}</strong> - ${alert.trainingName}
-            <br/>
-            <span style='color: #f59e0b;'>Vence em ${alert.daysRemaining} dias (${alert.expirationDate})</span>
-          </li>
-        `;
+    let anySuccess = false;
+    let anyAttempted = false;
+
+    for (const [slug, contractAlerts] of Array.from(alertsByContract.entries())) {
+      const contract = contractBySlug.get(slug);
+      const heading = contract
+        ? `Relatório de Treinamentos — ${contract.name}`
+        : "Relatório de Treinamentos";
+      const emailContent = buildAlertsEmailHtml(contractAlerts, heading);
+
+      anyAttempted = true;
+      const result = await sendEmail({
+        subject: `${heading} - ${contractAlerts.length} alertas`,
+        html: emailContent,
+        to: contract?.alertEmail || undefined,
+      });
+
+      if (result) {
+        anySuccess = true;
+        console.log(
+          `[Email Service] Sent ${contractAlerts.length} alerts for contract "${slug}"`
+        );
+        for (const alert of contractAlerts) {
+          await recordEmailNotification(alert.trainingId, alert.employeeId);
+        }
+      } else {
+        console.warn(`[Email Service] Failed to send alerts for contract "${slug}"`);
       }
-      emailContent += "</ul>";
     }
-
-    emailContent += `
-      <hr/>
-      <p><small>Total de alertas: ${alerts.length}</small></p>
-      <p><small>Gerado em: ${new Date().toLocaleString("pt-BR")}</small></p>
-    `;
-
-    const result = await sendEmail({
-      subject: `Relatório de Treinamentos - ${alerts.length} alertas`,
-      html: emailContent,
-    });
 
     // Notificação interna da plataforma original (best-effort, não crítica —
-    // se falhar não impede o e-mail real de já ter sido enviado acima).
+    // um resumo geral, independente da divisão por contrato).
     notifyOwner({
       title: `Relatório de Treinamentos - ${alerts.length} alertas`,
-      content: emailContent,
+      content: buildAlertsEmailHtml(alerts, "Relatório de Treinamentos"),
     }).catch(() => {});
 
-    if (result) {
-      console.log(`[Email Service] Successfully sent ${alerts.length} training alerts`);
-      
-      // Record each email notification
-      for (const alert of alerts) {
-        await recordEmailNotification(alert.trainingId, alert.employeeId);
-      }
-    } else {
-      console.warn("[Email Service] Failed to send training alerts");
-    }
-
-    return result;
+    return anyAttempted ? anySuccess : true;
   } catch (error) {
     console.error("[Email Service] Error sending training alerts:", error);
     return false;

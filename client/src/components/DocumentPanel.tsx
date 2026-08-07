@@ -18,15 +18,29 @@ interface DocumentPanelProps {
   /** Conteúdo de uma aba da central de Documentos. */
   type: DocumentType;
   canManage: boolean;
+  /** Só o administrador principal pode mover um documento para outro contrato. */
+  isMasterAdmin?: boolean;
 }
 
 const MAX_MB = 10;
 
-export default function DocumentPanel({ type, canManage }: DocumentPanelProps) {
+export default function DocumentPanel({ type, canManage, isMasterAdmin = false }: DocumentPanelProps) {
   const typeLabel = DOCUMENT_LABELS[type].label;
   const [name, setName] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
+  const changeContractMutation = trpc.fds.changeContract.useMutation();
+
+  const handleMoveContract = async (id: string, sheetName: string, contractSlug: string) => {
+    try {
+      await changeContractMutation.mutateAsync({ id, contractSlug });
+      await utils.fds.list.invalidate();
+      toast.success(`"${sheetName}" movido de contrato.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao mudar o contrato.');
+    }
+  };
 
   const utils = trpc.useUtils();
   const listQuery = trpc.fds.list.useQuery({ type });
@@ -135,6 +149,22 @@ export default function DocumentPanel({ type, canManage }: DocumentPanelProps) {
                   >
                     <Download size={17} />
                   </a>
+
+                  {isMasterAdmin && contractsQuery.data && contractsQuery.data.length > 1 && (
+                    <select
+                      value={sheet.contract}
+                      onChange={(e) => handleMoveContract(sheet.id, sheet.name, e.target.value)}
+                      disabled={changeContractMutation.isPending}
+                      title="Mover para outro contrato"
+                      className="shrink-0 text-xs border border-border rounded-lg px-1.5 py-1 bg-background text-foreground max-w-[110px]"
+                    >
+                      {contractsQuery.data.map((c) => (
+                        <option key={c.id} value={c.slug}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
                   {canManage && (
                     <>

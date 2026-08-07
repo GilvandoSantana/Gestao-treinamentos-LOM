@@ -13,6 +13,8 @@ export interface ContractInfo {
   slug: string;
   name: string;
   preposition: ContractPreposition;
+  /** E-mail que recebe os alertas de treinamento deste contrato; null = usa o global. */
+  alertEmail: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

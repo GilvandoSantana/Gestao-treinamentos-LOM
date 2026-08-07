@@ -14,6 +14,7 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     slug: row.slug,
     name: row.name,
     preposition: row.preposition === "da" ? "da" : "do",
+    alertEmail: row.alertEmail || null,
     deleted: row.deleted,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -49,6 +50,7 @@ export async function createContract(input: {
   id: string;
   name: string;
   preposition: ContractPreposition;
+  alertEmail?: string | null;
 }): Promise<ContractInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -67,6 +69,7 @@ export async function createContract(input: {
     slug,
     name: input.name.trim(),
     preposition: input.preposition,
+    alertEmail: input.alertEmail?.trim() || null,
   });
 
   return {
@@ -74,6 +77,7 @@ export async function createContract(input: {
     slug,
     name: input.name.trim(),
     preposition: input.preposition,
+    alertEmail: input.alertEmail?.trim() || null,
     deleted: false,
     deletedAt: null,
     createdAt: new Date().toISOString(),
@@ -82,15 +86,19 @@ export async function createContract(input: {
 
 export async function updateContract(
   id: string,
-  input: { name: string; preposition: ContractPreposition }
+  input: { name: string; preposition: ContractPreposition; alertEmail?: string | null }
 ): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   // O slug não muda: é a chave que já está gravada em colaboradores, contas e
-  // documentos. Só o nome exibido e a preposição são editáveis.
+  // documentos. Só o nome exibido, a preposição e o e-mail de alerta são editáveis.
   await db
     .update(contracts)
-    .set({ name: input.name.trim(), preposition: input.preposition })
+    .set({
+      name: input.name.trim(),
+      preposition: input.preposition,
+      alertEmail: input.alertEmail?.trim() || null,
+    })
     .where(eq(contracts.id, id));
 }
 

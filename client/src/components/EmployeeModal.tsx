@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, Camera } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, Camera, Building2 } from 'lucide-react';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -18,6 +18,8 @@ interface EmployeeModalProps {
   onSave: (employee: Employee) => void;
   onClose: () => void;
   isAdmin?: boolean;
+  /** Só o administrador principal pode reatribuir o colaborador a outro contrato. */
+  isMasterAdmin?: boolean;
 }
 
 interface PendingCertificate {
@@ -26,7 +28,7 @@ interface PendingCertificate {
   base64: string;
 }
 
-export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdmin = false }: EmployeeModalProps) {
+export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdmin = false, isMasterAdmin = false }: EmployeeModalProps) {
   const [name, setName] = useState('');
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
@@ -34,6 +36,9 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [birthDate, setBirthDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
+  const [reassignContract, setReassignContract] = useState('');
+  const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
+  const changeContractMutation = trpc.employees.changeContract.useMutation();
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
@@ -69,6 +74,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
       setAge(birthDateValue ? calculateAge(birthDateValue) : undefined);
       setRole(employee.role);
       setPhone(employee.phone || '');
+      setReassignContract(employee.contract || '');
       setPhotoPreview(employee.photoUrl || null);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
@@ -278,7 +284,21 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
         });
       }
 
-      // 2. Save employee
+      // 2. Reatribuir contrato, se o administrador mudou (ação separada, não
+      // faz parte do upsert normal do colaborador)
+      if (isMasterAdmin && employee && reassignContract && reassignContract !== employee.contract) {
+        try {
+          await changeContractMutation.mutateAsync({
+            employeeId: employee.id,
+            contractSlug: reassignContract,
+          });
+          toast.success('Colaborador movido de contrato.');
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Erro ao mudar o contrato.');
+        }
+      }
+
+      // 3. Save employee
       onSave({
         id: employeeId,
         name: name.trim(),
@@ -469,6 +489,29 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
                 />
               )}
             </div>
+            {isMasterAdmin && employee && (
+              <div>
+                <label className="block text-foreground font-semibold mb-2 text-sm flex items-center gap-1.5">
+                  <Building2 size={15} className="text-orange" />
+                  Contrato
+                </label>
+                <select
+                  value={reassignContract}
+                  onChange={(e) => setReassignContract(e.target.value)}
+                  disabled={changeContractMutation.isPending}
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                >
+                  {contractsQuery.data?.map((c) => (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Mudar aqui move este colaborador para outro contrato imediatamente ao salvar a ficha.
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Celular</label>
               <input

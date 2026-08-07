@@ -202,6 +202,9 @@ export const contracts = mysqlTable("contracts", {
   name: varchar("name", { length: 120 }).notNull(),
   // "do" ou "da" — para o título "Gestão de Controle do Contrato ___ Nome"
   preposition: varchar("preposition", { length: 2 }).notNull().default("do"),
+  // E-mail que recebe os alertas de treinamento deste contrato; vazio usa o
+  // endereço global (ALERT_RECIPIENT_EMAIL).
+  alertEmail: varchar("alertEmail", { length: 255 }),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
