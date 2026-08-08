@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { X, CreditCard, Lock, Droplets, Search, Loader, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
+import type { jsPDF } from 'jspdf';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
@@ -29,10 +30,16 @@ const BADGE_TYPES: { key: BadgeType; label: string; Icon: typeof CreditCard }[] 
   { key: 'agua', label: 'Água', Icon: Droplets },
 ];
 
-const GENERATORS: Record<BadgeType, (employee: Employee) => Promise<void> | void> = {
+const GENERATORS: Record<BadgeType, (employee: Employee, sharedDoc?: jsPDF) => Promise<jsPDF>> = {
   padrao: generateBadgePDF,
   bloqueio: generateBadgeLockPDF,
   agua: generateBadgeWaterPDF,
+};
+
+const BADGE_TYPE_FILE_PREFIX: Record<BadgeType, string> = {
+  padrao: 'crachas',
+  bloqueio: 'crachas-bloqueio',
+  agua: 'crachas-agua',
 };
 
 export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalProps) {
@@ -41,6 +48,9 @@ export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalP
   const [search, setSearch] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  // Um PDF por colaborador (como sempre) ou tudo junto num único arquivo com
+  // várias páginas — mais prático para levar um lote inteiro pra gráfica.
+  const [singleFile, setSingleFile] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -88,25 +98,39 @@ export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalP
 
     const generate = GENERATORS[badgeType];
     let failures = 0;
+    let sharedDoc: jsPDF | undefined;
 
     // Um PDF por colaborador, em sequência: gerar tudo de uma vez trava o
-    // navegador e alguns bloqueiam downloads simultâneos.
+    // navegador e alguns bloqueiam downloads simultâneos. No modo "arquivo
+    // único", cada crachá vira uma página a mais no mesmo documento — só
+    // salva ao final.
     for (let i = 0; i < chosen.length; i++) {
       try {
-        await generate(chosen[i]);
+        const doc = await generate(chosen[i], singleFile ? sharedDoc : undefined);
+        if (singleFile) sharedDoc = doc;
       } catch (error) {
         failures++;
         console.error('Erro ao gerar crachá:', chosen[i].name, error);
       }
       setProgress(i + 1);
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, singleFile ? 60 : 350));
+    }
+
+    if (singleFile && sharedDoc) {
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      sharedDoc.save(`${BADGE_TYPE_FILE_PREFIX[badgeType]}-${dateStamp}.pdf`);
     }
 
     setIsGenerating(false);
     setProgress(0);
 
+    const successCount = chosen.length - failures;
     if (failures === 0) {
-      toast.success(`${chosen.length} crachá(s) gerado(s).`);
+      toast.success(
+        singleFile
+          ? `${successCount} crachá(s) gerado(s) num único PDF.`
+          : `${successCount} crachá(s) gerado(s).`
+      );
     } else {
       toast.error(`${failures} de ${chosen.length} crachá(s) falharam.`);
     }
@@ -156,6 +180,19 @@ export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalP
               </button>
             ))}
           </div>
+
+          <label className="flex items-center gap-2.5 mt-3 p-2.5 rounded-lg border border-border cursor-pointer hover:bg-muted transition-colors">
+            <input
+              type="checkbox"
+              checked={singleFile}
+              onChange={(e) => setSingleFile(e.target.checked)}
+              disabled={isGenerating}
+              className="w-4 h-4 accent-orange shrink-0"
+            />
+            <span className="text-sm text-foreground">
+              Gerar tudo num <strong>único arquivo</strong> (uma página por crachá)
+            </span>
+          </label>
         </div>
 
         {/* Busca e selecionar todos */}
@@ -232,14 +269,17 @@ export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalP
             ) : (
               <>
                 <Download size={17} />
-                Baixar {selectedIds.size > 0 ? `${selectedIds.size} ` : ''}crachá
-                {selectedIds.size !== 1 ? 's' : ''}
+                {singleFile
+                  ? `Baixar PDF único (${selectedIds.size} crachá${selectedIds.size !== 1 ? 's' : ''})`
+                  : `Baixar ${selectedIds.size > 0 ? `${selectedIds.size} ` : ''}crachá${selectedIds.size !== 1 ? 's' : ''}`}
               </>
             )}
           </button>
           {isGenerating && (
             <p className="text-[11px] text-muted-foreground text-center mt-2">
-              Os arquivos são baixados um a um — não feche esta janela.
+              {singleFile
+                ? 'Montando o arquivo — não feche esta janela.'
+                : 'Os arquivos são baixados um a um — não feche esta janela.'}
             </p>
           )}
         </div>

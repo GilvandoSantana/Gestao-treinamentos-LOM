@@ -13,6 +13,15 @@
 
 import { jsPDF } from 'jspdf';
 
+/** Marca interna usada para recuperar o jsPDF "de verdade" por trás do Proxy
+ * de conversão de coordenadas — necessário para juntar vários crachás num
+ * único PDF sem aninhar Proxies (o que dobraria as transformações). */
+const RAW_DOC = Symbol('rawBadgeDoc');
+
+export function unwrapBadgeDoc(doc: jsPDF): jsPDF {
+  return (doc as any)[RAW_DOC] ?? doc;
+}
+
 /** Medidas finais do cartão, em milímetros. */
 export const BADGE_MM = {
   singleWidth: 54,
@@ -52,13 +61,26 @@ export type BadgeLayout = {
 export function createBadgeSheet(
   sourceWidth: number,
   sourceHeight: number,
-  doubleSided: boolean
+  doubleSided: boolean,
+  /** Documento já existente — usado para juntar vários crachás num só PDF. */
+  existingDoc?: jsPDF
 ): BadgeLayout {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+  // Sempre trabalha com o jsPDF "cru": se existingDoc vier do Proxy devolvido
+  // por uma chamada anterior, precisa desembrulhar antes — senão as
+  // transformações de coordenada se acumulariam a cada crachá do lote.
+  const doc = existingDoc
+    ? unwrapBadgeDoc(existingDoc)
+    : new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+  (doc as any)[RAW_DOC] = doc;
+
+  // Ao reutilizar o documento (lote), cada crachá novo vira uma página nova.
+  if (existingDoc) {
+    doc.addPage('a4', 'portrait');
+  }
 
   const targetWidth = doubleSided ? BADGE_MM.doubleWidth : BADGE_MM.singleWidth;
   const targetHeight = BADGE_MM.height;
@@ -125,9 +147,10 @@ export function drawCutMarks(layout: BadgeLayout, _sourceWidth: number, _sourceH
 export function createBadgeDoc(
   sourceWidth: number,
   sourceHeight: number,
-  doubleSided: boolean
+  doubleSided: boolean,
+  existingDoc?: jsPDF
 ): jsPDF {
-  const layout = createBadgeSheet(sourceWidth, sourceHeight, doubleSided);
+  const layout = createBadgeSheet(sourceWidth, sourceHeight, doubleSided, existingDoc);
   const { doc } = layout;
 
   drawCutMarks(layout, sourceWidth, sourceHeight);

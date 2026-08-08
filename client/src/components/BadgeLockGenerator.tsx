@@ -4,7 +4,8 @@
  * Dimensions: 55mm x 85mm (Portrait)
  */
 
-import { createBadgeDoc } from './badgeLayout';
+import { createBadgeDoc, unwrapBadgeDoc } from './badgeLayout';
+import type { jsPDF } from 'jspdf';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 import logoMining from '@/assets/logo-support-mining.png';
@@ -37,12 +38,12 @@ const loadImage = (url: string): Promise<string> => {
   });
 };
 
-export const generateBadgeLockPDF = async (employee: Employee) => {
+export const generateBadgeLockPDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá de bloqueio para ${employee.name}...`);
   
   try {
     // Folha A4 retrato com o cartão em 109 x 86 mm (frente + verso).
-    const doc = createBadgeDoc(110, 85, true);
+    const doc = createBadgeDoc(110, 85, true, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -177,10 +178,17 @@ export const generateBadgeLockPDF = async (employee: Employee) => {
     doc.setFontSize(18);
     doc.text('193', 82.5, 75, { align: 'center' });
 
-    doc.save(`cracha-bloqueio-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
-    toast.success('Crachá de bloqueio gerado com sucesso!', { id: toastId });
+    const rawDoc = unwrapBadgeDoc(doc);
+    if (!sharedDoc) {
+      rawDoc.save(`cracha-bloqueio-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+      toast.success('Crachá de bloqueio gerado com sucesso!', { id: toastId });
+    } else {
+      toast.dismiss(toastId);
+    }
+    return rawDoc;
   } catch (error) {
     console.error('Error generating lock badge PDF:', error);
     toast.error('Erro ao gerar crachá de bloqueio.', { id: toastId });
+    throw error;
   }
 };

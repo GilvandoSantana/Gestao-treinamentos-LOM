@@ -15,6 +15,8 @@ export interface ContractInfo {
   preposition: ContractPreposition;
   /** E-mail que recebe os alertas de treinamento deste contrato; null = usa o global. */
   alertEmail: string | null;
+  /** Telefone (com DDD e DDI) que recebe os alertas por WhatsApp deste contrato. */
+  alertWhatsapp: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

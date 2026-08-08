@@ -13,7 +13,8 @@
  * BACK face offset: +55mm (was +100mm)
  */
 
-import { createBadgeDoc } from './badgeLayout';
+import { createBadgeDoc, unwrapBadgeDoc } from './badgeLayout';
+import type { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus } from '@/lib/training-utils';
@@ -63,7 +64,7 @@ const generateQRCode = async (text: string): Promise<string> => {
   }
 };
 
-export const generateBadgePDF = async (employee: Employee) => {
+export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá para ${employee.name}...`);
   
   try {
@@ -73,7 +74,7 @@ export const generateBadgePDF = async (employee: Employee) => {
     // Folha A4 retrato com o cartão em 109 x 86 mm (frente + verso).
     // O desenho abaixo segue as coordenadas originais (170 x 85); o adaptador
     // converte tudo para o tamanho e a posição corretos na folha.
-    const doc = createBadgeDoc(170, 85, true);
+    const doc = createBadgeDoc(170, 85, true, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -290,10 +291,17 @@ export const generateBadgePDF = async (employee: Employee) => {
       doc.text('-', tableX + col1Width + (col2Width / 2), currentY + 3.4, { align: 'center' });
     }
 
-    doc.save(`cracha-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
-    toast.success('Crachá gerado com sucesso!', { id: toastId });
+    const rawDoc = unwrapBadgeDoc(doc);
+    if (!sharedDoc) {
+      rawDoc.save(`cracha-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+      toast.success('Crachá gerado com sucesso!', { id: toastId });
+    } else {
+      toast.dismiss(toastId);
+    }
+    return rawDoc;
   } catch (error) {
     console.error('Error generating badge PDF:', error);
     toast.error('Erro ao gerar crachá. Verifique o console para mais detalhes.', { id: toastId });
+    throw error;
   }
 };

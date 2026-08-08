@@ -4,7 +4,8 @@
  * Dimensions: 55mm x 85mm (Portrait)
  */
 
-import { createBadgeDoc } from './badgeLayout';
+import { createBadgeDoc, unwrapBadgeDoc } from './badgeLayout';
+import type { jsPDF } from 'jspdf';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 import logoMining from '@/assets/logo-support-mining.png';
@@ -37,12 +38,12 @@ const loadImage = (url: string): Promise<string> => {
   });
 };
 
-export const generateBadgeWaterPDF = async (employee: Employee) => {
+export const generateBadgeWaterPDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá de água para ${employee.name}...`);
   
   try {
     // Folha A4 retrato com o cartão em 54 x 86 mm (só frente).
-    const doc = createBadgeDoc(55, 85, false);
+    const doc = createBadgeDoc(55, 85, false, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -145,10 +146,17 @@ export const generateBadgeWaterPDF = async (employee: Employee) => {
     doc.setFont('helvetica', 'normal');
     doc.text(employee.phone || '', 35.5, 80);
 
-    doc.save(`cracha-agua-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
-    toast.success('Crachá de água gerado com sucesso!', { id: toastId });
+    const rawDoc = unwrapBadgeDoc(doc);
+    if (!sharedDoc) {
+      rawDoc.save(`cracha-agua-${employee.name.toLowerCase().replace(/\s+/g, '-')}.pdf`);
+      toast.success('Crachá de água gerado com sucesso!', { id: toastId });
+    } else {
+      toast.dismiss(toastId);
+    }
+    return rawDoc;
   } catch (error) {
     console.error('Error generating water badge PDF:', error);
     toast.error('Erro ao gerar crachá de água.', { id: toastId });
+    throw error;
   }
 };

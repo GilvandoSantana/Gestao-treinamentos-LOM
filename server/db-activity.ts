@@ -34,7 +34,8 @@ export type ActivityAction =
   | "contract.permanentDelete"
   | "employee.changeContract"
   | "account.impersonate"
-  | "account.stopImpersonate";
+  | "account.stopImpersonate"
+  | "whatsapp.test";
 
 export type LogActivityInput = {
   username: string | null;

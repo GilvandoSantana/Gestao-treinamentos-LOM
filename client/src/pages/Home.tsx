@@ -40,6 +40,7 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
+import WelcomeSummary from '@/components/WelcomeSummary';
 import { setActiveContract } from '@/lib/active-contract';
 
 export default function Home() {
@@ -555,6 +556,15 @@ export default function Home() {
             currentUsername={session.username}
           />
         )}
+
+        <WelcomeSummary
+          username={session.username}
+          employees={activeEmployees}
+          onSeeExpiring={() => {
+            setFilter('expired');
+            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+        />
 
         <div className="mb-6">
           <SyncStatus lastSyncTime={lastSyncTime} isSyncing={isSyncing} syncError={syncError} />

@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { setSessionMarker } from '@/lib/session-marker';
@@ -47,10 +47,26 @@ export default function AdminManagementModal({
   const setPermissionsMutation = trpc.auth.admins.setPermissions.useMutation();
   const impersonateMutation = trpc.auth.admins.impersonate.useMutation();
   const testEmailMutation = trpc.auth.testEmail.useMutation();
+  const testWhatsAppMutation = trpc.auth.testWhatsApp.useMutation();
+  const [testPhone, setTestPhone] = useState('');
 
   const handleTestEmail = async () => {
     try {
       const result = await testEmailMutation.mutateAsync();
+      if (result.success) toast.success(result.message);
+      else toast.error(result.message, { duration: 8000 });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao testar o envio.');
+    }
+  };
+
+  const handleTestWhatsApp = async () => {
+    if (!testPhone.trim()) {
+      toast.error('Informe um telefone para testar.');
+      return;
+    }
+    try {
+      const result = await testWhatsAppMutation.mutateAsync({ phone: testPhone });
       if (result.success) toast.success(result.message);
       else toast.error(result.message, { duration: 8000 });
     } catch (error) {
@@ -264,6 +280,42 @@ export default function AdminManagementModal({
             ) : (
               <>
                 <Send size={14} /> Enviar e-mail de teste
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Diagnóstico do envio de WhatsApp — o número de teste é digitado
+            aqui na hora; o telefone de cada contrato fica na tela de
+            Contratos, junto do e-mail de alerta. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <MessageCircle size={15} /> Alertas por WhatsApp
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Envia uma mensagem de teste para o número informado, para conferir a configuração da
+            Z-API.
+          </p>
+          <input
+            type="tel"
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+            placeholder="Ex: 11999999999"
+            disabled={testWhatsAppMutation.isPending}
+            className="w-full px-3 py-2 mb-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+          />
+          <button
+            onClick={handleTestWhatsApp}
+            disabled={testWhatsAppMutation.isPending}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {testWhatsAppMutation.isPending ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Enviando...
+              </>
+            ) : (
+              <>
+                <Send size={14} /> Enviar WhatsApp de teste
               </>
             )}
           </button>

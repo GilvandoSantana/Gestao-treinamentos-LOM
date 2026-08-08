@@ -205,6 +205,9 @@ export const contracts = mysqlTable("contracts", {
   // E-mail que recebe os alertas de treinamento deste contrato; vazio usa o
   // endereço global (ALERT_RECIPIENT_EMAIL).
   alertEmail: varchar("alertEmail", { length: 255 }),
+  // Telefone (com DDD e código do país, ex: 5511999999999) que recebe os
+  // alertas por WhatsApp deste contrato; vazio = não envia por WhatsApp.
+  alertWhatsapp: varchar("alertWhatsapp", { length: 20 }),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

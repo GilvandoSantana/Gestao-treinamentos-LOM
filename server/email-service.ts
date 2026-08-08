@@ -5,6 +5,7 @@ import { eq, and, gte } from "drizzle-orm";
 import { employees, trainings, emailNotifications } from "../drizzle/schema";
 import { nanoid } from "nanoid";
 import { listContracts } from "./db-contracts";
+import { sendWhatsAppMessage } from "./whatsapp-service";
 import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 
 export interface TrainingAlert {
@@ -259,6 +260,25 @@ export async function sendTrainingAlerts(): Promise<boolean> {
         }
       } else {
         console.warn(`[Email Service] Failed to send alerts for contract "${slug}"`);
+      }
+
+      // WhatsApp — best-effort, independente do e-mail: se um falhar, não
+      // impede o outro. Manda um resumo curto, não a lista inteira.
+      if (contract?.alertWhatsapp) {
+        const expired = contractAlerts.filter((a) => a.status === "expired").length;
+        const expiring = contractAlerts.filter((a) => a.status === "expiring_soon").length;
+        const lines = [`*${heading}*`, ""];
+        if (expired > 0) lines.push(`⚠️ ${expired} treinamento(s) vencido(s)`);
+        if (expiring > 0) lines.push(`⏰ ${expiring} treinamento(s) a vencer`);
+        lines.push("", "Detalhes no sistema de gestão.");
+
+        const waResult = await sendWhatsAppMessage(contract.alertWhatsapp, lines.join("\n"));
+        if (!waResult.ok) {
+          console.warn(
+            `[WhatsApp] Falha ao enviar alerta do contrato "${slug}":`,
+            waResult.message
+          );
+        }
       }
     }
 

@@ -31,6 +31,7 @@ import {
 } from "./db-contracts";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
+import { sendTestWhatsApp } from "./whatsapp-service";
 
 export const appRouter = router({
   system: systemRouter,
@@ -208,6 +209,21 @@ export const appRouter = router({
       });
       return result;
     }),
+
+    // Teste de envio de WhatsApp — SOMENTE o administrador principal.
+    testWhatsApp: masterAdminProcedure
+      .input(z.object({ phone: z.string().min(8, "Informe um telefone válido") }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await sendTestWhatsApp(input.phone);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "whatsapp.test",
+          targetType: "whatsapp",
+          details: result.success ? "teste de whatsapp enviado" : `teste de whatsapp falhou: ${result.message}`,
+        });
+        return result;
+      }),
 
     // Rastro de atividades — SOMENTE o administrador principal.
     activity: router({
@@ -529,6 +545,7 @@ export const appRouter = router({
           name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
           preposition: z.enum(["do", "da"]),
           alertEmail: z.string().email().optional().or(z.literal("")),
+          alertWhatsapp: z.string().optional().or(z.literal("")),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -537,6 +554,7 @@ export const appRouter = router({
           name: input.name,
           preposition: input.preposition,
           alertEmail: input.alertEmail || null,
+          alertWhatsapp: input.alertWhatsapp || null,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -556,6 +574,7 @@ export const appRouter = router({
           name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
           preposition: z.enum(["do", "da"]),
           alertEmail: z.string().email().optional().or(z.literal("")),
+          alertWhatsapp: z.string().optional().or(z.literal("")),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -567,6 +586,7 @@ export const appRouter = router({
           name: input.name,
           preposition: input.preposition,
           alertEmail: input.alertEmail || null,
+          alertWhatsapp: input.alertWhatsapp || null,
         });
         void logActivity({
           username: ctx.siteAdminUsername,

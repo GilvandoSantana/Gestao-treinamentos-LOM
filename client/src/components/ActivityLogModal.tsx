@@ -32,6 +32,7 @@ const ACTION_INFO: Record<string, { label: string; className: string }> = {
   'account.impersonate': { label: 'Entrou como outro usuário', className: 'bg-orange/10 text-orange' },
   'account.stopImpersonate': { label: 'Voltou para a conta de administrador', className: 'bg-muted text-muted-foreground' },
   'email.test': { label: 'Testou envio de e-mail', className: 'bg-muted text-muted-foreground' },
+  'whatsapp.test': { label: 'Testou envio de WhatsApp', className: 'bg-muted text-muted-foreground' },
 };
 
 function formatWhen(value: Date | string): string {

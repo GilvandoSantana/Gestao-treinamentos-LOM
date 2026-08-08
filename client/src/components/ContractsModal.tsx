@@ -49,6 +49,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [name, setName] = useState('');
   const [preposition, setPreposition] = useState<ContractPreposition>('do');
   const [alertEmail, setAlertEmail] = useState('');
+  const [alertWhatsapp, setAlertWhatsapp] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -90,6 +91,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setName('');
     setPreposition('do');
     setAlertEmail('');
+    setAlertWhatsapp('');
   };
 
   const startEdit = (contract: ContractInfo) => {
@@ -97,6 +99,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setName(contract.name);
     setPreposition(contract.preposition);
     setAlertEmail(contract.alertEmail ?? '');
+    setAlertWhatsapp(contract.alertWhatsapp ?? '');
     setShowForm(true);
   };
 
@@ -104,10 +107,10 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     e.preventDefault();
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail });
+        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp });
         toast.success('Contrato atualizado.');
       } else {
-        await createMutation.mutateAsync({ name, preposition, alertEmail });
+        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp });
         toast.success('Contrato cadastrado.');
       }
       resetForm();
@@ -226,6 +229,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       <p className="text-xs text-muted-foreground font-technical">
                         {contract.preposition} · {contract.slug}
                         {contract.alertEmail && <> · {contract.alertEmail}</>}
+                        {contract.alertWhatsapp && <> · WhatsApp {contract.alertWhatsapp}</>}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -311,6 +315,23 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                     <p className="text-xs text-muted-foreground mt-1">
                       Quem recebe os alertas de treinamento vencendo/vencido deste contrato. Sem
                       preencher, usa o e-mail configurado globalmente no Railway.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                      WhatsApp de alerta (opcional)
+                    </label>
+                    <input
+                      type="tel"
+                      value={alertWhatsapp}
+                      onChange={(e) => setAlertWhatsapp(e.target.value)}
+                      placeholder="Ex: 11999999999"
+                      disabled={isSubmitting}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Número com DDD (o DDI do Brasil é adicionado automaticamente). Deixe em
+                      branco para não enviar alerta por WhatsApp deste contrato.
                     </p>
                   </div>
                   <div className="flex gap-2">
