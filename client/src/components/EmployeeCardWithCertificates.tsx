@@ -3,7 +3,7 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical, Copy, History } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -13,6 +13,7 @@ interface EmployeeCardWithCertificatesProps {
   employee: Employee;
   index: number;
   onEdit: (employee: Employee) => void;
+  onDuplicate?: (employee: Employee) => void;
   onDelete: (id: string) => void;
   onDismiss?: (employee: Employee) => void;
   onViewAudit?: (employee: Employee) => void;
@@ -53,6 +54,7 @@ export default function EmployeeCardWithCertificates({
   employee,
   index,
   onEdit,
+  onDuplicate,
   onDelete,
   onDismiss,
   onViewAudit,
@@ -207,6 +209,20 @@ export default function EmployeeCardWithCertificates({
                       Editar
                     </button>
 
+                    {onDuplicate && (
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          onDuplicate(employee);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        <Copy size={15} className="text-muted-foreground" />
+                        Duplicar
+                      </button>
+                    )}
+
                     {onDismiss && (
                       <button
                         role="menuitem"
@@ -265,6 +281,13 @@ export default function EmployeeCardWithCertificates({
 
         {/* Trainings */}
         <div className="p-4">
+          {/* Última atualização — discreto, no topo do bloco de treinamentos */}
+          {employee.updatedAt && (
+            <p className="text-[11px] text-muted-foreground font-technical mb-2 flex items-center gap-1">
+              <History size={11} className="opacity-60" />
+              Atualizado em {new Date(employee.updatedAt).toLocaleDateString('pt-BR')}
+            </p>
+          )}
           {employee.trainings && employee.trainings.length > 0 ? (
             <div>
               <button

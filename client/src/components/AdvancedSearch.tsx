@@ -29,12 +29,18 @@ export default function AdvancedSearch({
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
             <input
+              id="employee-search-input"
               type="text"
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Buscar colaborador..."
               className="w-full pl-12 pr-10 py-3 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition-all"
             />
+            {!searchTerm && (
+              <kbd className="hidden lg:flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-0.5 px-1.5 py-0.5 rounded border border-border bg-muted text-[10px] font-technical text-muted-foreground pointer-events-none">
+                /
+              </kbd>
+            )}
             {searchTerm && (
               <button
                 onClick={() => onSearchChange('')}

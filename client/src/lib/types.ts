@@ -20,6 +20,7 @@ export interface Employee {
   /** Demitido: sai das listas e contagens, mas o registro é preservado. */
   dismissed?: boolean;
   dismissedAt?: string | Date | null;
+  updatedAt?: string | Date;
   trainings: Training[];
 }
 

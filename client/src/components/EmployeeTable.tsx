@@ -25,6 +25,8 @@ interface EmployeeTableProps {
   onDelete: (id: string) => void;
   onViewAudit?: (employee: Employee) => void;
   isAdmin?: boolean;
+  /** Linhas mais finas, para caber mais gente na tela sem rolar tanto. */
+  compact?: boolean;
 }
 
 const statusBadgeMap: Record<string, string> = {
@@ -43,9 +45,10 @@ const statusDotMap: Record<string, string> = {
   none: 'bg-muted-foreground',
 };
 
-export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit, isAdmin = false }: EmployeeTableProps) {
+export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit, isAdmin = false, compact = false }: EmployeeTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
+  const cellPad = compact ? 'p-2' : 'p-4';
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id);
@@ -89,10 +92,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     className={`hover:bg-muted/50 transition-colors cursor-pointer ${isExpanded ? 'bg-muted/30' : ''}`}
                     onClick={() => toggleExpand(employee.id)}
                   >
-                    <td className="p-4 text-center">
+                    <td className={`${cellPad} text-center`}>
                       {isExpanded ? <ChevronUp size={18} className="text-navy" /> : <ChevronDown size={18} className="text-muted-foreground" />}
                     </td>
-                    <td className="p-4">
+                    <td className={cellPad}>
                       <div className="font-bold text-foreground">{employee.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {(() => {
@@ -110,19 +113,19 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                         <span className="md:hidden"> • {employee.role}</span>
                       </div>
                     </td>
-                    <td className="p-4 hidden md:table-cell text-sm text-foreground">
+                    <td className={`${cellPad} hidden md:table-cell text-sm text-foreground`}>
                       {employee.role}
                     </td>
-                    <td className="p-4 hidden sm:table-cell text-sm font-technical text-muted-foreground">
+                    <td className={`${cellPad} hidden sm:table-cell text-sm font-technical text-muted-foreground`}>
                       {employee.registration ? `#${employee.registration}` : '-'}
                     </td>
-                    <td className="p-4">
+                    <td className={cellPad}>
                       <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-bold ${statusBadgeMap[worstStatus]}`}>
                         <span className={`w-2 h-2 rounded-full ${statusDotMap[worstStatus]}`} />
                         {worstStatus === 'expired' ? 'Vencido' : worstStatus === 'expiring' ? 'A Vencer' : worstStatus === 'valid' ? 'Em Dia' : 'Sem Treinos'}
                       </div>
                     </td>
-                    <td className="p-4 text-right">
+                    <td className={`${cellPad} text-right`}>
                       <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                         {isAdmin && (
                           <button
@@ -151,7 +154,7 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                   {isExpanded && (
                     <tr className="bg-muted/10">
                       <td colSpan={6} className="p-0">
-                        <div className="p-4 border-t border-border/50 animate-fade-in">
+                        <div className={`${cellPad} border-t border-border/50 animate-fade-in`}>
 	                          <div className="flex items-center justify-between mb-3">
 	                            <h4 className="text-sm font-bold text-navy flex items-center gap-2">
 	                              <Shield size={16} className="text-orange" />

@@ -14,6 +14,7 @@ import {
   Shield,
   FileText,
   LayoutGrid,
+  Rows3,
   List,
   Sun,
   Moon,
@@ -42,6 +43,8 @@ interface HeaderProps {
   employeeCount: number;
   viewMode?: 'grid' | 'table';
   onViewModeChange?: (mode: 'grid' | 'table') => void;
+  compactTable?: boolean;
+  onCompactChange?: (compact: boolean) => void;
   username?: string | null;
   onLogout: () => void;
   canEdit?: boolean;
@@ -68,6 +71,8 @@ export default function Header({
   employeeCount,
   viewMode = 'grid',
   onViewModeChange,
+  compactTable = false,
+  onCompactChange,
   username,
   onLogout,
   canEdit = false,
@@ -291,6 +296,20 @@ export default function Header({
                   <List size={17} />
                 </button>
               </div>
+            )}
+
+            {onViewModeChange && viewMode === 'table' && onCompactChange && (
+              <button
+                onClick={() => onCompactChange(!compactTable)}
+                className={`hidden sm:flex p-2 rounded-xl border transition-all ${
+                  compactTable
+                    ? 'bg-white text-navy border-white'
+                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                }`}
+                title={compactTable ? 'Linhas normais' : 'Linhas compactas (cabem mais na tela)'}
+              >
+                <Rows3 size={17} />
+              </button>
             )}
 
             {canEdit && (

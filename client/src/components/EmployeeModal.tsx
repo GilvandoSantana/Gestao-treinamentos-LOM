@@ -15,6 +15,9 @@ import { toast } from 'sonner';
 interface EmployeeModalProps {
   isOpen: boolean;
   employee: Employee | null;
+  /** Ao criar um novo colaborador a partir de "Duplicar": função e
+   * treinamentos vêm pré-preenchidos deste colaborador de origem. */
+  duplicateFrom?: Employee | null;
   onSave: (employee: Employee) => void;
   onClose: () => void;
   isAdmin?: boolean;
@@ -28,7 +31,7 @@ interface PendingCertificate {
   base64: string;
 }
 
-export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdmin = false, isMasterAdmin = false }: EmployeeModalProps) {
+export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, onSave, onClose, isAdmin = false, isMasterAdmin = false }: EmployeeModalProps) {
   const [name, setName] = useState('');
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
@@ -37,6 +40,10 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
   const [reassignContract, setReassignContract] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  // Evita marcar o formulário como "alterado" logo depois de abrir/popular
+  // os campos — só o toque do usuário deve contar.
+  const skipDirtyCheck = useRef(true);
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
   const trainingNamesQuery = trpc.employees.trainingNames.useQuery(undefined, { enabled: isOpen });
@@ -82,19 +89,58 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
     } else {
       setName('');
       setRegistration('');
-      setEducationLevel('');
+      // "Duplicar": traz função, escolaridade e treinamentos do colaborador
+      // de origem — o que costuma se repetir entre pessoas na mesma função —
+      // mas nunca dados pessoais (nome, matrícula, nascimento, foto, telefone).
+      setEducationLevel(duplicateFrom?.educationLevel || '');
       setAge(undefined);
       setBirthDate('');
-      setRole('');
+      setRole(duplicateFrom?.role || '');
       setPhone('');
       setPhotoPreview(null);
-      setShowCustomRole(false);
-      setTrainings([]);
+      setShowCustomRole(duplicateFrom ? !PREDEFINED_ROLES.includes(duplicateFrom.role as any) : false);
+      setTrainings(
+        duplicateFrom?.trainings?.map((t) => ({ ...t, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` })) || []
+      );
     }
     resetTrainingForm();
     setPendingCertificates([]);
     setSelectedPhoto(null);
-  }, [employee, isOpen]);
+    // Marca o formulário como "limpo" de novo — o efeito abaixo, que observa
+    // os campos, ainda vai disparar por causa dessas mesmas atribuições; o
+    // skipDirtyCheck evita que isso seja confundido com uma edição do usuário.
+    setIsDirty(false);
+    skipDirtyCheck.current = true;
+  }, [employee, duplicateFrom, isOpen]);
+
+  // Detecta alteração em qualquer campo do formulário, para avisar antes de
+  // fechar sem salvar. Ignora a primeira passada logo após abrir/popular.
+  useEffect(() => {
+    if (skipDirtyCheck.current) {
+      skipDirtyCheck.current = false;
+      return;
+    }
+    setIsDirty(true);
+  }, [name, registration, educationLevel, age, birthDate, role, phone, trainings, photoPreview, reassignContract]);
+
+  // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
+  // não salvo — não só ao usar os botões do próprio modal.
+  useEffect(() => {
+    if (!isOpen || !isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isOpen, isDirty]);
+
+  const handleClose = () => {
+    if (isDirty && !window.confirm('Você tem alterações não salvas. Deseja mesmo sair sem salvar?')) {
+      return;
+    }
+    onClose();
+  };
 
   const resetTrainingForm = () => {
     setTrainingName('');
@@ -352,12 +398,19 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
             <div className="bg-white/15 p-2 rounded-lg">
               <User size={22} className="text-white" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white">
-              {employee ? 'Editar Colaborador' : 'Novo Colaborador'}
-            </h2>
+            <div className="flex flex-col">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">
+                {employee ? 'Editar Colaborador' : 'Novo Colaborador'}
+              </h2>
+              {!employee && duplicateFrom && (
+                <span className="text-xs font-technical text-white/70">
+                  Copiando função e treinamentos de {duplicateFrom.name}
+                </span>
+              )}
+            </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isUploading}
             className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-lg transition-all disabled:opacity-50"
           >
@@ -721,7 +774,7 @@ export default function EmployeeModal({ isOpen, employee, onSave, onClose, isAdm
             )}
           </button>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             disabled={isUploading}
             className="flex-1 bg-muted hover:bg-warm-gray-dark text-foreground py-3 rounded-xl font-bold transition-all text-sm disabled:opacity-50"
           >

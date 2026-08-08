@@ -41,6 +41,7 @@ import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { setActiveContract } from '@/lib/active-contract';
 
 export default function Home() {
@@ -58,6 +59,7 @@ export default function Home() {
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [duplicateFromEmployee, setDuplicateFromEmployee] = useState<Employee | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
@@ -75,6 +77,7 @@ export default function Home() {
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [compactTable, setCompactTable] = useState(() => localStorage.getItem('compactTable') === '1');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -401,8 +404,23 @@ export default function Home() {
 
   const openModal = (employee: Employee | null = null) => {
     setEditingEmployee(employee);
+    setDuplicateFromEmployee(null);
     setShowModal(true);
   };
+
+  const openDuplicateModal = (source: Employee) => {
+    setEditingEmployee(null);
+    setDuplicateFromEmployee(source);
+    setShowModal(true);
+  };
+
+  // Atalhos de teclado do desktop: "N" novo colaborador, "/" foca a busca.
+  // Só quando não há modal já capturando o teclado, e só quem pode cadastrar
+  // ganha o atalho de "N".
+  useKeyboardShortcuts({
+    enabled: session.isLoggedIn && !showModal,
+    onNewEmployee: session.can('editEmployees') ? () => openModal() : undefined,
+  });
 
   // Memoizado para evitar recálculo em cada re-render
   // Demitidos ficam fora de tudo: listas, filtros, contagens e estatísticas.
@@ -522,6 +540,11 @@ export default function Home() {
           isSyncing={isSyncing}
           employeeCount={activeEmployees.length}
           viewMode={viewMode}
+          compactTable={compactTable}
+          onCompactChange={(value) => {
+            setCompactTable(value);
+            localStorage.setItem('compactTable', value ? '1' : '0');
+          }}
           onViewModeChange={setViewMode}
           username={session.username}
           canEdit={session.can('editEmployees')}
@@ -623,6 +646,7 @@ export default function Home() {
                 employee={employee}
                 index={index}
                 onEdit={(emp) => openModal(emp)}
+                onDuplicate={session.can('editEmployees') ? (emp) => openDuplicateModal(emp) : undefined}
                 onDelete={(id) => {
                   setDeleteConfirmId(id);
                   setShowDeleteConfirm(true);
@@ -651,6 +675,7 @@ export default function Home() {
               setShowAuditHistory(true);
             }}
             isAdmin={session.can('editEmployees')}
+            compact={compactTable}
           />
         )}
 
@@ -684,10 +709,12 @@ export default function Home() {
       <EmployeeModal
         isOpen={showModal}
         employee={editingEmployee}
+        duplicateFrom={duplicateFromEmployee}
         onSave={saveEmployee}
         onClose={() => {
           setShowModal(false);
           setEditingEmployee(null);
+          setDuplicateFromEmployee(null);
         }}
         isAdmin={session.can('editEmployees')}
         isMasterAdmin={session.isMasterAdmin}
