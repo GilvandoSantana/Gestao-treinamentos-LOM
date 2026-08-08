@@ -8,11 +8,18 @@ export interface ExcelRow {
 /**
  * Parse Excel file and extract employees with trainings
  * Expected columns:
- * - Nome (required)
- * - Função (optional)
- * - Treinamento (optional)
- * - Data de Realização (optional, format: DD/MM/YYYY)
- * - Data de Vencimento (optional, format: DD/MM/YYYY)
+ * - Nome (obrigatório)
+ * - Matrícula (opcional)
+ * - Função (opcional)
+ * - Escolaridade (opcional)
+ * - Data de Nascimento (opcional, formato: DD/MM/YYYY)
+ * - Telefone (opcional)
+ * - Treinamento (opcional)
+ * - Data de Realização (opcional, formato: DD/MM/YYYY)
+ * - Data de Vencimento (opcional, formato: DD/MM/YYYY)
+ *
+ * Uma linha por treinamento: para dar vários treinamentos à mesma pessoa,
+ * repita o nome dela em várias linhas (o modelo baixável já mostra isso).
  */
 export async function parseExcelFile(file: File): Promise<Employee[]> {
   return new Promise((resolve, reject) => {
@@ -52,10 +59,17 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
           // Get or create employee
           let employee = employeeMap.get(nome);
           if (!employee) {
+            const birthDateStr = String(row['Data de Nascimento'] || row['birthDate'] || '').trim();
+            const birthDate = parseDate(birthDateStr) || undefined;
+
             employee = {
               id: `emp-${Date.now()}-${Math.random().toString(36).substring(7)}`,
               name: nome,
+              registration: String(row['Matrícula'] || row['registration'] || '').trim() || undefined,
               role: String(row['Função'] || row['role'] || '').trim(),
+              educationLevel: String(row['Escolaridade'] || row['educationLevel'] || '').trim() || undefined,
+              birthDate,
+              phone: String(row['Telefone'] || row['phone'] || '').trim() || undefined,
               trainings: [],
             };
             employeeMap.set(nome, employee);
@@ -132,21 +146,33 @@ export function generateExcelTemplate(): void {
   const sampleData = [
     {
       Nome: 'João Silva',
+      Matrícula: '10482',
       Função: 'Motorista',
+      Escolaridade: 'Ensino Médio',
+      'Data de Nascimento': '12/03/1990',
+      Telefone: '(11) 99999-9999',
       Treinamento: 'Direção Defensiva',
       'Data de Realização': '15/06/2025',
       'Data de Vencimento': '15/06/2026',
     },
     {
       Nome: 'Maria Santos',
+      Matrícula: '10517',
       Função: 'Soldador industrial',
+      Escolaridade: 'Ensino Técnico',
+      'Data de Nascimento': '25/08/1988',
+      Telefone: '(11) 98888-8888',
       Treinamento: 'Proteção de Máquinas',
       'Data de Realização': '10/05/2025',
       'Data de Vencimento': '10/05/2026',
     },
     {
       Nome: 'Maria Santos',
+      Matrícula: '10517',
       Função: 'Soldador industrial',
+      Escolaridade: 'Ensino Técnico',
+      'Data de Nascimento': '25/08/1988',
+      Telefone: '(11) 98888-8888',
       Treinamento: 'Trabalho a Quente',
       'Data de Realização': '20/07/2025',
       'Data de Vencimento': '20/07/2026',
@@ -159,12 +185,16 @@ export function generateExcelTemplate(): void {
 
   // Set column widths
   worksheet['!cols'] = [
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 20 },
-    { wch: 20 },
+    { wch: 25 }, // Nome
+    { wch: 12 }, // Matrícula
+    { wch: 22 }, // Função
+    { wch: 18 }, // Escolaridade
+    { wch: 16 }, // Data de Nascimento
+    { wch: 16 }, // Telefone
+    { wch: 25 }, // Treinamento
+    { wch: 18 }, // Data de Realização
+    { wch: 18 }, // Data de Vencimento
   ];
 
-  XLSX.writeFile(workbook, 'template_treinamentos.xlsx');
+  XLSX.writeFile(workbook, 'template_colaboradores.xlsx');
 }

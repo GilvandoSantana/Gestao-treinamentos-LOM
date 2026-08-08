@@ -37,7 +37,6 @@ export default function ExcelImportModal({ isOpen, onClose, onImport }: ExcelImp
       }
 
       await onImport(employees);
-      toast.success(`${employees.length} colaborador(es) importado(s) com sucesso!`);
       onClose();
     } catch (error) {
       toast.error(`Erro ao importar: ${error instanceof Error ? error.message : 'Desconhecido'}`);
@@ -76,12 +75,14 @@ export default function ExcelImportModal({ isOpen, onClose, onImport }: ExcelImp
               <div className="text-sm text-blue-900">
                 <p className="font-semibold mb-1">Formato esperado:</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Nome</strong> - Nome do colaborador (obrigatório)</li>
-                  <li><strong>Função</strong> - Cargo/função (opcional)</li>
-                  <li><strong>Treinamento</strong> - Nome do treinamento (opcional)</li>
-                  <li><strong>Data de Realização</strong> - DD/MM/YYYY (opcional)</li>
-                  <li><strong>Data de Vencimento</strong> - DD/MM/YYYY (opcional)</li>
+                  <li><strong>Nome</strong> - obrigatório</li>
+                  <li><strong>Matrícula, Função, Escolaridade, Data de Nascimento, Telefone</strong> - opcionais</li>
+                  <li><strong>Treinamento, Data de Realização, Data de Vencimento</strong> - opcionais</li>
                 </ul>
+                <p className="text-xs mt-2">
+                  Para vários treinamentos da mesma pessoa, repita o nome dela em várias linhas —
+                  o modelo baixado abaixo já mostra um exemplo assim.
+                </p>
               </div>
             </div>
           </div>

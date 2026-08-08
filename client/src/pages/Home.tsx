@@ -549,6 +549,7 @@ export default function Home() {
           username={session.username}
           canEdit={session.can('editEmployees')}
           canImportExport={session.can('importExport')}
+          onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}
           onLogout={async () => {
             try {
               await siteLogoutMutation.mutateAsync();

@@ -11,6 +11,7 @@
 import {
   Plus,
   Download,
+  Upload,
   Shield,
   FileText,
   LayoutGrid,
@@ -49,6 +50,7 @@ interface HeaderProps {
   onLogout: () => void;
   canEdit?: boolean;
   canImportExport?: boolean;
+  onImportExcel?: () => void;
   onManageAdmins?: () => void;
   onShowContracts?: () => void;
   isMasterAdmin?: boolean;
@@ -77,6 +79,7 @@ export default function Header({
   onLogout,
   canEdit = false,
   canImportExport = false,
+  onImportExcel,
   onManageAdmins,
   onShowContracts,
   isMasterAdmin = false,
@@ -362,6 +365,12 @@ export default function Header({
                         <Download size={16} className="text-muted-foreground" />
                         Exportar para Excel
                       </button>
+                      {onImportExcel && (
+                        <button onClick={runAndClose(onImportExcel)} disabled={isSyncing} className={menuItemClass} role="menuitem">
+                          <Upload size={16} className="text-muted-foreground" />
+                          Importar planilha
+                        </button>
+                      )}
                     </div>
                   )}
 
