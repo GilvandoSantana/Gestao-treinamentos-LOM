@@ -34,6 +34,7 @@ import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
 import ExcelImportModal from '@/components/ExcelImportModal';
+import RenewTrainingModal from '@/components/RenewTrainingModal';
 import ComplianceCharts from '@/components/ComplianceCharts';
 import ExpiringNotifications from '@/components/ExpiringNotifications';
 import AuditHistory from '@/components/AuditHistory';
@@ -41,6 +42,7 @@ import RoleFilter from '@/components/RoleFilter';
 import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
+import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { setActiveContract } from '@/lib/active-contract';
 
@@ -63,6 +65,7 @@ export default function Home() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
+  const [showRenewBulk, setShowRenewBulk] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
@@ -426,6 +429,7 @@ export default function Home() {
   // Demitidos ficam fora de tudo: listas, filtros, contagens e estatísticas.
   // O registro continua no banco, apenas não entra no dia a dia.
   const activeEmployees = useMemo(() => employees.filter((e) => !e.dismissed), [employees]);
+  const trainingAlerts = useTrainingAlerts(activeEmployees);
   const dismissedEmployees = useMemo(() => employees.filter((e) => e.dismissed), [employees]);
 
   const stats = useMemo(() => getStatistics(activeEmployees), [activeEmployees]);
@@ -550,6 +554,18 @@ export default function Home() {
           canEdit={session.can('editEmployees')}
           canImportExport={session.can('importExport')}
           onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}
+          onRenewBulk={session.can('editEmployees') ? () => setShowRenewBulk(true) : undefined}
+          notificationItems={trainingAlerts.items}
+          onNotificationSelect={(item) => {
+            setSearchQuery(item.employeeName);
+            setFilter(item.status === 'expired' ? 'expired' : 'expiring');
+            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          onSeeAllNotifications={() => {
+            setSearchQuery('');
+            setFilter('expired');
+            document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
+          }}
           onLogout={async () => {
             try {
               await siteLogoutMutation.mutateAsync();
@@ -734,6 +750,12 @@ export default function Home() {
         isOpen={showExcelImport}
         onClose={() => setShowExcelImport(false)}
         onImport={handleExcelImport}
+      />
+
+      <RenewTrainingModal
+        isOpen={showRenewBulk}
+        onClose={() => setShowRenewBulk(false)}
+        employees={activeEmployees}
       />
 
       {selectedEmployeeForAudit && (

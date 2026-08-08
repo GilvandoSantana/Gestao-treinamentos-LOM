@@ -9,7 +9,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, Clock, Cake, PartyPopper } from 'lucide-react';
 import type { Employee } from '@/lib/types';
-import { getTrainingStatus } from '@/lib/training-utils';
+import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
 
 interface WelcomeSummaryProps {
   username?: string | null;
@@ -37,20 +37,11 @@ function nextOccurrence(month: number, day: number, today: Date): Date {
 }
 
 export default function WelcomeSummary({ username, employees, onSeeExpiring }: WelcomeSummaryProps) {
-  const { expiringThisWeek, expiredCount, birthdays } = useMemo(() => {
+  const { expiredCount, expiringThisWeek } = useTrainingAlerts(employees);
+
+  const { birthdays } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    let expiring = 0;
-    let expired = 0;
-
-    for (const emp of employees) {
-      for (const training of emp.trainings ?? []) {
-        const status = getTrainingStatus(training.expirationDate);
-        if (status.status === 'expired') expired++;
-        else if (status.status === 'expiring' && status.diffDays <= 7) expiring++;
-      }
-    }
 
     const upcoming: UpcomingBirthday[] = [];
     for (const emp of employees) {
@@ -62,7 +53,7 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
     }
     upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
 
-    return { expiringThisWeek: expiring, expiredCount: expired, birthdays: upcoming.slice(0, 4) };
+    return { birthdays: upcoming.slice(0, 4) };
   }, [employees]);
 
   const firstName = username?.split(/[.\s]/)[0];

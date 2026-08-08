@@ -696,6 +696,51 @@ export const appRouter = router({
       return getDistinctTrainingNames(ctx.siteContract ?? undefined);
     }),
 
+    // Renovar o mesmo treinamento para vários colaboradores de uma vez —
+    // útil quando uma turma inteira faz a reciclagem no mesmo dia. Para cada
+    // colaborador: se ele já tinha um treinamento com esse nome, atualiza as
+    // datas; senão, cadastra um novo.
+    renewTrainingBulk: requirePermission('editEmployees')
+      .input(
+        z.object({
+          employeeIds: z.array(z.string()).min(1),
+          trainingName: z.string().trim().min(1),
+          completionDate: z.string(),
+          expirationDate: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        let updated = 0;
+        let created = 0;
+
+        for (const employeeId of input.employeeIds) {
+          const existingTrainings = await getTrainingsByEmployeeId(employeeId);
+          const match = existingTrainings.find(
+            (t) => t.name.trim().toLowerCase() === input.trainingName.trim().toLowerCase()
+          );
+
+          await upsertTraining({
+            id: match?.id ?? uuidv4(),
+            employeeId,
+            name: input.trainingName.trim(),
+            completionDate: input.completionDate,
+            expirationDate: input.expirationDate,
+          });
+
+          if (match) updated++;
+          else created++;
+        }
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "training.renewBulk",
+          details: `"${input.trainingName}" — ${updated} renovado(s), ${created} novo(s), de ${input.employeeIds.length} colaborador(es)`,
+        });
+
+        return { updated, created, total: input.employeeIds.length } as const;
+      }),
+
     // Reatribuir colaborador para outro contrato — SOMENTE o administrador
     // principal. Não é uma edição normal: move o registro inteiro para outra
     // "gaveta", então fica separado do upsertOne e sempre exige o admin

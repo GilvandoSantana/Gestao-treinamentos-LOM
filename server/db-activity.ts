@@ -35,7 +35,8 @@ export type ActivityAction =
   | "employee.changeContract"
   | "account.impersonate"
   | "account.stopImpersonate"
-  | "whatsapp.test";
+  | "whatsapp.test"
+  | "training.renewBulk";
 
 export type LogActivityInput = {
   username: string | null;

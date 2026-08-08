@@ -12,6 +12,7 @@ import {
   Plus,
   Download,
   Upload,
+  RefreshCw,
   Shield,
   FileText,
   LayoutGrid,
@@ -35,6 +36,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import { contractSystemTitleParts, type ContractInfo } from '@shared/contracts';
 import { useScrolled } from '@/hooks/useScrolled';
+import type { TrainingAlertItem } from '@/hooks/useTrainingAlerts';
+import NotificationBell from '@/components/NotificationBell';
 
 interface HeaderProps {
   onNewEmployee: () => void;
@@ -51,6 +54,10 @@ interface HeaderProps {
   canEdit?: boolean;
   canImportExport?: boolean;
   onImportExcel?: () => void;
+  onRenewBulk?: () => void;
+  notificationItems?: TrainingAlertItem[];
+  onNotificationSelect?: (item: TrainingAlertItem) => void;
+  onSeeAllNotifications?: () => void;
   onManageAdmins?: () => void;
   onShowContracts?: () => void;
   isMasterAdmin?: boolean;
@@ -80,6 +87,10 @@ export default function Header({
   canEdit = false,
   canImportExport = false,
   onImportExcel,
+  onRenewBulk,
+  notificationItems,
+  onNotificationSelect,
+  onSeeAllNotifications,
   onManageAdmins,
   onShowContracts,
   isMasterAdmin = false,
@@ -217,6 +228,14 @@ export default function Header({
 
           {/* Ações */}
           <div className="flex items-center gap-2 shrink-0">
+            {notificationItems && onNotificationSelect && onSeeAllNotifications && (
+              <NotificationBell
+                items={notificationItems}
+                onSelect={onNotificationSelect}
+                onSeeAll={onSeeAllNotifications}
+              />
+            )}
+
             {isMasterAdmin && onActiveContractChange && (
               <div className="relative" ref={contractRef}>
                 <button
@@ -369,6 +388,12 @@ export default function Header({
                         <button onClick={runAndClose(onImportExcel)} disabled={isSyncing} className={menuItemClass} role="menuitem">
                           <Upload size={16} className="text-muted-foreground" />
                           Importar planilha
+                        </button>
+                      )}
+                      {onRenewBulk && (
+                        <button onClick={runAndClose(onRenewBulk)} disabled={isSyncing} className={menuItemClass} role="menuitem">
+                          <RefreshCw size={16} className="text-muted-foreground" />
+                          Renovar treinamento em lote
                         </button>
                       )}
                     </div>
