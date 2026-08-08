@@ -6,7 +6,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, FileText, Loader, Camera, Building2 } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, FileText, Loader, Camera, Building2, Sparkles } from 'lucide-react';
+import type { DateSuggestion } from '@/lib/certificate-date-suggestion';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -66,6 +67,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
 
   // Certificate upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dateSuggestions, setDateSuggestions] = useState<DateSuggestion[]>([]);
   const [pendingCertificates, setPendingCertificates] = useState<PendingCertificate[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +157,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
     setExpirationDate('');
     setEditingTraining(null);
     setSelectedFile(null);
+    setDateSuggestions([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -222,6 +225,20 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       }
 
       setSelectedFile(file);
+
+      // Sugestão de data de vencimento a partir do texto do PDF — nunca
+      // preenche sozinho, só oferece um botão para o usuário confirmar.
+      setDateSuggestions([]);
+      // Carrega a biblioteca de leitura de PDF só quando alguém de fato
+      // anexa um PDF — evita engordar o carregamento inicial do site para
+      // todo mundo, já que a maioria das visitas nunca usa isso.
+      if (file.type === 'application/pdf') {
+        import('@/lib/certificate-date-suggestion').then(({ suggestExpirationDateFromFile }) => {
+          suggestExpirationDateFromFile(file).then((suggestions) => {
+            if (suggestions.length > 0) setDateSuggestions(suggestions);
+          });
+        });
+      }
     }
   };
 
@@ -720,6 +737,34 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                       </div>
                     )}
                   </div>
+
+                  {dateSuggestions.length > 0 && (
+                    <div className="mt-2 bg-orange/10 border border-orange/30 rounded-lg p-3">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-orange mb-1.5">
+                        <Sparkles size={13} />
+                        Encontramos {dateSuggestions.length > 1 ? 'datas' : 'uma data'} no certificado
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {dateSuggestions.map((s) => (
+                          <button
+                            key={s.isoDate}
+                            type="button"
+                            onClick={() => {
+                              setExpirationDate(s.isoDate);
+                              setDateSuggestions([]);
+                            }}
+                            className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-card border border-orange/40 text-foreground hover:bg-orange hover:text-white transition-colors"
+                            title={`Encontrado no texto: "${s.rawText}"`}
+                          >
+                            Usar {new Date(`${s.isoDate}T00:00:00`).toLocaleDateString('pt-BR')} como vencimento
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        Leitura automática do PDF — confira antes de usar.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
