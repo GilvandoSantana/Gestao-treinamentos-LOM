@@ -35,6 +35,7 @@ import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import RenewTrainingModal from '@/components/RenewTrainingModal';
+import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
 import ComplianceCharts from '@/components/ComplianceCharts';
 import ExpiringNotifications from '@/components/ExpiringNotifications';
 import AuditHistory from '@/components/AuditHistory';
@@ -417,6 +418,28 @@ export default function Home() {
     setShowModal(true);
   };
 
+  const handleExportEmployeeData = async (employee: Employee) => {
+    try {
+      const certificates = await utils.client.certificates.getByEmployee.query({
+        employeeId: employee.id,
+      });
+      // Para usuário comum, o próprio contrato dele já é o do colaborador
+      // (a lista só mostra gente do mesmo contrato). Só o administrador
+      // pode estar vendo colaboradores de outros contratos, então só ele
+      // busca o nome certo por fora.
+      let contractName = session.contract?.name ?? '—';
+      if (session.isMasterAdmin && employee.contract) {
+        const contracts = await utils.client.contracts.list.query({ includeDeleted: true });
+        contractName = contracts.find((c) => c.slug === employee.contract)?.name ?? employee.contract;
+      }
+      generateEmployeeDataExportPDF(employee, certificates as any, contractName);
+      toast.success('PDF gerado.');
+    } catch (error) {
+      toast.error('Erro ao gerar o PDF de dados.');
+      console.error(error);
+    }
+  };
+
   // Atalhos de teclado do desktop: "N" novo colaborador, "/" foca a busca.
   // Só quando não há modal já capturando o teclado, e só quem pode cadastrar
   // ganha o atalho de "N".
@@ -664,6 +687,7 @@ export default function Home() {
                 index={index}
                 onEdit={(emp) => openModal(emp)}
                 onDuplicate={session.can('editEmployees') ? (emp) => openDuplicateModal(emp) : undefined}
+                onExportData={session.can('viewCertificates') ? (emp) => handleExportEmployeeData(emp) : undefined}
                 onDelete={(id) => {
                   setDeleteConfirmId(id);
                   setShowDeleteConfirm(true);

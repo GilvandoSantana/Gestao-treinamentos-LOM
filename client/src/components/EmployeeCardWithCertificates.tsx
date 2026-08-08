@@ -3,7 +3,7 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical, Copy, History } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical, Copy, History, FileDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -14,6 +14,7 @@ interface EmployeeCardWithCertificatesProps {
   index: number;
   onEdit: (employee: Employee) => void;
   onDuplicate?: (employee: Employee) => void;
+  onExportData?: (employee: Employee) => void;
   onDelete: (id: string) => void;
   onDismiss?: (employee: Employee) => void;
   onViewAudit?: (employee: Employee) => void;
@@ -55,6 +56,7 @@ export default function EmployeeCardWithCertificates({
   index,
   onEdit,
   onDuplicate,
+  onExportData,
   onDelete,
   onDismiss,
   onViewAudit,
@@ -220,6 +222,20 @@ export default function EmployeeCardWithCertificates({
                       >
                         <Copy size={15} className="text-muted-foreground" />
                         Duplicar
+                      </button>
+                    )}
+
+                    {onExportData && (
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          onExportData(employee);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+                      >
+                        <FileDown size={15} className="text-muted-foreground" />
+                        Exportar dados (LGPD)
                       </button>
                     )}
 
