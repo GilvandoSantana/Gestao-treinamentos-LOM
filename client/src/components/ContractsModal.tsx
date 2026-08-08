@@ -46,6 +46,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [tab, setTab] = useState<Tab>('active');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [preposition, setPreposition] = useState<ContractPreposition>('do');
   const [alertEmail, setAlertEmail] = useState('');
@@ -78,6 +79,46 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const restoreMutation = trpc.contracts.restore.useMutation();
   const permanentDeleteMutation = trpc.contracts.permanentDelete.useMutation();
 
+  // Campos personalizados do contrato em edição.
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [newFieldType, setNewFieldType] = useState<'text' | 'number' | 'date'>('text');
+  const fieldsQuery = trpc.contracts.fields.list.useQuery(
+    { contractSlug: editingSlug ?? undefined },
+    { enabled: !!editingSlug }
+  );
+  const createFieldMutation = trpc.contracts.fields.create.useMutation();
+  const deleteFieldMutation = trpc.contracts.fields.delete.useMutation();
+
+  const handleAddField = async () => {
+    if (!editingSlug || !newFieldLabel.trim()) return;
+    try {
+      await createFieldMutation.mutateAsync({
+        contractSlug: editingSlug,
+        label: newFieldLabel,
+        fieldType: newFieldType,
+      });
+      setNewFieldLabel('');
+      setNewFieldType('text');
+      await utils.contracts.fields.list.invalidate();
+      toast.success('Campo adicionado.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao adicionar campo.');
+    }
+  };
+
+  const handleDeleteField = async (id: string) => {
+    if (!editingSlug) return;
+    if (!window.confirm('Excluir este campo? Valores já preenchidos por colaboradores serão perdidos.')) return;
+    try {
+      await deleteFieldMutation.mutateAsync({ id, contractSlug: editingSlug });
+      await utils.contracts.fields.list.invalidate();
+      toast.success('Campo excluído.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao excluir campo.');
+    }
+  };
+
+
   const refreshAll = async () => {
     await Promise.all([
       utils.contracts.list.invalidate(),
@@ -88,6 +129,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
+    setEditingSlug(null);
     setName('');
     setPreposition('do');
     setAlertEmail('');
@@ -96,6 +138,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
 
   const startEdit = (contract: ContractInfo) => {
     setEditingId(contract.id);
+    setEditingSlug(contract.slug);
     setName(contract.name);
     setPreposition(contract.preposition);
     setAlertEmail(contract.alertEmail ?? '');
@@ -334,6 +377,74 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       branco para não enviar alerta por WhatsApp deste contrato.
                     </p>
                   </div>
+
+                  {editingId && editingSlug && (
+                    <div className="border-t border-border pt-3">
+                      <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                        Campos personalizados deste contrato
+                      </p>
+
+                      {fieldsQuery.data && fieldsQuery.data.length > 0 && (
+                        <div className="space-y-1.5 mb-3">
+                          {fieldsQuery.data.map((f) => (
+                            <div
+                              key={f.id}
+                              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-border bg-muted/30"
+                            >
+                              <span className="text-sm text-foreground">
+                                {f.label}{' '}
+                                <span className="text-xs text-muted-foreground font-technical">
+                                  ({f.fieldType === 'text' ? 'texto' : f.fieldType === 'number' ? 'número' : 'data'})
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteField(f.id)}
+                                disabled={deleteFieldMutation.isPending}
+                                className="text-danger hover:opacity-70 text-xs font-semibold disabled:opacity-40"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {(fieldsQuery.data?.length ?? 0) < 5 && (
+                        <div className="flex gap-2">
+                          <input
+                            value={newFieldLabel}
+                            onChange={(e) => setNewFieldLabel(e.target.value)}
+                            placeholder="Ex: Matrícula do cliente"
+                            disabled={createFieldMutation.isPending}
+                            className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                          />
+                          <select
+                            value={newFieldType}
+                            onChange={(e) => setNewFieldType(e.target.value as 'text' | 'number' | 'date')}
+                            disabled={createFieldMutation.isPending}
+                            className="px-2 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                          >
+                            <option value="text">Texto</option>
+                            <option value="number">Número</option>
+                            <option value="date">Data</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleAddField}
+                            disabled={createFieldMutation.isPending || !newFieldLabel.trim()}
+                            className="shrink-0 px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Aparecem no cadastro de colaborador só deste contrato. Máximo de 5 campos.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button
                       type="submit"

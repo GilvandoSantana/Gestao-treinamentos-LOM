@@ -56,3 +56,12 @@ export function contractSystemTitleParts(
     label: contract.name,
   };
 }
+
+/** Campo personalizado definido para um contrato (ver server/db-contract-fields.ts). */
+export interface CustomFieldInfo {
+  id: string;
+  contractSlug: string;
+  fieldKey: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'date';
+}

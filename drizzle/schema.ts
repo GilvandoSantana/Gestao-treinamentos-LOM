@@ -37,6 +37,9 @@ export const employees = mysqlTable("employees", {
   birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
+  // JSON com os valores dos campos personalizados do contrato (ver
+  // contractCustomFields) — {fieldKey: valor}.
+  customFields: text("customFields"),
   // Contrato ao qual o colaborador pertence (ver shared/contracts.ts)
   contract: varchar("contract", { length: 40 }).default("lom").notNull(),
   // Demissão: o colaborador sai das listas e das contagens, mas o registro e
@@ -215,3 +218,22 @@ export const contracts = mysqlTable("contracts", {
 
 export type ContractRow = typeof contracts.$inferSelect;
 export type InsertContractRow = typeof contracts.$inferInsert;
+
+/**
+ * Campos personalizados por contrato. Cada contrato pode definir campos
+ * extras próprios (ex: "Matrícula do cliente", "Categoria da CNH") que
+ * aparecem no cadastro de colaborador só daquele contrato.
+ */
+export const contractCustomFields = mysqlTable("contractCustomFields", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  // Referencia contracts.slug (não o id) — mesma convenção usada em
+  // employees/admins/safetySheets.contract.
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  // Identificador estável usado como chave no JSON de employees.customFields.
+  fieldKey: varchar("fieldKey", { length: 60 }).notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  fieldType: varchar("fieldType", { length: 20 }).notNull().default("text"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ContractCustomFieldRow = typeof contractCustomFields.$inferSelect;

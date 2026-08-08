@@ -43,6 +43,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
         birthDate: employee.birthDate,
         role: employee.role,
         phone: employee.phone,
+        customFields: employee.customFields,
         updatedAt: new Date(),
       },
     });

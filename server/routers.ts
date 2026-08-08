@@ -29,6 +29,12 @@ import {
   countContractUsage,
   getContractsOverview,
 } from "./db-contracts";
+import {
+  listCustomFields,
+  createCustomField,
+  deleteCustomField,
+  parseCustomFieldValues,
+} from "./db-contract-fields";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
 import { sendTestWhatsApp } from "./whatsapp-service";
@@ -687,6 +693,58 @@ export const appRouter = router({
     overview: masterAdminProcedure.query(async () => {
       return getContractsOverview();
     }),
+
+    // Campos personalizados por contrato.
+    fields: router({
+      // Qualquer pessoa logada — é o que monta o formulário de colaborador.
+      // Usa o contrato da sessão por padrão (o próprio do usuário, ou o que
+      // o admin escolheu no cabeçalho); o administrador pode informar
+      // explicitamente outro contrato (usado na tela de Contratos, ao
+      // gerenciar campos de um contrato diferente do que está ativo).
+      list: requirePermission('viewEmployees')
+        .input(z.object({ contractSlug: z.string().optional() }).optional())
+        .query(async ({ input, ctx }) => {
+          const slug = ctx.siteRole === "admin" && input?.contractSlug ? input.contractSlug : ctx.siteContract;
+          if (!slug) return [];
+          return listCustomFields(slug);
+        }),
+
+      // Gerenciar quais campos existem — só o administrador principal.
+      create: masterAdminProcedure
+        .input(
+          z.object({
+            contractSlug: z.string().min(1),
+            label: z.string().trim().min(2, "Informe o nome do campo").max(120),
+            fieldType: z.enum(["text", "number", "date"]),
+          })
+        )
+        .mutation(async ({ input, ctx }) => {
+          const field = await createCustomField({ ...input, id: uuidv4() });
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "contract.fieldCreate",
+            targetType: "contractField",
+            targetId: field.id,
+            targetName: `${input.contractSlug}: ${field.label}`,
+          });
+          return field;
+        }),
+
+      delete: masterAdminProcedure
+        .input(z.object({ id: z.string(), contractSlug: z.string() }))
+        .mutation(async ({ input, ctx }) => {
+          await deleteCustomField(input.id, input.contractSlug);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "contract.fieldDelete",
+            targetType: "contractField",
+            targetId: input.id,
+          });
+          return { success: true } as const;
+        }),
+    }),
   }),
 
   employees: router({
@@ -775,6 +833,7 @@ export const appRouter = router({
           birthDate: z.string().optional(),
           role: z.string(),
           phone: z.string().optional(),
+          customFields: z.record(z.string(), z.string()).optional(),
           trainings: z.array(
             z.object({
               id: z.string(),
@@ -803,6 +862,7 @@ export const appRouter = router({
               birthDate: input.birthDate,
               role: input.role,
               phone: input.phone,
+              customFields: input.customFields ? JSON.stringify(input.customFields) : undefined,
               // O contrato vem sempre da conta que está cadastrando — não é
               // escolhido no formulário, para não haver como errar nem burlar.
               contract: ctx.siteContract ?? DEFAULT_CONTRACT_SLUG,
@@ -957,6 +1017,7 @@ export const appRouter = router({
         ...emp,
         photoUrl: photoUrls.get(emp.id) ?? null,
         trainings: trainingsByEmployee.get(emp.id) ?? [],
+        customFields: parseCustomFieldValues(emp.customFields),
       }));
     }),
 

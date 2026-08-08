@@ -21,6 +21,8 @@ export interface Employee {
   dismissed?: boolean;
   dismissedAt?: string | Date | null;
   updatedAt?: string | Date;
+  /** Valores dos campos personalizados do contrato — {fieldKey: valor}. */
+  customFields?: Record<string, string>;
   trainings: Training[];
 }
 

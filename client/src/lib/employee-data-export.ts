@@ -100,6 +100,11 @@ export function generateEmployeeDataExportPDF(
   field('Contrato', contractName);
   field('Situação', employee.dismissed ? `Demitido em ${formatDate(employee.dismissedAt)}` : 'Ativo');
   field('Última atualização', formatDateTime(employee.updatedAt));
+  if (employee.customFields && Object.keys(employee.customFields).length > 0) {
+    for (const [key, value] of Object.entries(employee.customFields)) {
+      if (value) field(key, value);
+    }
+  }
   y += 4;
 
   // Treinamentos

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, Loader, Camera, Building2 } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, FileText, Loader, Camera, Building2 } from 'lucide-react';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -47,6 +47,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
   const trainingNamesQuery = trpc.employees.trainingNames.useQuery(undefined, { enabled: isOpen });
+  const customFieldsQuery = trpc.contracts.fields.list.useQuery(undefined, { enabled: isOpen });
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
@@ -83,6 +85,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setRole(employee.role);
       setPhone(employee.phone || '');
       setReassignContract(employee.contract || '');
+      setCustomFieldValues(employee.customFields || {});
       setPhotoPreview(employee.photoUrl || null);
       setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
       setTrainings(employee.trainings || []);
@@ -102,6 +105,9 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setTrainings(
         duplicateFrom?.trainings?.map((t) => ({ ...t, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` })) || []
       );
+      // Campos personalizados nunca são copiados na duplicação — em geral
+      // são específicos da pessoa (matrícula do cliente, categoria da CNH).
+      setCustomFieldValues({});
     }
     resetTrainingForm();
     setPendingCertificates([]);
@@ -121,7 +127,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, role, phone, trainings, photoPreview, reassignContract]);
+  }, [name, registration, educationLevel, age, birthDate, role, phone, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -356,6 +362,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         role: role.trim(),
         phone: phone.trim() || undefined,
         trainings,
+        customFields: Object.keys(customFieldValues).length > 0 ? customFieldValues : undefined,
       });
 
       // 3. Upload pending certificates
@@ -577,6 +584,31 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
               />
             </div>
           </div>
+
+          {/* Campos personalizados deste contrato (cadastrados em Contratos) */}
+          {customFieldsQuery.data && customFieldsQuery.data.length > 0 && (
+            <div className="border-t-2 border-border pt-6 mt-6">
+              <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-orange" />
+                Campos deste contrato
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {customFieldsQuery.data.map((field) => (
+                  <div key={field.id}>
+                    <label className="block text-foreground font-semibold mb-2 text-sm">{field.label}</label>
+                    <input
+                      type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'}
+                      value={customFieldValues[field.fieldKey] || ''}
+                      onChange={(e) =>
+                        setCustomFieldValues((prev) => ({ ...prev, [field.fieldKey]: e.target.value }))
+                      }
+                      className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Add Training Section */}
           <div className="border-t-2 border-border pt-6">
