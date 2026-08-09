@@ -40,7 +40,6 @@ import ComplianceCharts from '@/components/ComplianceCharts';
 import ExpiringNotifications from '@/components/ExpiringNotifications';
 import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
-import TrainingNotifications from '@/components/TrainingNotifications';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
 import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
@@ -836,8 +835,6 @@ export default function Home() {
         onConfirm={confirmSetDismissed}
         onCancel={() => setDismissConfirm(null)}
       />
-
-      <TrainingNotifications employees={activeEmployees} />
 
       {/* Navegação inferior (celular). Cada aba leva à seção correspondente
           da página, que já existe — não há troca de rota. */}
