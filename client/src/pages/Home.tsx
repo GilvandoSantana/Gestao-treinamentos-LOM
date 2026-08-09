@@ -37,7 +37,6 @@ import ExcelImportModal from '@/components/ExcelImportModal';
 import RenewTrainingModal from '@/components/RenewTrainingModal';
 import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
 import ComplianceCharts from '@/components/ComplianceCharts';
-import ExpiringNotifications from '@/components/ExpiringNotifications';
 import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
@@ -634,7 +633,6 @@ export default function Home() {
 
         <StatCards stats={stats} />
         <ComplianceCharts employees={activeEmployees} />
-        <ExpiringNotifications employees={activeEmployees} />
 
         <AdvancedSearch
           searchTerm={searchQuery}
