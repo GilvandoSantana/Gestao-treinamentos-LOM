@@ -12,12 +12,22 @@ interface NotificationBellProps {
   items: TrainingAlertItem[];
   onSelect: (item: TrainingAlertItem) => void;
   onSeeAll: () => void;
+  /** Avisa o cabeçalho quando o sino abre/fecha, para ele subir de camada
+   * (sem isso, o conteúdo da página aparece por cima do painel). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 const MAX_VISIBLE = 8;
 
-export default function NotificationBell({ items, onSelect, onSeeAll }: NotificationBellProps) {
-  const [open, setOpen] = useState(false);
+export default function NotificationBell({ items, onSelect, onSeeAll, onOpenChange }: NotificationBellProps) {
+  const [open, setOpenState] = useState(false);
+  const setOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+    setOpenState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      onOpenChange?.(next);
+      return next;
+    });
+  };
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

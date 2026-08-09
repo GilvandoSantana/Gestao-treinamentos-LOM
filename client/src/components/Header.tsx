@@ -107,6 +107,12 @@ export default function Header({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [contractMenuOpen, setContractMenuOpen] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
+  // Qualquer um dos três menus do cabeçalho aberto precisa da mesma
+  // camada elevada — sem isso, o conteúdo da página aparece por cima do
+  // painel aberto (já aconteceu com o menu "..." e passou despercebido no
+  // seletor de contrato e no sino).
+  const anyMenuOpen = menuOpen || contractMenuOpen || bellOpen;
   const contractRef = useRef<HTMLDivElement>(null);
   // Lista de contratos ativos para o seletor — só o administrador principal
   // usa isso, então só busca quando o menu dele está disponível.
@@ -167,7 +173,7 @@ export default function Header({
     // animados) ficavam por cima.
     <div
       className={`relative rounded-2xl shadow-lg mb-6 animate-fade-in-up ${
-        menuOpen ? 'z-50' : ''
+        anyMenuOpen ? 'z-50' : ''
       }`}
     >
       {/* Fundo */}
@@ -233,6 +239,7 @@ export default function Header({
                 items={notificationItems}
                 onSelect={onNotificationSelect}
                 onSeeAll={onSeeAllNotifications}
+                onOpenChange={setBellOpen}
               />
             )}
 
