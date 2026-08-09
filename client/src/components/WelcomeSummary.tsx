@@ -14,7 +14,7 @@ import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
 interface WelcomeSummaryProps {
   username?: string | null;
   employees: Employee[];
-  onSeeExpiring: () => void;
+  onSeeExpiring: (status: 'expired' | 'expiring') => void;
 }
 
 type UpcomingBirthday = { name: string; date: Date; daysUntil: number };
@@ -72,7 +72,7 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
             <div className="space-y-2">
               {expiredCount > 0 && (
                 <button
-                  onClick={onSeeExpiring}
+                  onClick={() => onSeeExpiring('expired')}
                   className="w-full flex items-center gap-2.5 text-left hover:opacity-80 transition-opacity"
                 >
                   <span className="p-1.5 rounded-lg bg-danger/10 text-danger shrink-0">
@@ -86,7 +86,7 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
               )}
               {expiringThisWeek > 0 && (
                 <button
-                  onClick={onSeeExpiring}
+                  onClick={() => onSeeExpiring('expiring')}
                   className="w-full flex items-center gap-2.5 text-left hover:opacity-80 transition-opacity"
                 >
                   <span className="p-1.5 rounded-lg bg-warning/10 text-warning shrink-0">

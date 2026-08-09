@@ -580,11 +580,13 @@ export default function Home() {
           onNotificationSelect={(item) => {
             setSearchQuery(item.employeeName);
             setFilter(item.status === 'expired' ? 'expired' : 'expiring');
+            setMobileTab(item.status === 'expired' ? 'vencidos' : 'vencendo');
             document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
           }}
           onSeeAllNotifications={() => {
             setSearchQuery('');
             setFilter('expired');
+            setMobileTab('vencidos');
             document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
           }}
           onLogout={async () => {
@@ -621,8 +623,9 @@ export default function Home() {
         <WelcomeSummary
           username={session.username}
           employees={activeEmployees}
-          onSeeExpiring={() => {
-            setFilter('expired');
+          onSeeExpiring={(status) => {
+            setFilter(status);
+            setMobileTab(status === 'expired' ? 'vencidos' : 'vencendo');
             document.getElementById('lista-colaboradores')?.scrollIntoView({ behavior: 'smooth' });
           }}
         />
