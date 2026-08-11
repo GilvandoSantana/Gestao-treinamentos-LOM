@@ -227,7 +227,9 @@ export async function getAllPhotoUrls(): Promise<Map<string, string>> {
 export async function uploadFdsToSupabase(
   file: Buffer | Uint8Array,
   fileName: string,
-  mimeType: string = "application/pdf"
+  mimeType: string = "application/pdf",
+  contractSlug: string,
+  documentType: string
 ): Promise<UploadResult> {
   try {
     if (!supabaseUrl || !supabaseAnonKey) {
@@ -235,7 +237,7 @@ export async function uploadFdsToSupabase(
     }
 
     const uniqueFileName = `${Date.now()}-${fileName}`;
-    const filePath = `fds/${uniqueFileName}`;
+    const filePath = `fds/${contractSlug}/${documentType}/${uniqueFileName}`;
 
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)

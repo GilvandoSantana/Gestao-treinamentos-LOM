@@ -868,12 +868,13 @@ export const appRouter = router({
           });
         }
 
-        const upload = await uploadFdsToSupabase(fileBuffer, input.fileName, "application/pdf");
+        const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+        const upload = await uploadFdsToSupabase(fileBuffer, input.fileName, "application/pdf", contract, input.type);
 
         const sheet = await createSafetySheet({
           id: uuidv4(),
           type: input.type,
-          contract: ctx.siteContract ?? DEFAULT_CONTRACT_SLUG,
+          contract,
           name: input.name,
           fileName: input.fileName,
           fileUrl: upload.url,
