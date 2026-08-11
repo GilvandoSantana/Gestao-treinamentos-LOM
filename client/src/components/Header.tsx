@@ -13,6 +13,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Cloud,
   Shield,
   FileText,
   LayoutGrid,
@@ -55,6 +56,7 @@ interface HeaderProps {
   canImportExport?: boolean;
   onImportExcel?: () => void;
   onRenewBulk?: () => void;
+  onShowCloud?: () => void;
   notificationItems?: TrainingAlertItem[];
   onNotificationSelect?: (item: TrainingAlertItem) => void;
   onSeeAllNotifications?: () => void;
@@ -88,6 +90,7 @@ export default function Header({
   canImportExport = false,
   onImportExcel,
   onRenewBulk,
+  onShowCloud,
   notificationItems,
   onNotificationSelect,
   onSeeAllNotifications,
@@ -403,6 +406,15 @@ export default function Header({
                           Renovar treinamento em lote
                         </button>
                       )}
+                    </div>
+                  )}
+
+                  {onShowCloud && (
+                    <div className="py-1 border-b border-border">
+                      <button onClick={runAndClose(onShowCloud)} className={menuItemClass} role="menuitem">
+                        <Cloud size={16} className="text-muted-foreground" />
+                        Nuvem de Arquivos
+                      </button>
                     </div>
                   )}
 

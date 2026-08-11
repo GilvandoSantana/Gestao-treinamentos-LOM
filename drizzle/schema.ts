@@ -237,3 +237,34 @@ export const contractCustomFields = mysqlTable("contractCustomFields", {
 });
 
 export type ContractCustomFieldRow = typeof contractCustomFields.$inferSelect;
+
+/**
+ * Nuvem de arquivos por contrato — pastas e arquivos, no estilo SharePoint.
+ * O acesso é controlado pelas permissões viewCloud/manageCloud (pessoa por
+ * pessoa, na tela de Usuários), não é liberado automaticamente por contrato.
+ */
+export const cloudFolders = mysqlTable("cloudFolders", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  // null = pasta na raiz do contrato
+  parentId: varchar("parentId", { length: 64 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  createdBy: varchar("createdBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const cloudFiles = mysqlTable("cloudFiles", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  // null = arquivo na raiz do contrato (fora de qualquer pasta)
+  folderId: varchar("folderId", { length: 64 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  fileSize: int("fileSize"),
+  mimeType: varchar("mimeType", { length: 100 }),
+  uploadedBy: varchar("uploadedBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CloudFolderRow = typeof cloudFolders.$inferSelect;
+export type CloudFileRow = typeof cloudFiles.$inferSelect;

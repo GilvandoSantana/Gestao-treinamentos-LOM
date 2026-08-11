@@ -35,6 +35,15 @@ import {
   deleteCustomField,
   parseCustomFieldValues,
 } from "./db-contract-fields";
+import {
+  listFolderContents,
+  getFolderPath,
+  createFolder,
+  deleteFolderRecursive,
+  createFileRecord,
+  deleteFileRecord,
+} from "./db-cloud";
+import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
 import { sendTestWhatsApp } from "./whatsapp-service";
@@ -414,6 +423,137 @@ export const appRouter = router({
           return { success: true, sessionMarker, username: target.username } as const;
         }),
     }),
+  }),
+
+  // Nuvem de arquivos por contrato (estilo SharePoint). Acesso controlado
+  // pelas permissões viewCloud/manageCloud, individuais por usuário.
+  cloud: router({
+    list: requirePermission('viewCloud')
+      .input(z.object({ folderId: z.string().nullable() }).optional())
+      .query(async ({ input, ctx }) => {
+        if (!ctx.siteContract) return { folders: [], files: [], path: [] };
+        const folderId = input?.folderId ?? null;
+        const [contents, path] = await Promise.all([
+          listFolderContents(ctx.siteContract, folderId),
+          folderId ? getFolderPath(folderId) : Promise.resolve([]),
+        ]);
+        return { ...contents, path };
+      }),
+
+    createFolder: requirePermission('manageCloud')
+      .input(z.object({ parentId: z.string().nullable(), name: z.string().trim().min(1).max(255) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de criar uma pasta.",
+          });
+        }
+        const folder = await createFolder({
+          id: uuidv4(),
+          contractSlug: ctx.siteContract,
+          parentId: input.parentId,
+          name: input.name,
+          createdBy: ctx.siteAdminUsername,
+        });
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderCreate",
+          targetType: "cloudFolder",
+          targetId: folder.id,
+          targetName: folder.name,
+        });
+        return folder;
+      }),
+
+    deleteFolder: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const fileUrls = await deleteFolderRecursive(input.id, ctx.siteContract);
+        for (const url of fileUrls) {
+          await deleteCloudFileFromSupabase(url);
+        }
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderDelete",
+          targetType: "cloudFolder",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    upload: requirePermission('manageCloud')
+      .input(
+        z.object({
+          folderId: z.string().nullable(),
+          name: z.string().trim().min(1).max(255),
+          fileName: z.string(),
+          fileData: z.string(),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de enviar um arquivo.",
+          });
+        }
+
+        const fileBuffer = Buffer.from(input.fileData, "base64");
+        const MAX_CLOUD_BYTES = 20 * 1024 * 1024;
+        if (fileBuffer.length > MAX_CLOUD_BYTES) {
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 20MB." });
+        }
+
+        const upload = await uploadCloudFileToSupabase(fileBuffer, input.fileName, input.mimeType, ctx.siteContract);
+
+        const file = await createFileRecord({
+          id: uuidv4(),
+          contractSlug: ctx.siteContract,
+          folderId: input.folderId,
+          name: input.name,
+          fileUrl: upload.url,
+          fileSize: fileBuffer.length,
+          mimeType: input.mimeType,
+          uploadedBy: ctx.siteAdminUsername,
+        });
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileUpload",
+          targetType: "cloudFile",
+          targetId: file.id,
+          targetName: file.name,
+        });
+
+        return file;
+      }),
+
+    deleteFile: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const file = await deleteFileRecord(input.id, ctx.siteContract);
+        if (file) await deleteCloudFileFromSupabase(file.fileUrl);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileDelete",
+          targetType: "cloudFile",
+          targetId: input.id,
+          targetName: file?.name,
+        });
+        return { success: true } as const;
+      }),
   }),
 
   // FDS — Ficha de Dados de Segurança

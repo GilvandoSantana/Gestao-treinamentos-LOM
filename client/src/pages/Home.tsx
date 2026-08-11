@@ -35,6 +35,7 @@ import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import RenewTrainingModal from '@/components/RenewTrainingModal';
+import CloudModal from '@/components/CloudModal';
 import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
 import ComplianceCharts from '@/components/ComplianceCharts';
 import AuditHistory from '@/components/AuditHistory';
@@ -65,6 +66,7 @@ export default function Home() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showExcelImport, setShowExcelImport] = useState(false);
   const [showRenewBulk, setShowRenewBulk] = useState(false);
+  const [showCloud, setShowCloud] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
@@ -576,6 +578,7 @@ export default function Home() {
           canImportExport={session.can('importExport')}
           onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}
           onRenewBulk={session.can('editEmployees') ? () => setShowRenewBulk(true) : undefined}
+          onShowCloud={session.can('viewCloud') ? () => setShowCloud(true) : undefined}
           notificationItems={trainingAlerts.items}
           onNotificationSelect={(item) => {
             setSearchQuery(item.employeeName);
@@ -780,6 +783,12 @@ export default function Home() {
         isOpen={showRenewBulk}
         onClose={() => setShowRenewBulk(false)}
         employees={activeEmployees}
+      />
+
+      <CloudModal
+        isOpen={showCloud}
+        onClose={() => setShowCloud(false)}
+        canManage={session.can('manageCloud')}
       />
 
       {selectedEmployeeForAudit && (

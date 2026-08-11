@@ -38,7 +38,11 @@ export type ActivityAction =
   | "whatsapp.test"
   | "training.renewBulk"
   | "contract.fieldCreate"
-  | "contract.fieldDelete";
+  | "contract.fieldDelete"
+  | "cloud.folderCreate"
+  | "cloud.folderDelete"
+  | "cloud.fileUpload"
+  | "cloud.fileDelete";
 
 export type LogActivityInput = {
   username: string | null;

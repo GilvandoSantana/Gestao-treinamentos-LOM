@@ -16,6 +16,8 @@ export const PERMISSION_KEYS = [
   'manageCertificates',
   'importExport',
   'viewAudit',
+  'viewCloud',
+  'manageCloud',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -52,6 +54,14 @@ export const PERMISSION_LABELS: Record<PermissionKey, { label: string; descripti
     label: 'Ver histórico',
     description: 'Consultar o histórico de alterações e de e-mails enviados',
   },
+  viewCloud: {
+    label: 'Ver nuvem de arquivos',
+    description: 'Acessar pastas e baixar arquivos guardados na nuvem do contrato',
+  },
+  manageCloud: {
+    label: 'Gerenciar nuvem de arquivos',
+    description: 'Criar pastas, enviar e excluir arquivos na nuvem do contrato',
+  },
 };
 
 /** Permissões de um usuário recém-criado: só leitura. */
@@ -63,6 +73,8 @@ export const DEFAULT_USER_PERMISSIONS: Permissions = {
   manageCertificates: false,
   importExport: false,
   viewAudit: false,
+  viewCloud: false,
+  manageCloud: false,
 };
 
 /** O administrador principal sempre tem tudo liberado. */
