@@ -1,0 +1,23 @@
+CREATE TABLE `invoices` (
+	`id` varchar(64) NOT NULL,
+	`contract` varchar(40) NOT NULL DEFAULT 'lom',
+	`docType` enum('nota_fiscal','recibo') NOT NULL DEFAULT 'nota_fiscal',
+	`number` varchar(100),
+	`supplier` varchar(255),
+	`cnpj` varchar(20),
+	`issueDate` varchar(10) NOT NULL,
+	`value` decimal(12,2) NOT NULL,
+	`taxes` decimal(12,2) DEFAULT '0',
+	`products` text,
+	`category` varchar(120),
+	`costCenter` varchar(120),
+	`paymentMethod` enum('dinheiro','pix','cartao_credito','cartao_debito','boleto','transferencia','outro'),
+	`description` text,
+	`fileName` varchar(255),
+	`fileUrl` text,
+	`fileSize` int,
+	`status` enum('pendente','processado','confirmado') NOT NULL DEFAULT 'processado',
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `invoices_id` PRIMARY KEY(`id`)
+);

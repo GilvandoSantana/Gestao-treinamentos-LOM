@@ -14,6 +14,7 @@ import {
   Upload,
   RefreshCw,
   Cloud,
+  Receipt,
   Shield,
   FileText,
   LayoutGrid,
@@ -57,6 +58,7 @@ interface HeaderProps {
   onImportExcel?: () => void;
   onRenewBulk?: () => void;
   onShowCloud?: () => void;
+  onShowInvoices?: () => void;
   notificationItems?: TrainingAlertItem[];
   onNotificationSelect?: (item: TrainingAlertItem) => void;
   onSeeAllNotifications?: () => void;
@@ -91,6 +93,7 @@ export default function Header({
   onImportExcel,
   onRenewBulk,
   onShowCloud,
+  onShowInvoices,
   notificationItems,
   onNotificationSelect,
   onSeeAllNotifications,
@@ -414,6 +417,15 @@ export default function Header({
                       <button onClick={runAndClose(onShowCloud)} className={menuItemClass} role="menuitem">
                         <Cloud size={16} className="text-muted-foreground" />
                         Nuvem de Arquivos
+                      </button>
+                    </div>
+                  )}
+
+                  {onShowInvoices && (
+                    <div className="py-1 border-b border-border">
+                      <button onClick={runAndClose(onShowInvoices)} className={menuItemClass} role="menuitem">
+                        <Receipt size={16} className="text-muted-foreground" />
+                        Notas Fiscais
                       </button>
                     </div>
                   )}

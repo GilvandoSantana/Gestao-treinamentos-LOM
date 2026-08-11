@@ -44,6 +44,16 @@ import {
   deleteFileRecord,
 } from "./db-cloud";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
+import {
+  listInvoices,
+  getInvoiceById,
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+  setInvoiceContract,
+} from "./db-invoices";
+import { uploadInvoiceFileToSupabase, deleteInvoiceFileFromSupabase } from "./supabase-storage";
+import { INVOICE_DOC_TYPES, INVOICE_PAYMENT_METHODS, INVOICE_STATUSES } from "@shared/invoices";
 import { logActivity, listActivity } from "./db-activity";
 import { sendTestEmail } from "./mailer";
 import { sendTestWhatsApp } from "./whatsapp-service";
@@ -552,6 +562,193 @@ export const appRouter = router({
           targetId: input.id,
           targetName: file?.name,
         });
+        return { success: true } as const;
+      }),
+  }),
+
+  // Notas Fiscais e recibos — separados por contrato.
+  invoices: router({
+    list: requirePermission('viewInvoices').query(async ({ ctx }) => {
+      return listInvoices(ctx.siteContract ?? undefined);
+    }),
+
+    // Reatribuir nota fiscal para outro contrato — SOMENTE o administrador.
+    changeContract: masterAdminProcedure
+      .input(z.object({ id: z.string(), contractSlug: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const contract = await getContractBySlug(input.contractSlug);
+        if (!contract || contract.deleted) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Contrato inválido ou excluído." });
+        }
+        await setInvoiceContract(input.id, input.contractSlug);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "invoice.update",
+          targetType: "invoice",
+          targetId: input.id,
+          details: `movido para ${contract.name}`,
+        });
+        return { success: true } as const;
+      }),
+
+    upsertOne: requirePermission('manageInvoices')
+      .input(
+        z.object({
+          id: z.string().optional(),
+          docType: z.enum(INVOICE_DOC_TYPES).default("nota_fiscal"),
+          number: z.string().trim().optional(),
+          supplier: z.string().trim().optional(),
+          cnpj: z.string().trim().optional(),
+          issueDate: z.string().min(1, "Informe a data de emissão"),
+          value: z.number().min(0, "Informe o valor total"),
+          taxes: z.number().min(0).default(0),
+          products: z
+            .array(
+              z.object({
+                name: z.string(),
+                qty: z.number(),
+                unit_price: z.number(),
+                total: z.number(),
+              })
+            )
+            .default([]),
+          category: z.string().trim().optional(),
+          costCenter: z.string().trim().optional(),
+          paymentMethod: z.enum(INVOICE_PAYMENT_METHODS).optional(),
+          description: z.string().trim().optional(),
+          fileName: z.string().optional(),
+          fileData: z.string().optional(),
+          status: z.enum(INVOICE_STATUSES).default("processado"),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.siteRole === "admin" && !ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de cadastrar uma nota fiscal.",
+          });
+        }
+
+        let fileUrl: string | undefined;
+        let fileSize: number | undefined;
+        let fileName: string | undefined;
+
+        if (input.fileData && input.fileName) {
+          const fileBuffer = Buffer.from(input.fileData, "base64");
+
+          const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
+          if (fileBuffer.length > MAX_INVOICE_BYTES) {
+            throw new TRPCError({
+              code: "PAYLOAD_TOO_LARGE",
+              message: "O arquivo excede o limite de 10MB.",
+            });
+          }
+
+          const ext = input.fileName.split(".").pop()?.toLowerCase();
+          const mimeType =
+            ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : "image/jpeg";
+
+          const upload = await uploadInvoiceFileToSupabase(
+            fileBuffer,
+            input.fileName,
+            mimeType,
+            ctx.siteContract ?? DEFAULT_CONTRACT_SLUG
+          );
+          fileUrl = upload.url;
+          fileSize = fileBuffer.length;
+          fileName = input.fileName;
+        }
+
+        const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+
+        if (input.id) {
+          const existing = await getInvoiceById(input.id);
+          if (!existing) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Nota fiscal não encontrada." });
+          }
+          await updateInvoice(input.id, {
+            docType: input.docType,
+            number: input.number,
+            supplier: input.supplier,
+            cnpj: input.cnpj,
+            issueDate: input.issueDate,
+            value: input.value,
+            taxes: input.taxes,
+            products: input.products,
+            category: input.category,
+            costCenter: input.costCenter,
+            paymentMethod: input.paymentMethod,
+            description: input.description,
+            status: input.status,
+            ...(fileUrl ? { fileUrl, fileSize, fileName } : {}),
+          });
+
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "invoice.update",
+            targetType: "invoice",
+            targetId: input.id,
+            targetName: input.supplier ?? input.number,
+          });
+
+          return (await getInvoiceById(input.id))!;
+        }
+
+        const created = await createInvoice({
+          id: uuidv4(),
+          contract,
+          docType: input.docType,
+          number: input.number,
+          supplier: input.supplier,
+          cnpj: input.cnpj,
+          issueDate: input.issueDate,
+          value: input.value,
+          taxes: input.taxes,
+          products: input.products,
+          category: input.category,
+          costCenter: input.costCenter,
+          paymentMethod: input.paymentMethod,
+          description: input.description,
+          fileName,
+          fileUrl,
+          fileSize,
+          status: input.status,
+        });
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "invoice.create",
+          targetType: "invoice",
+          targetId: created.id,
+          targetName: created.supplier ?? created.number ?? undefined,
+        });
+
+        return created;
+      }),
+
+    delete: requirePermission('manageInvoices')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getInvoiceById(input.id);
+        if (!existing) return { success: true } as const;
+
+        if (existing.fileUrl) {
+          await deleteInvoiceFileFromSupabase(existing.fileUrl);
+        }
+        await deleteInvoice(input.id);
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "invoice.delete",
+          targetType: "invoice",
+          targetId: input.id,
+          targetName: existing.supplier ?? existing.number ?? undefined,
+        });
+
         return { success: true } as const;
       }),
   }),

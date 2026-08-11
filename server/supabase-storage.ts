@@ -310,3 +310,40 @@ export async function deleteCloudFileFromSupabase(fileUrl: string): Promise<void
     console.error("[Supabase] Failed to delete cloud file:", error);
   }
 }
+
+/** Upload do anexo de uma nota fiscal — mesmo bucket, pasta própria por contrato. */
+export async function uploadInvoiceFileToSupabase(
+  file: Buffer | Uint8Array,
+  fileName: string,
+  mimeType: string,
+  contractSlug: string
+): Promise<UploadResult> {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const uniqueFileName = `${Date.now()}-${fileName}`;
+  const filePath = `invoices/${contractSlug}/${uniqueFileName}`;
+
+  const { data, error } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(filePath, file, { contentType: mimeType, upsert: false });
+
+  if (error) throw new Error(`Supabase upload error: ${error.message}`);
+  if (!data) throw new Error("No data returned from Supabase upload");
+
+  const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+  return { path: filePath, url: publicUrlData.publicUrl, fileName, size: file.length };
+}
+
+export async function deleteInvoiceFileFromSupabase(fileUrl: string): Promise<void> {
+  try {
+    const marker = `/object/public/${BUCKET_NAME}/`;
+    const idx = fileUrl.indexOf(marker);
+    if (idx === -1) return;
+    const filePath = decodeURIComponent(fileUrl.slice(idx + marker.length));
+    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+  } catch (error) {
+    console.error("[Supabase] Failed to delete invoice file:", error);
+  }
+}

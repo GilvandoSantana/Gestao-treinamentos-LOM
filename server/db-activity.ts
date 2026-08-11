@@ -42,7 +42,10 @@ export type ActivityAction =
   | "cloud.folderCreate"
   | "cloud.folderDelete"
   | "cloud.fileUpload"
-  | "cloud.fileDelete";
+  | "cloud.fileDelete"
+  | "invoice.create"
+  | "invoice.update"
+  | "invoice.delete";
 
 export type LogActivityInput = {
   username: string | null;

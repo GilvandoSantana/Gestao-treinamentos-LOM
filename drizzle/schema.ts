@@ -1,4 +1,4 @@
-import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
+import { boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -268,3 +268,42 @@ export const cloudFiles = mysqlTable("cloudFiles", {
 
 export type CloudFolderRow = typeof cloudFolders.$inferSelect;
 export type CloudFileRow = typeof cloudFiles.$inferSelect;
+
+/**
+ * Notas Fiscais e recibos — separadas por contrato, com anexo opcional
+ * (mesmo bucket do Supabase usado por certificados/documentos).
+ */
+export const invoices = mysqlTable("invoices", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  docType: mysqlEnum("docType", ["nota_fiscal", "recibo"]).default("nota_fiscal").notNull(),
+  number: varchar("number", { length: 100 }),
+  supplier: varchar("supplier", { length: 255 }),
+  cnpj: varchar("cnpj", { length: 20 }),
+  issueDate: varchar("issueDate", { length: 10 }).notNull(),
+  value: decimal("value", { precision: 12, scale: 2 }).notNull(),
+  taxes: decimal("taxes", { precision: 12, scale: 2 }).default("0"),
+  // Itens/produtos da nota, guardados como JSON: [{name, qty, unit_price, total}]
+  products: text("products"),
+  category: varchar("category", { length: 120 }),
+  costCenter: varchar("costCenter", { length: 120 }),
+  paymentMethod: mysqlEnum("paymentMethod", [
+    "dinheiro",
+    "pix",
+    "cartao_credito",
+    "cartao_debito",
+    "boleto",
+    "transferencia",
+    "outro",
+  ]),
+  description: text("description"),
+  fileName: varchar("fileName", { length: 255 }),
+  fileUrl: text("fileUrl"),
+  fileSize: int("fileSize"),
+  status: mysqlEnum("status", ["pendente", "processado", "confirmado"]).default("processado").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = typeof invoices.$inferInsert;

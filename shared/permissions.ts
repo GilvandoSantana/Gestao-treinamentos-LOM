@@ -18,6 +18,8 @@ export const PERMISSION_KEYS = [
   'viewAudit',
   'viewCloud',
   'manageCloud',
+  'viewInvoices',
+  'manageInvoices',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -62,6 +64,14 @@ export const PERMISSION_LABELS: Record<PermissionKey, { label: string; descripti
     label: 'Gerenciar nuvem de arquivos',
     description: 'Criar pastas, enviar e excluir arquivos na nuvem do contrato',
   },
+  viewInvoices: {
+    label: 'Ver notas fiscais',
+    description: 'Consultar as notas fiscais e recibos do contrato',
+  },
+  manageInvoices: {
+    label: 'Gerenciar notas fiscais',
+    description: 'Cadastrar, editar e excluir notas fiscais e recibos',
+  },
 };
 
 /** Permissões de um usuário recém-criado: só leitura. */
@@ -75,6 +85,8 @@ export const DEFAULT_USER_PERMISSIONS: Permissions = {
   viewAudit: false,
   viewCloud: false,
   manageCloud: false,
+  viewInvoices: false,
+  manageInvoices: false,
 };
 
 /** O administrador principal sempre tem tudo liberado. */
