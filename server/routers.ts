@@ -52,6 +52,14 @@ import {
   deleteInvoice,
   setInvoiceContract,
 } from "./db-invoices";
+import {
+  listInvoiceCategories,
+  getInvoiceCategoryById,
+  createInvoiceCategory,
+  updateInvoiceCategory,
+  deleteInvoiceCategory,
+} from "./db-invoice-categories";
+import { getInvoiceMonthlyLimit, setInvoiceMonthlyLimit } from "./db-invoice-settings";
 import { uploadInvoiceFileToSupabase, deleteInvoiceFileFromSupabase } from "./supabase-storage";
 import { INVOICE_DOC_TYPES, INVOICE_PAYMENT_METHODS, INVOICE_STATUSES } from "@shared/invoices";
 import { logActivity, listActivity } from "./db-activity";
@@ -751,6 +759,57 @@ export const appRouter = router({
 
         return { success: true } as const;
       }),
+
+    // Categorias — compartilhadas entre contratos.
+    categories: router({
+      list: requirePermission('viewInvoices').query(async () => {
+        return listInvoiceCategories();
+      }),
+
+      create: requirePermission('manageInvoices')
+        .input(z.object({ name: z.string().trim().min(1, "Informe o nome da categoria").max(120), color: z.string().min(1) }))
+        .mutation(async ({ input }) => {
+          return createInvoiceCategory({ id: uuidv4(), name: input.name, color: input.color });
+        }),
+
+      update: requirePermission('manageInvoices')
+        .input(z.object({ id: z.string(), name: z.string().trim().min(1).max(120), color: z.string().min(1) }))
+        .mutation(async ({ input }) => {
+          await updateInvoiceCategory(input.id, { name: input.name, color: input.color });
+          return { success: true } as const;
+        }),
+
+      delete: requirePermission('manageInvoices')
+        .input(z.object({ id: z.string() }))
+        .mutation(async ({ input }) => {
+          const category = await getInvoiceCategoryById(input.id);
+          if (!category) return { success: true } as const;
+          if (category.isDefault) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Categorias padrão do sistema não podem ser excluídas.",
+            });
+          }
+          await deleteInvoiceCategory(input.id);
+          return { success: true } as const;
+        }),
+    }),
+
+    // Configurações do módulo — hoje só o limite de gastos mensais.
+    settings: router({
+      get: requirePermission('viewInvoices').query(async ({ ctx }) => {
+        const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+        return { monthlyLimit: await getInvoiceMonthlyLimit(contract) };
+      }),
+
+      setMonthlyLimit: requirePermission('manageInvoices')
+        .input(z.object({ value: z.number().min(0) }))
+        .mutation(async ({ input, ctx }) => {
+          const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+          await setInvoiceMonthlyLimit(contract, input.value);
+          return { success: true } as const;
+        }),
+    }),
   }),
 
   // FDS — Ficha de Dados de Segurança

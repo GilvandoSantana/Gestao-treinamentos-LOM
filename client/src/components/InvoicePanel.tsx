@@ -65,6 +65,7 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
   const changeContractMutation = trpc.invoices.changeContract.useMutation();
   const utils = trpc.useUtils();
   const listQuery = trpc.invoices.list.useQuery();
+  const categoriesQuery = trpc.invoices.categories.list.useQuery();
   const upsertMutation = trpc.invoices.upsertOne.useMutation();
   const deleteMutation = trpc.invoices.delete.useMutation();
 
@@ -251,7 +252,16 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
                     {currencyFormatter.format(row.value)}
                   </p>
                   {row.category && (
-                    <p className="text-[11px] text-muted-foreground truncate">{row.category}</p>
+                    <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5">
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{
+                          backgroundColor:
+                            categoriesQuery.data?.find((c) => c.name === row.category)?.color ?? '#64748b',
+                        }}
+                      />
+                      {row.category}
+                    </p>
                   )}
                 </div>
 
@@ -424,13 +434,19 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Categoria</label>
-              <input
-                type="text"
+              <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 disabled={isSaving}
                 className={inputClass}
-              />
+              >
+                <option value="">—</option>
+                {categoriesQuery.data?.map((cat) => (
+                  <option key={cat.id} value={cat.name}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className={labelClass}>Centro de custo</label>

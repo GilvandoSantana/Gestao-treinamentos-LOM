@@ -54,3 +54,22 @@ export function isInvoiceDocType(value: string): value is InvoiceDocType {
 export function isInvoiceStatus(value: string): value is InvoiceStatus {
   return (INVOICE_STATUSES as readonly string[]).includes(value);
 }
+
+/** Cores sugeridas para categorias — mesma paleta usada nos gráficos. */
+export const INVOICE_CATEGORY_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#a855f7',
+] as const;
+
+/** Categorias padrão criadas automaticamente na primeira migração. */
+export const DEFAULT_INVOICE_CATEGORIES: { name: string; color: string }[] = [
+  { name: 'Combustível', color: '#f59e0b' },
+  { name: 'Manutenção', color: '#ef4444' },
+  { name: 'Escritório', color: '#3b82f6' },
+  { name: 'Alimentação', color: '#10b981' },
+  { name: 'Transporte', color: '#8b5cf6' },
+  { name: 'Serviços', color: '#06b6d4' },
+  { name: 'Equipamentos', color: '#f97316' },
+  { name: 'Outros', color: '#64748b' },
+];

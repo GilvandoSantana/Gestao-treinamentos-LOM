@@ -307,3 +307,32 @@ export const invoices = mysqlTable("invoices", {
 
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = typeof invoices.$inferInsert;
+
+/**
+ * Categorias de nota fiscal — compartilhadas entre contratos (mesma lista
+ * para todos). `isDefault` marca as criadas automaticamente na migração,
+ * que não podem ser excluídas.
+ */
+export const invoiceCategories = mysqlTable("invoiceCategories", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  color: varchar("color", { length: 20 }).default("#3b82f6").notNull(),
+  isDefault: boolean("isDefault").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type InvoiceCategoryRow = typeof invoiceCategories.$inferSelect;
+export type InsertInvoiceCategoryRow = typeof invoiceCategories.$inferInsert;
+
+/**
+ * Configurações do módulo de notas fiscais por contrato — hoje só o limite
+ * de gastos mensais usado na tela de Alertas.
+ */
+export const invoiceSettings = mysqlTable("invoiceSettings", {
+  contract: varchar("contract", { length: 40 }).primaryKey(),
+  monthlyLimit: decimal("monthlyLimit", { precision: 12, scale: 2 }).default("5000"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InvoiceSettingsRow = typeof invoiceSettings.$inferSelect;
+export type InsertInvoiceSettingsRow = typeof invoiceSettings.$inferInsert;
