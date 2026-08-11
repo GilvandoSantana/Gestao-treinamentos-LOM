@@ -281,14 +281,15 @@ export async function uploadCloudFileToSupabase(
   file: Buffer | Uint8Array,
   fileName: string,
   mimeType: string,
-  contractSlug: string
+  contractSlug: string,
+  folderPath: string = ""
 ): Promise<UploadResult> {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Supabase is not configured");
   }
 
   const uniqueFileName = `${Date.now()}-${fileName}`;
-  const filePath = `cloud/${contractSlug}/${uniqueFileName}`;
+  const filePath = `cloud/${contractSlug}/${folderPath ? `${folderPath}/` : ""}${uniqueFileName}`;
 
   const { data, error } = await supabase.storage
     .from(BUCKET_NAME)

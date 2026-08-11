@@ -16,7 +16,7 @@ import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, IMPERSO
 import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
-import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
+import { DEFAULT_CONTRACT_SLUG, slugifyContract } from "@shared/contracts";
 import {
   listContracts,
   getContractBySlug,
@@ -529,7 +529,19 @@ export const appRouter = router({
           throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 20MB." });
         }
 
-        const upload = await uploadCloudFileToSupabase(fileBuffer, input.fileName, input.mimeType, ctx.siteContract);
+        // Espelha as pastas do sistema no caminho salvo no Supabase, para o
+        // arquivo aparecer organizado também olhando direto lá (não só pela
+        // navegação do site) — ex: cloud/lom/contratos/assinados/arquivo.pdf
+        const folderChain = input.folderId ? await getFolderPath(input.folderId) : [];
+        const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+
+        const upload = await uploadCloudFileToSupabase(
+          fileBuffer,
+          input.fileName,
+          input.mimeType,
+          ctx.siteContract,
+          folderPath
+        );
 
         const file = await createFileRecord({
           id: uuidv4(),
