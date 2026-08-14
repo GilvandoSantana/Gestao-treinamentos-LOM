@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import type { Employee } from './types';
 
 export interface ExcelRow {
-  [key: string]: string | number | undefined;
+  [key: string]: string | number | Date | undefined;
 }
 
 /**
@@ -33,7 +33,7 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
           return;
         }
 
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
         if (!worksheet) {
@@ -59,8 +59,7 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
           // Get or create employee
           let employee = employeeMap.get(nome);
           if (!employee) {
-            const birthDateStr = String(row['Data de Nascimento'] || row['birthDate'] || '').trim();
-            const birthDate = parseDate(birthDateStr) || undefined;
+            const birthDate = parseDate(row['Data de Nascimento'] ?? row['birthDate']) || undefined;
 
             employee = {
               id: `emp-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -79,11 +78,12 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
           // Add training if present
           const trainingName = String(row['Treinamento'] || row['training'] || '').trim();
           if (trainingName) {
-            const completionDateStr = String(row['Data de Realização'] || row['completionDate'] || '').trim();
-            const expirationDateStr = String(row['Data de Vencimento'] || row['expirationDate'] || '').trim();
-
-            const completionDate = parseDate(completionDateStr) || new Date().toISOString().split('T')[0];
-            const expirationDate = parseDate(expirationDateStr) || new Date().toISOString().split('T')[0];
+            const completionDate =
+              parseDate(row['Data de Realização'] ?? row['completionDate']) ||
+              new Date().toISOString().split('T')[0];
+            const expirationDate =
+              parseDate(row['Data de Vencimento'] ?? row['expirationDate']) ||
+              new Date().toISOString().split('T')[0];
 
             const training = {
               id: `train-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -119,17 +119,51 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
 /**
  * Parse date string in DD/MM/YYYY or YYYY-MM-DD format
  */
-function parseDate(dateStr: string): string | null {
+/**
+ * Converte o valor de uma célula de data para AAAA-MM-DD.
+ *
+ * Uma célula de data no Excel pode chegar aqui de três formas, dependendo de
+ * como a pessoa digitou e do formato da célula:
+ * - um objeto Date (quando a célula tem formato de data — o caso mais comum
+ *   ao digitar direto no Excel, e o motivo do bug anterior: a leitura não
+ *   pedia isso, então a data virava um número de série e era descartada)
+ * - um número de série do Excel (dias desde 30/12/1899), se por algum motivo
+ *   o objeto Date não vier
+ * - um texto DD/MM/AAAA ou AAAA-MM-DD, quando a célula é só texto
+ */
+function parseDate(value: unknown): string | null {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  if (typeof value === 'number') {
+    // Número de série do Excel: dias desde 30/12/1899.
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(date.getTime())) return null;
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const dateStr = String(value).trim();
   if (!dateStr) return null;
 
-  // Try DD/MM/YYYY format
+  // DD/MM/AAAA
   const ddmmyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (ddmmyyyyMatch) {
     const [, day, month, year] = ddmmyyyyMatch;
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
-  // Try YYYY-MM-DD format
+  // AAAA-MM-DD
   const yyyymmddMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (yyyymmddMatch) {
     const [, year, month, day] = yyyymmddMatch;

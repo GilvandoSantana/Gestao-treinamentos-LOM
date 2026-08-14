@@ -1368,6 +1368,14 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         try {
+          if (ctx.siteRole === "admin" && !ctx.siteContract) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Escolha um contrato no cabeçalho antes de importar a planilha.",
+            });
+          }
+          const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+
           void logActivity({
             username: ctx.siteAdminUsername,
             role: ctx.siteRole,
@@ -1386,6 +1394,7 @@ export const appRouter = router({
               birthDate: employee.birthDate,
               role: employee.role,
               phone: employee.phone,
+              contract,
             });
 
             // Upsert trainings
