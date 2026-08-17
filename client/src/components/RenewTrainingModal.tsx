@@ -9,6 +9,7 @@ import { RefreshCw, Search, Loader, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import type { Employee } from '@/lib/types';
+import DateInputBR from '@/components/DateInputBR';
 
 interface RenewTrainingModalProps {
   isOpen: boolean;
@@ -169,10 +170,9 @@ export default function RenewTrainingModal({ isOpen, onClose, employees }: Renew
                 <Calendar size={11} className="inline mr-1" />
                 Realização
               </label>
-              <input
-                type="date"
+              <DateInputBR
                 value={completionDate}
-                onChange={(e) => setCompletionDate(e.target.value)}
+                onChange={setCompletionDate}
                 disabled={renewMutation.isPending}
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
               />
@@ -182,10 +182,9 @@ export default function RenewTrainingModal({ isOpen, onClose, employees }: Renew
                 <Calendar size={11} className="inline mr-1" />
                 Vencimento
               </label>
-              <input
-                type="date"
+              <DateInputBR
                 value={expirationDate}
-                onChange={(e) => setExpirationDate(e.target.value)}
+                onChange={setExpirationDate}
                 disabled={renewMutation.isPending}
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
               />

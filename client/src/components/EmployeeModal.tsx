@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, FileText, Loader, Camera, Building2, Sparkles } from 'lucide-react';
 import type { DateSuggestion } from '@/lib/certificate-date-suggestion';
+import DateInputBR from '@/components/DateInputBR';
 import type { Employee, Training } from '@/lib/types';
 import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
@@ -518,10 +519,9 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Data de Nascimento</label>
               <div className="flex gap-2 items-center">
-                <input
-                  type="date"
+                <DateInputBR
                   value={birthDate}
-                  onChange={(e) => handleBirthDateChange(e.target.value)}
+                  onChange={(iso) => handleBirthDateChange(iso)}
                   className="flex-1 border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 />
                 <div
@@ -681,10 +681,9 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                   <label className="block text-foreground font-semibold mb-2 text-sm">
                     Data de Realização
                   </label>
-                  <input
-                    type="date"
+                  <DateInputBR
                     value={completionDate}
-                    onChange={(e) => setCompletionDate(e.target.value)}
+                    onChange={setCompletionDate}
                     className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                   />
                 </div>
@@ -692,10 +691,9 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                   <label className="block text-foreground font-semibold mb-2 text-sm">
                     Data de Vencimento
                   </label>
-                  <input
-                    type="date"
+                  <DateInputBR
                     value={expirationDate}
-                    onChange={(e) => setExpirationDate(e.target.value)}
+                    onChange={setExpirationDate}
                     className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                   />
                 </div>

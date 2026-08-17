@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { Upload, Trash2, Download, Loader, Pencil, X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import DateInputBR from '@/components/DateInputBR';
 import {
   INVOICE_DOC_TYPES,
   INVOICE_DOC_TYPE_LABELS,
@@ -392,10 +393,9 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
               <label className={labelClass}>
                 Data de emissão <span className="text-danger">*</span>
               </label>
-              <input
-                type="date"
+              <DateInputBR
                 value={form.issueDate}
-                onChange={(e) => setForm({ ...form, issueDate: e.target.value })}
+                onChange={(iso) => setForm({ ...form, issueDate: iso })}
                 disabled={isSaving}
                 className={inputClass}
               />
