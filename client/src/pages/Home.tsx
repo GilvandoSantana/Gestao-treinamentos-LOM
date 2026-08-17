@@ -180,10 +180,22 @@ export default function Home() {
       }
       mergedEmployees.sort((a, b) => a.name.localeCompare(b.name));
       setEmployees(mergedEmployees);
-      await syncMutation.mutateAsync({ employees: mergedEmployees });
+      const syncResult = await syncMutation.mutateAsync({ employees: mergedEmployees });
       await listQuery.refetch();
       setLastSyncTime(new Date());
-      toast.success(`${importedEmployees.length} colaborador(es) importado(s)!`);
+
+      if (syncResult.failed.length > 0) {
+        // Alguns podem ter dado erro sem travar os demais — mostra
+        // exatamente quem, em vez de dizer que deu tudo certo.
+        toast.error(
+          `${syncResult.updated} salvo(s), mas ${syncResult.failed.length} falharam: ${syncResult.failed
+            .map((f) => f.name)
+            .join(', ')}`,
+          { duration: 10000 }
+        );
+      } else {
+        toast.success(`${importedEmployees.length} colaborador(es) importado(s)!`);
+      }
     } catch (error) {
       toast.error('Erro ao importar colaboradores');
       console.error(error);
@@ -374,8 +386,16 @@ export default function Home() {
         setEmployees(sorted);
 
         try {
-          await syncMutation.mutateAsync({ employees: sorted });
+          const syncResult = await syncMutation.mutateAsync({ employees: sorted });
           await listQuery.refetch();
+          if (syncResult.failed.length > 0) {
+            toast.error(
+              `${syncResult.updated} restaurado(s), mas ${syncResult.failed.length} falharam: ${syncResult.failed
+                .map((f) => f.name)
+                .join(', ')}`,
+              { duration: 10000 }
+            );
+          }
         } catch (err) {
           console.error('Erro ao sincronizar após importação:', err);
         }

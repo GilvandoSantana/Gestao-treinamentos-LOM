@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, setEmployeeBirthDate, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -1208,6 +1208,31 @@ export const appRouter = router({
         return { updated, created, total: input.employeeIds.length } as const;
       }),
 
+    // Preencher a data de nascimento de vários colaboradores de uma vez —
+    // atualiza só esse campo (age recalculada), sem mexer no resto da ficha.
+    setBirthDatesBulk: requirePermission('editEmployees')
+      .input(
+        z.object({
+          updates: z
+            .array(z.object({ employeeId: z.string(), birthDate: z.string().min(1) }))
+            .min(1),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        for (const { employeeId, birthDate } of input.updates) {
+          await setEmployeeBirthDate(employeeId, birthDate);
+        }
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "employee.update",
+          details: `${input.updates.length} data(s) de nascimento preenchida(s) em lote`,
+        });
+
+        return { updated: input.updates.length } as const;
+      }),
+
     // Reatribuir colaborador para outro contrato — SOMENTE o administrador
     // principal. Não é uma edição normal: move o registro inteiro para outra
     // "gaveta", então fica separado do upsertOne e sempre exige o admin
@@ -1383,37 +1408,56 @@ export const appRouter = router({
             details: `${input.employees.length} colaborador(es) sincronizado(s)`,
           });
 
+          const results = { updated: 0, failed: [] as { name: string; error: string }[] };
+
           for (const employee of input.employees) {
-            // Upsert employee
-            await upsertEmployee({
-              id: employee.id,
-              name: employee.name,
-              registration: employee.registration,
-              educationLevel: employee.educationLevel,
-              age: employee.age,
-              birthDate: employee.birthDate,
-              role: employee.role,
-              phone: employee.phone,
-              contract,
-            });
+            try {
+              // Upsert employee
+              await upsertEmployee({
+                id: employee.id,
+                name: employee.name,
+                registration: employee.registration,
+                educationLevel: employee.educationLevel,
+                age: employee.age,
+                birthDate: employee.birthDate,
+                role: employee.role,
+                phone: employee.phone,
+                contract,
+              });
 
-            // Upsert trainings
-            const currentTrainingIds = employee.trainings.map(t => t.id);
-            
-            // First, remove trainings that are no longer in the list
-            await deleteTrainingsExcept(employee.id, currentTrainingIds);
+              // Upsert trainings
+              const currentTrainingIds = employee.trainings.map(t => t.id);
 
-            for (const training of employee.trainings) {
-              await upsertTraining({
-                id: training.id,
-                employeeId: employee.id,
-                name: training.name,
-                completionDate: training.completionDate,
-                expirationDate: training.expirationDate,
+              // First, remove trainings that are no longer in the list
+              await deleteTrainingsExcept(employee.id, currentTrainingIds);
+
+              for (const training of employee.trainings) {
+                await upsertTraining({
+                  id: training.id,
+                  employeeId: employee.id,
+                  name: training.name,
+                  completionDate: training.completionDate,
+                  expirationDate: training.expirationDate,
+                });
+              }
+              results.updated++;
+            } catch (employeeError) {
+              // Um colaborador com problema (ex: dado inválido) não pode travar
+              // todo mundo depois dele na lista — registra e segue para o
+              // próximo, devolvendo no final quem falhou e por quê.
+              console.error(`[sync] Falha ao salvar "${employee.name}":`, employeeError);
+              results.failed.push({
+                name: employee.name,
+                error: employeeError instanceof Error ? employeeError.message : String(employeeError),
               });
             }
           }
-          return { success: true, count: input.employees.length };
+          return {
+            success: true,
+            count: input.employees.length,
+            updated: results.updated,
+            failed: results.failed,
+          };
         } catch (error) {
           console.error("Sync error:", error);
           throw error;
