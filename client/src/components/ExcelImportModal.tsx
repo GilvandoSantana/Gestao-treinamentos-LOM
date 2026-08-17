@@ -1,18 +1,20 @@
 import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Download, Upload } from 'lucide-react';
+import { AlertCircle, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
-import { parseExcelFile, generateExcelTemplate } from '@/lib/excel-parser';
+import { parseExcelFile, generateExcelTemplate, generateEmployeesUpdateSheet } from '@/lib/excel-parser';
 import type { Employee } from '@/lib/types';
 
 interface ExcelImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImport: (employees: Employee[]) => Promise<void>;
+  /** Colaboradores já cadastrados — usados para gerar a planilha "para completar". */
+  employees?: Employee[];
 }
 
-export default function ExcelImportModal({ isOpen, onClose, onImport }: ExcelImportModalProps) {
+export default function ExcelImportModal({ isOpen, onClose, onImport, employees = [] }: ExcelImportModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,6 +59,19 @@ export default function ExcelImportModal({ isOpen, onClose, onImport }: ExcelImp
     }
   };
 
+  const handleDownloadCurrentEmployees = () => {
+    if (employees.length === 0) {
+      toast.error('Nenhum colaborador cadastrado ainda.');
+      return;
+    }
+    try {
+      generateEmployeesUpdateSheet(employees);
+      toast.success('Planilha com seus colaboradores baixada!');
+    } catch (error) {
+      toast.error('Erro ao gerar a planilha');
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
@@ -83,9 +98,28 @@ export default function ExcelImportModal({ isOpen, onClose, onImport }: ExcelImp
                   Para vários treinamentos da mesma pessoa, repita o nome dela em várias linhas —
                   o modelo baixado abaixo já mostra um exemplo assim.
                 </p>
+                <p className="text-xs mt-2">
+                  Para completar um campo que está faltando (como data de nascimento) em quem já
+                  está cadastrado, use "Baixar planilha com meus colaboradores" — ela já vem com
+                  os nomes certos, só falta preencher o que quiser e reimportar.
+                </p>
               </div>
             </div>
           </div>
+
+          {/* Atalho: já vem com os colaboradores atuais preenchidos, só
+              falta completar o que estiver faltando (ex: nascimento) */}
+          {employees.length > 0 && (
+            <Button
+              variant="outline"
+              className="w-full border-orange text-orange hover:bg-orange/10"
+              onClick={handleDownloadCurrentEmployees}
+              disabled={isLoading}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Baixar planilha com meus {employees.length} colaborador(es)
+            </Button>
+          )}
 
           {/* Template Download */}
           <Button

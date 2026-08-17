@@ -192,6 +192,56 @@ function parseDate(value: unknown): string | null {
 /**
  * Generate a sample Excel template for users
  */
+/**
+ * Gera uma planilha já com os colaboradores atuais preenchidos (Nome,
+ * Matrícula, Função, Escolaridade, Telefone e a Data de Nascimento que já
+ * existir) — pra completar um campo em lote (como data de nascimento) sem
+ * digitar tudo de novo. Uma linha por colaborador, sem repetir por
+ * treinamento — essa planilha não mexe em treinamentos ao ser reimportada.
+ */
+export function generateEmployeesUpdateSheet(employees: Employee[]): void {
+  const rows = [...employees]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((emp) => {
+      let birthDateDisplay = '';
+      if (emp.birthDate) {
+        const match = emp.birthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+          const [, year, month, day] = match;
+          birthDateDisplay = `${day}/${month}/${year}`;
+        }
+      }
+      return {
+        Nome: emp.name,
+        Matrícula: emp.registration || '',
+        Função: emp.role || '',
+        Escolaridade: emp.educationLevel || '',
+        'Data de Nascimento': birthDateDisplay,
+        Telefone: emp.phone || '',
+        Treinamento: '',
+        'Data de Realização': '',
+        'Data de Vencimento': '',
+      };
+    });
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  worksheet['!cols'] = [
+    { wch: 25 }, // Nome
+    { wch: 12 }, // Matrícula
+    { wch: 22 }, // Função
+    { wch: 18 }, // Escolaridade
+    { wch: 16 }, // Data de Nascimento
+    { wch: 16 }, // Telefone
+    { wch: 25 }, // Treinamento
+    { wch: 18 }, // Data de Realização
+    { wch: 18 }, // Data de Vencimento
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Colaboradores');
+  XLSX.writeFile(workbook, 'colaboradores-para-completar.xlsx');
+}
+
 export function generateExcelTemplate(): void {
   const sampleData = [
     {

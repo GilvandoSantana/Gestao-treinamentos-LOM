@@ -164,6 +164,16 @@ export default function Home() {
             t => !existing.trainings.some(et => et.name === t.name)
           );
           existing.trainings.push(...newTrainings);
+          // Reimportar também atualiza os dados pessoais de quem já existe,
+          // quando a planilha traz algo preenchido — é assim que dá pra
+          // completar em lote um campo que ficou faltando (como data de
+          // nascimento) sem digitar tudo de novo, um por um. Célula vazia na
+          // planilha não apaga o que já estava certo.
+          if (imported.birthDate) existing.birthDate = imported.birthDate;
+          if (imported.registration) existing.registration = imported.registration;
+          if (imported.educationLevel) existing.educationLevel = imported.educationLevel;
+          if (imported.phone) existing.phone = imported.phone;
+          if (imported.role) existing.role = imported.role;
         } else {
           mergedEmployees.push(imported);
         }
@@ -782,6 +792,7 @@ export default function Home() {
         isOpen={showExcelImport}
         onClose={() => setShowExcelImport(false)}
         onImport={handleExcelImport}
+        employees={activeEmployees}
       />
 
       <RenewTrainingModal
