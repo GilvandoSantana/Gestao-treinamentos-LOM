@@ -136,9 +136,13 @@ function parseDate(value: unknown): string | null {
 
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return null;
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
+    // Usa os getters em UTC, não os locais: o SheetJS monta esse objeto Date
+    // a partir do número de série do Excel usando UTC. Ler com getters locais
+    // (getDate/getMonth) podia voltar um dia, dependendo do fuso do
+    // navegador — em UTC-3 (Brasil), meia-noite UTC vira 21h do dia anterior.
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
 
@@ -156,11 +160,23 @@ function parseDate(value: unknown): string | null {
   const dateStr = String(value).trim();
   if (!dateStr) return null;
 
-  // DD/MM/AAAA
-  const ddmmyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (ddmmyyyyMatch) {
-    const [, day, month, year] = ddmmyyyyMatch;
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // DD/MM/AAAA (o formato do modelo). Se o primeiro número não puder ser dia
+  // (>31) mas o segundo puder, ou se o segundo não puder ser mês (>12) mas o
+  // primeiro puder, os dois estão invertidos (planilha editada num Excel em
+  // inglês, que grava MM/DD) — corrige sozinho nesse caso.
+  const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    let [, first, second, year] = slashMatch;
+    let day = parseInt(first, 10);
+    let month = parseInt(second, 10);
+    if (month > 12 && day <= 12) {
+      // Só pode ser MM/DD/AAAA — troca.
+      [day, month] = [month, day];
+    }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return null;
   }
 
   // AAAA-MM-DD
