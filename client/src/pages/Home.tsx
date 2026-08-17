@@ -217,8 +217,10 @@ export default function Home() {
           registration: employeeData.registration,
           educationLevel: employeeData.educationLevel,
           age: employeeData.age,
+          birthDate: employeeData.birthDate,
           role: employeeData.role,
           phone: employeeData.phone,
+          customFields: employeeData.customFields,
           trainings: employeeData.trainings,
         });
         setLastSyncTime(new Date());
