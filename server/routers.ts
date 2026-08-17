@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, siteAdminProcedure, masterAdminProcedure, requirePermission, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, setEmployeeBirthDate, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
+import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -1206,31 +1206,6 @@ export const appRouter = router({
         });
 
         return { updated, created, total: input.employeeIds.length } as const;
-      }),
-
-    // Preencher a data de nascimento de vários colaboradores de uma vez —
-    // atualiza só esse campo (age recalculada), sem mexer no resto da ficha.
-    setBirthDatesBulk: requirePermission('editEmployees')
-      .input(
-        z.object({
-          updates: z
-            .array(z.object({ employeeId: z.string(), birthDate: z.string().min(1) }))
-            .min(1),
-        })
-      )
-      .mutation(async ({ input, ctx }) => {
-        for (const { employeeId, birthDate } of input.updates) {
-          await setEmployeeBirthDate(employeeId, birthDate);
-        }
-
-        void logActivity({
-          username: ctx.siteAdminUsername,
-          role: ctx.siteRole,
-          action: "employee.update",
-          details: `${input.updates.length} data(s) de nascimento preenchida(s) em lote`,
-        });
-
-        return { updated: input.updates.length } as const;
       }),
 
     // Reatribuir colaborador para outro contrato — SOMENTE o administrador
