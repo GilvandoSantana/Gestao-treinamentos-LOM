@@ -57,7 +57,9 @@ export type ActivityAction =
   | "warehouse.stockIn"
   | "warehouse.stockOut"
   | "warehouse.toolDeliver"
-  | "warehouse.toolReturn";
+  | "warehouse.toolReturn"
+  | "warehouse.purchaseRequestCreate"
+  | "warehouse.purchaseRequestUpdate";
 
 export type LogActivityInput = {
   username: string | null;

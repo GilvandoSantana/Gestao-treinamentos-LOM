@@ -68,6 +68,14 @@ import {
   createToolDelivery,
   returnToolDelivery,
 } from "./db-tool-deliveries";
+import {
+  listPurchaseRequests,
+  createPurchaseRequest,
+  updatePurchaseRequestStatus,
+  cancelPurchaseRequest,
+  deletePurchaseRequest,
+} from "./db-purchase-requests";
+import { PURCHASE_REQUEST_PRIORITIES, PURCHASE_REQUEST_STATUSES } from "@shared/warehouse";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import {
   listInvoices,
@@ -1485,6 +1493,89 @@ export const appRouter = router({
             message: error instanceof Error ? error.message : "Erro ao registrar devolução.",
           });
         }
+      }),
+
+    // Solicitações de compra — podem ter vários itens numa única solicitação.
+    listPurchaseRequests: requirePermission('viewWarehouse').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listPurchaseRequests(ctx.siteContract);
+    }),
+
+    createPurchaseRequest: requirePermission('manageWarehouse')
+      .input(
+        z.object({
+          items: z
+            .array(
+              z.object({
+                name: z.string().trim().min(1),
+                quantity: z.number().positive(),
+                fornecedor: z.string().nullish(),
+                priority: z.enum(PURCHASE_REQUEST_PRIORITIES),
+              })
+            )
+            .min(1, "Adicione pelo menos um item"),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const created = await createPurchaseRequest(uuidv4(), ctx.siteContract, input.items, ctx.siteAdminUsername);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.purchaseRequestCreate",
+          targetType: "purchaseRequest",
+          targetId: created.id,
+          targetName: created.registro,
+        });
+        return created;
+      }),
+
+    updatePurchaseRequestStatus: requirePermission('manageWarehouse')
+      .input(z.object({ id: z.string(), status: z.enum(PURCHASE_REQUEST_STATUSES) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await updatePurchaseRequestStatus(input.id, ctx.siteContract, input.status);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.purchaseRequestUpdate",
+          targetType: "purchaseRequest",
+          targetId: input.id,
+          details: `status → ${input.status}`,
+        });
+        return { success: true } as const;
+      }),
+
+    cancelPurchaseRequest: requirePermission('manageWarehouse')
+      .input(z.object({ id: z.string(), reason: z.string().trim().min(1, "Informe o motivo") }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await cancelPurchaseRequest(input.id, ctx.siteContract, input.reason);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.purchaseRequestUpdate",
+          targetType: "purchaseRequest",
+          targetId: input.id,
+          details: `cancelada: ${input.reason}`,
+        });
+        return { success: true } as const;
+      }),
+
+    deletePurchaseRequest: requirePermission('manageWarehouse')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await deletePurchaseRequest(input.id, ctx.siteContract);
+        return { success: true } as const;
       }),
   }),
 

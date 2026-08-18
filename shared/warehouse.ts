@@ -82,3 +82,58 @@ export interface ToolDeliveryInfo {
   deliveredAt: string;
   returnedAt: string | null;
 }
+
+export const PURCHASE_REQUEST_PRIORITIES = ['baixa', 'normal', 'alta', 'urgente', 'emergencial'] as const;
+export type PurchaseRequestPriority = (typeof PURCHASE_REQUEST_PRIORITIES)[number];
+export const PURCHASE_REQUEST_PRIORITY_LABELS: Record<PurchaseRequestPriority, string> = {
+  baixa: 'Baixa',
+  normal: 'Normal',
+  alta: 'Alta',
+  urgente: 'Urgente',
+  emergencial: 'Emergencial',
+};
+
+export const PURCHASE_REQUEST_STATUSES = [
+  'pendente',
+  'aprovada',
+  'em_processo',
+  'concluida',
+  'cancelada',
+  'expirada',
+] as const;
+export type PurchaseRequestStatus = (typeof PURCHASE_REQUEST_STATUSES)[number];
+export const PURCHASE_REQUEST_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {
+  pendente: 'Pendente',
+  aprovada: 'Aprovada',
+  em_processo: 'Em Processo',
+  concluida: 'Concluída',
+  cancelada: 'Cancelada',
+  expirada: 'Expirada',
+};
+
+/** Próximo status no fluxo normal — usado no botão "avançar". */
+export const PURCHASE_REQUEST_NEXT_STATUS: Partial<Record<PurchaseRequestStatus, PurchaseRequestStatus>> = {
+  pendente: 'aprovada',
+  aprovada: 'em_processo',
+  em_processo: 'concluida',
+};
+
+export interface PurchaseRequestItem {
+  name: string;
+  quantity: number;
+  fornecedor?: string | null;
+  priority: PurchaseRequestPriority;
+}
+
+export interface PurchaseRequestInfo {
+  id: string;
+  contract: string;
+  registro: string;
+  items: PurchaseRequestItem[];
+  priority: PurchaseRequestPriority;
+  status: PurchaseRequestStatus;
+  cancelReason: string | null;
+  requestedBy: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+}

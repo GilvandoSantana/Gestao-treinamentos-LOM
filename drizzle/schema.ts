@@ -456,3 +456,29 @@ export const toolDeliveries = mysqlTable("toolDeliveries", {
 
 export type ToolDelivery = typeof toolDeliveries.$inferSelect;
 export type InsertToolDelivery = typeof toolDeliveries.$inferInsert;
+
+/**
+ * Almoxarifado — solicitações de compra. Uma solicitação pode ter vários
+ * itens de uma vez (guardados como JSON, como o sistema original fazia).
+ */
+export const purchaseRequests = mysqlTable("purchaseRequests", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  // Numeração sequencial por contrato, ex: SC-0001.
+  registro: varchar("registro", { length: 20 }).notNull(),
+  // JSON: [{ name, quantity, fornecedor, priority }]
+  items: text("items").notNull(),
+  priority: mysqlEnum("priority", ["baixa", "normal", "alta", "urgente", "emergencial"])
+    .default("normal")
+    .notNull(),
+  status: mysqlEnum("status", ["pendente", "aprovada", "em_processo", "concluida", "cancelada", "expirada"])
+    .default("pendente")
+    .notNull(),
+  cancelReason: text("cancelReason"),
+  requestedBy: varchar("requestedBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+});
+
+export type PurchaseRequestRow = typeof purchaseRequests.$inferSelect;
+export type InsertPurchaseRequestRow = typeof purchaseRequests.$inferInsert;
