@@ -1358,8 +1358,11 @@ export const appRouter = router({
                 z.object({
                   id: z.string(),
                   name: z.string(),
-                  completionDate: z.string(),
-                  expirationDate: z.string(),
+                  // Opcionais: uma data quebrada ou vazia num único
+                  // treinamento não pode reprovar a validação do lote
+                  // inteiro e travar a importação do contrato.
+                  completionDate: z.string().optional(),
+                  expirationDate: z.string().optional(),
                 })
               ),
             })
@@ -1406,13 +1409,14 @@ export const appRouter = router({
               // First, remove trainings that are no longer in the list
               await deleteTrainingsExcept(employee.id, currentTrainingIds);
 
+              const todayIso = new Date().toISOString().slice(0, 10);
               for (const training of employee.trainings) {
                 await upsertTraining({
                   id: training.id,
                   employeeId: employee.id,
                   name: training.name,
-                  completionDate: training.completionDate,
-                  expirationDate: training.expirationDate,
+                  completionDate: training.completionDate || todayIso,
+                  expirationDate: training.expirationDate || todayIso,
                 });
               }
               results.updated++;

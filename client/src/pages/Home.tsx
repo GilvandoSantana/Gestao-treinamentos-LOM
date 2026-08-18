@@ -180,7 +180,23 @@ export default function Home() {
       }
       mergedEmployees.sort((a, b) => a.name.localeCompare(b.name));
       setEmployees(mergedEmployees);
-      const syncResult = await syncMutation.mutateAsync({ employees: mergedEmployees });
+
+      // Sanitiza antes de enviar: uma célula de data quebrada ou vazia na
+      // planilha não pode travar a importação de todo o contrato. Preenche
+      // datas vazias com hoje e descarta treinamentos sem nome.
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const sanitizedEmployees = mergedEmployees.map(emp => ({
+        ...emp,
+        trainings: emp.trainings
+          .filter(t => t.name && t.name.trim() !== '')
+          .map(t => ({
+            ...t,
+            completionDate: t.completionDate || todayIso,
+            expirationDate: t.expirationDate || todayIso,
+          })),
+      }));
+
+      const syncResult = await syncMutation.mutateAsync({ employees: sanitizedEmployees });
       await listQuery.refetch();
       setLastSyncTime(new Date());
 
@@ -197,7 +213,10 @@ export default function Home() {
         toast.success(`${importedEmployees.length} colaborador(es) importado(s)!`);
       }
     } catch (error) {
-      toast.error('Erro ao importar colaboradores');
+      // Mostra o erro de verdade em vez de uma mensagem genérica, para dar
+      // pista real do que quebrou (ex: contrato não escolhido, erro de rede).
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Erro ao importar colaboradores: ${message}`);
       console.error(error);
     } finally {
       setIsSyncing(false);
