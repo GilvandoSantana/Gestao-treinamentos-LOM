@@ -16,6 +16,7 @@ import {
   Cloud,
   Receipt,
   UserCog,
+  Warehouse,
   Shield,
   FileText,
   LayoutGrid,
@@ -61,6 +62,7 @@ interface HeaderProps {
   onShowCloud?: () => void;
   onShowInvoices?: () => void;
   onShowRolesTrainingTypes?: () => void;
+  onShowWarehouse?: () => void;
   notificationItems?: TrainingAlertItem[];
   onNotificationSelect?: (item: TrainingAlertItem) => void;
   onSeeAllNotifications?: () => void;
@@ -97,6 +99,7 @@ export default function Header({
   onShowCloud,
   onShowInvoices,
   onShowRolesTrainingTypes,
+  onShowWarehouse,
   notificationItems,
   onNotificationSelect,
   onSeeAllNotifications,
@@ -429,6 +432,15 @@ export default function Header({
                       <button onClick={runAndClose(onShowInvoices)} className={menuItemClass} role="menuitem">
                         <Receipt size={16} className="text-muted-foreground" />
                         Notas Fiscais
+                      </button>
+                    </div>
+                  )}
+
+                  {onShowWarehouse && (
+                    <div className="py-1 border-b border-border">
+                      <button onClick={runAndClose(onShowWarehouse)} className={menuItemClass} role="menuitem">
+                        <Warehouse size={16} className="text-muted-foreground" />
+                        Almoxarifado
                       </button>
                     </div>
                   )}
