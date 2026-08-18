@@ -336,3 +336,29 @@ export const invoiceSettings = mysqlTable("invoiceSettings", {
 
 export type InvoiceSettingsRow = typeof invoiceSettings.$inferSelect;
 export type InsertInvoiceSettingsRow = typeof invoiceSettings.$inferInsert;
+
+/**
+ * Catálogo de funções — a lista fixa (PREDEFINED_ROLES no cliente) mais o
+ * que o administrador cadastrar. Compartilhado entre todos os contratos.
+ */
+export const customRoles = mysqlTable("customRoles", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 120 }).notNull().unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CustomRoleRow = typeof customRoles.$inferSelect;
+
+/**
+ * Catálogo de tipos de treinamento — cada um com a validade em meses
+ * (ex: NR-35 = 24 meses). A data de vencimento do treinamento de um
+ * colaborador é sempre calculada a partir disso, nunca digitada à mão.
+ */
+export const trainingTypes = mysqlTable("trainingTypes", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 150 }).notNull().unique(),
+  validityMonths: int("validityMonths").notNull().default(12),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TrainingTypeRow = typeof trainingTypes.$inferSelect;

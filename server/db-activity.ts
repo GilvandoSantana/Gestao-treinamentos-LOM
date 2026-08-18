@@ -45,7 +45,12 @@ export type ActivityAction =
   | "cloud.fileDelete"
   | "invoice.create"
   | "invoice.update"
-  | "invoice.delete";
+  | "invoice.delete"
+  | "role.create"
+  | "role.delete"
+  | "trainingType.create"
+  | "trainingType.update"
+  | "trainingType.delete";
 
 export type LogActivityInput = {
   username: string | null;

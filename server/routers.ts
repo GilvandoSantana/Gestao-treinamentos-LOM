@@ -43,6 +43,15 @@ import {
   createFileRecord,
   deleteFileRecord,
 } from "./db-cloud";
+import { listCustomRoles, createCustomRole, deleteCustomRole } from "./db-roles";
+import {
+  listTrainingTypes,
+  getTrainingTypeByName,
+  createTrainingType,
+  updateTrainingType,
+  deleteTrainingType,
+  addMonthsToDate,
+} from "./db-training-types";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import {
   listInvoices,
@@ -1156,6 +1165,105 @@ export const appRouter = router({
     }),
   }),
 
+  // Catálogo de funções e tipos de treinamento — compartilhado entre
+  // contratos. Só o administrador principal cadastra/edita/exclui; qualquer
+  // pessoa logada pode listar (é o que preenche os menus do formulário).
+  roles: router({
+    list: requirePermission('viewEmployees').query(async () => {
+      return listCustomRoles();
+    }),
+
+    create: masterAdminProcedure
+      .input(z.object({ name: z.string().trim().min(2, "Informe o nome da função").max(120) }))
+      .mutation(async ({ input, ctx }) => {
+        const role = await createCustomRole(uuidv4(), input.name);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "role.create",
+          targetType: "role",
+          targetId: role.id,
+          targetName: role.name,
+        });
+        return role;
+      }),
+
+    delete: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        await deleteCustomRole(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "role.delete",
+          targetType: "role",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+  }),
+
+  trainingTypes: router({
+    list: requirePermission('viewEmployees').query(async () => {
+      return listTrainingTypes();
+    }),
+
+    create: masterAdminProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2, "Informe o nome do treinamento").max(150),
+          validityMonths: z.number().int().min(1, "A validade deve ser de pelo menos 1 mês").max(120),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const type = await createTrainingType(uuidv4(), input.name, input.validityMonths);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "trainingType.create",
+          targetType: "trainingType",
+          targetId: type.id,
+          targetName: `${type.name} (${type.validityMonths} meses)`,
+        });
+        return type;
+      }),
+
+    update: masterAdminProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          name: z.string().trim().min(2).max(150),
+          validityMonths: z.number().int().min(1).max(120),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        await updateTrainingType(input.id, input.name, input.validityMonths);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "trainingType.update",
+          targetType: "trainingType",
+          targetId: input.id,
+          targetName: `${input.name} (${input.validityMonths} meses)`,
+        });
+        return { success: true } as const;
+      }),
+
+    delete: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        await deleteTrainingType(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "trainingType.delete",
+          targetType: "trainingType",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+  }),
+
   employees: router({
     // Nomes de treinamento já cadastrados, para sugerir ao digitar um novo e
     // evitar variações do mesmo treinamento espalhadas pelo sistema.
@@ -1236,19 +1344,27 @@ export const appRouter = router({
         z.object({
           id: z.string(),
           name: z.string(),
-          registration: z.string().optional(),
-          educationLevel: z.string().optional(),
-          age: z.number().optional(),
-          birthDate: z.string().optional(),
+          // .nullish() (não .optional()): mesmo motivo do sync — essas
+          // colunas são anuláveis no banco, então um valor já salvo pode
+          // voltar como null (não undefined) e derrubar a validação.
+          registration: z.string().nullish(),
+          educationLevel: z.string().nullish(),
+          age: z.number().nullish(),
+          birthDate: z.string().nullish(),
           role: z.string(),
-          phone: z.string().optional(),
+          phone: z.string().nullish(),
           customFields: z.record(z.string(), z.string()).optional(),
           trainings: z.array(
             z.object({
               id: z.string(),
               name: z.string(),
               completionDate: z.string(),
-              expirationDate: z.string(),
+              // Opcional: a data de vencimento é sempre calculada aqui a
+              // partir da validade cadastrada no catálogo de treinamentos
+              // (data de realização + X meses) — só é usada como reserva
+              // quando o treinamento não bate com nenhum tipo do catálogo
+              // (nome livre, de antes dessa mudança).
+              expirationDate: z.string().optional(),
             })
           ),
         })
@@ -1281,12 +1397,21 @@ export const appRouter = router({
           await deleteTrainingsExcept(input.id, currentTrainingIds);
 
           for (const training of input.trainings) {
+            // A validade vem sempre do catálogo, nunca do que o cliente
+            // mandar — fecha qualquer brecha de manipulação e garante que
+            // todo mundo usando o mesmo tipo de treinamento tenha a mesma
+            // regra de vencimento.
+            const trainingType = await getTrainingTypeByName(training.name);
+            const expirationDate = trainingType
+              ? addMonthsToDate(training.completionDate, trainingType.validityMonths)
+              : training.expirationDate || training.completionDate;
+
             await upsertTraining({
               id: training.id,
               employeeId: input.id,
               name: training.name,
               completionDate: training.completionDate,
-              expirationDate: training.expirationDate,
+              expirationDate,
             });
           }
 
@@ -1416,12 +1541,22 @@ export const appRouter = router({
 
               const todayIso = new Date().toISOString().slice(0, 10);
               for (const training of employee.trainings) {
+                const completionDate = training.completionDate || todayIso;
+                // Mesma regra do upsertOne: a validade vem do catálogo, não
+                // do que a planilha trouxer — a coluna "Data de Vencimento"
+                // do modelo de importação é ignorada quando o nome do
+                // treinamento bate com um tipo cadastrado.
+                const trainingType = await getTrainingTypeByName(training.name);
+                const expirationDate = trainingType
+                  ? addMonthsToDate(completionDate, trainingType.validityMonths)
+                  : training.expirationDate || todayIso;
+
                 await upsertTraining({
                   id: training.id,
                   employeeId: employee.id,
                   name: training.name,
-                  completionDate: training.completionDate || todayIso,
-                  expirationDate: training.expirationDate || todayIso,
+                  completionDate,
+                  expirationDate,
                 });
               }
               results.updated++;
