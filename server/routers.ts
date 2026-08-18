@@ -1348,12 +1348,17 @@ export const appRouter = router({
             z.object({
               id: z.string(),
               name: z.string(),
-              registration: z.string().optional(),
-              educationLevel: z.string().optional(),
-                age: z.number().optional(),
-                birthDate: z.string().optional(),
+              // .nullish() (não .optional()): esses campos são colunas
+              // anuláveis no banco. Um colaborador já existente sem, por
+              // exemplo, data de nascimento cadastrada volta do banco como
+              // null (não undefined) — e null derrubava a validação e
+              // travava a importação do contrato inteiro.
+              registration: z.string().nullish(),
+              educationLevel: z.string().nullish(),
+                age: z.number().nullish(),
+                birthDate: z.string().nullish(),
                 role: z.string(),
-              phone: z.string().optional(),
+              phone: z.string().nullish(),
               trainings: z.array(
                 z.object({
                   id: z.string(),
