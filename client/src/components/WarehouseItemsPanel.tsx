@@ -173,7 +173,7 @@ export default function WarehouseItemsPanel({ canManage }: WarehouseItemsPanelPr
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="mb-5 p-4 rounded-xl border border-border bg-muted/30 space-y-3">
+        <form onSubmit={handleSubmit} className="mb-5 p-4 rounded-xl border border-border bg-muted/30 space-y-3 max-w-2xl">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-foreground">
               {editingId ? 'Editar item' : 'Novo item'}
@@ -341,7 +341,93 @@ export default function WarehouseItemsPanel({ canManage }: WarehouseItemsPanelPr
           Nenhum item cadastrado ainda.
         </p>
       )}
-      <div className="space-y-2">
+
+      {/* Tabela — telas médias pra cima, aproveita o espaço da tela maior */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 text-left text-xs font-technical uppercase text-muted-foreground">
+              <th className="px-3 py-2.5">Código</th>
+              <th className="px-3 py-2.5">Nome</th>
+              <th className="px-3 py-2.5">Tipo</th>
+              <th className="px-3 py-2.5 text-right">Qtd.</th>
+              <th className="px-3 py-2.5">Localização</th>
+              <th className="px-3 py-2.5">Fornecedor</th>
+              <th className="px-3 py-2.5 text-right">Preço</th>
+              {canManage && <th className="px-3 py-2.5 text-right">Ações</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((item) => {
+              const low = item.quantity <= item.estoqueMinimo;
+              return (
+                <tr key={item.id} className="border-t border-border hover:bg-muted/30 transition-colors">
+                  <td className="px-3 py-2.5 font-technical text-muted-foreground whitespace-nowrap">
+                    {item.code}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-foreground font-medium">{item.name}</span>
+                      {low && (
+                        <span
+                          title={`Estoque baixo (mínimo: ${item.estoqueMinimo})`}
+                          className="text-danger shrink-0"
+                        >
+                          <AlertTriangle size={13} />
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className="text-[11px] font-technical uppercase bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                      {WAREHOUSE_ITEM_TYPE_LABELS[item.type]}
+                    </span>
+                  </td>
+                  <td
+                    className={`px-3 py-2.5 text-right font-technical whitespace-nowrap ${
+                      low ? 'text-danger font-semibold' : 'text-foreground'
+                    }`}
+                  >
+                    {item.quantity} {item.unit}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[140px]">
+                    {item.localizacao || '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[140px]">
+                    {item.fornecedor || '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-technical whitespace-nowrap text-foreground">
+                    {item.precoUnitario > 0
+                      ? item.precoUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : '—'}
+                  </td>
+                  {canManage && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => startEdit(item)}
+                          className="p-1.5 text-muted-foreground hover:text-orange transition-colors"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id, item.name)}
+                          className="p-1.5 text-danger hover:opacity-70 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Cartões — só no celular */}
+      <div className="md:hidden space-y-2">
         {filtered.map((item) => {
           const low = item.quantity <= item.estoqueMinimo;
           return (
