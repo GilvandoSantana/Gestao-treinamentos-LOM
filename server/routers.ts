@@ -62,6 +62,12 @@ import {
   createWarehouseMovement,
 } from "./db-warehouse";
 import { WAREHOUSE_ITEM_TYPES, WAREHOUSE_MOVEMENT_TYPES } from "@shared/warehouse";
+import {
+  listToolDeliveries,
+  listActiveDeliveriesForEmployee,
+  createToolDelivery,
+  returnToolDelivery,
+} from "./db-tool-deliveries";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import {
   listInvoices,
@@ -1402,6 +1408,81 @@ export const appRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: error instanceof Error ? error.message : "Erro ao registrar movimentação.",
+          });
+        }
+      }),
+
+    // Entrega e devolução de ferramentas/EPIs — usa o colaborador que já
+    // existe no sistema, sem cadastro de funcionário duplicado.
+    listDeliveries: requirePermission('viewWarehouse').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listToolDeliveries(ctx.siteContract);
+    }),
+
+    listActiveDeliveriesForEmployee: requirePermission('viewWarehouse')
+      .input(z.object({ employeeId: z.string() }))
+      .query(async ({ input, ctx }) => {
+        if (!ctx.siteContract) return [];
+        return listActiveDeliveriesForEmployee(ctx.siteContract, input.employeeId);
+      }),
+
+    deliverItem: requirePermission('manageWarehouse')
+      .input(
+        z.object({
+          employeeId: z.string(),
+          employeeName: z.string(),
+          itemId: z.string(),
+          quantity: z.number().positive("Informe uma quantidade maior que zero"),
+          obs: z.string().nullish(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        try {
+          const delivery = await createToolDelivery(uuidv4(), ctx.siteContract, {
+            ...input,
+            deliveredBy: ctx.siteAdminUsername,
+          });
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "warehouse.toolDeliver",
+            targetType: "toolDelivery",
+            targetId: delivery.id,
+            targetName: `${delivery.itemName} → ${delivery.employeeName}`,
+          });
+          return delivery;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro ao registrar entrega.",
+          });
+        }
+      }),
+
+    returnItem: requirePermission('manageWarehouse')
+      .input(z.object({ id: z.string(), returnObs: z.string().nullish() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        try {
+          const delivery = await returnToolDelivery(input.id, ctx.siteContract, input.returnObs);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "warehouse.toolReturn",
+            targetType: "toolDelivery",
+            targetId: delivery.id,
+            targetName: `${delivery.itemName} ← ${delivery.employeeName}`,
+          });
+          return delivery;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro ao registrar devolução.",
           });
         }
       }),

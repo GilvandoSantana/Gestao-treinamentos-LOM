@@ -65,3 +65,20 @@ export interface WarehouseMovementInfo {
   notes: string | null;
   createdAt: string;
 }
+
+export interface ToolDeliveryInfo {
+  id: string;
+  contract: string;
+  employeeId: string;
+  employeeName: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  quantity: number;
+  status: 'entregue' | 'devolvido';
+  obs: string | null;
+  returnObs: string | null;
+  deliveredBy: string | null;
+  deliveredAt: string;
+  returnedAt: string | null;
+}

@@ -431,3 +431,28 @@ export const warehouseMovements = mysqlTable("warehouseMovements", {
 
 export type WarehouseMovement = typeof warehouseMovements.$inferSelect;
 export type InsertWarehouseMovement = typeof warehouseMovements.$inferInsert;
+
+/**
+ * Almoxarifado — entrega e devolução de ferramentas/EPIs para colaboradores.
+ * Usa o colaborador que já existe no sistema (employees), não duplica
+ * cadastro de funcionário como o sistema original fazia.
+ */
+export const toolDeliveries = mysqlTable("toolDeliveries", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  employeeId: varchar("employeeId", { length: 64 }).notNull(),
+  employeeName: varchar("employeeName", { length: 255 }).notNull(),
+  itemId: varchar("itemId", { length: 64 }).notNull(),
+  itemCode: varchar("itemCode", { length: 100 }).notNull(),
+  itemName: varchar("itemName", { length: 255 }).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+  status: mysqlEnum("status", ["entregue", "devolvido"]).default("entregue").notNull(),
+  obs: text("obs"),
+  returnObs: text("returnObs"),
+  deliveredBy: varchar("deliveredBy", { length: 100 }),
+  deliveredAt: timestamp("deliveredAt").defaultNow().notNull(),
+  returnedAt: timestamp("returnedAt"),
+});
+
+export type ToolDelivery = typeof toolDeliveries.$inferSelect;
+export type InsertToolDelivery = typeof toolDeliveries.$inferInsert;
