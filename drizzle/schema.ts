@@ -362,3 +362,72 @@ export const trainingTypes = mysqlTable("trainingTypes", {
 });
 
 export type TrainingTypeRow = typeof trainingTypes.$inferSelect;
+
+/**
+ * Almoxarifado — itens em estoque, migrado de um sistema separado
+ * (Supabase). Separado por contrato, como o resto do sistema.
+ * Nomes de campo em português para bater com os dados já existentes.
+ */
+export const warehouseItems = mysqlTable("warehouseItems", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  code: varchar("code", { length: 100 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", [
+    "epi",
+    "ferramenta",
+    "equipamento",
+    "material_consumo",
+    "material_limpeza",
+    "gas",
+    "material",
+  ])
+    .default("material_consumo")
+    .notNull(),
+  unit: varchar("unit", { length: 20 }).default("un").notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).default("0").notNull(),
+  // Obrigatório para EPI
+  ca: varchar("ca", { length: 50 }),
+  dataValidadeCa: varchar("dataValidadeCa", { length: 10 }),
+  // Obrigatório para Ferramenta
+  patrimonio: varchar("patrimonio", { length: 100 }),
+  estoqueMinimo: decimal("estoqueMinimo", { precision: 12, scale: 2 }).default("10").notNull(),
+  // Sempre estoqueMinimo × 1,2 — recalculado a cada gravação, não editável direto.
+  estoqueSeguranca: decimal("estoqueSeguranca", { precision: 12, scale: 2 }).default("12").notNull(),
+  localizacao: varchar("localizacao", { length: 150 }),
+  fornecedor: varchar("fornecedor", { length: 150 }),
+  precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 }).default("0").notNull(),
+  // Validade geral do item (materiais/gás), diferente da validade do CA.
+  dataValidade: varchar("dataValidade", { length: 10 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WarehouseItem = typeof warehouseItems.$inferSelect;
+export type InsertWarehouseItem = typeof warehouseItems.$inferInsert;
+
+/**
+ * Almoxarifado — movimentações de estoque (entrada/saída), para manter o
+ * histórico de quem retirou o quê e quando.
+ */
+export const warehouseMovements = mysqlTable("warehouseMovements", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  itemId: varchar("itemId", { length: 64 }),
+  itemCode: varchar("itemCode", { length: 100 }).notNull(),
+  itemName: varchar("itemName", { length: 255 }).notNull(),
+  movementType: mysqlEnum("movementType", ["entrada", "saida"]).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+  date: timestamp("date").defaultNow().notNull(),
+  destination: varchar("destination", { length: 255 }),
+  responsible: varchar("responsible", { length: 150 }),
+  invoiceNumber: varchar("invoiceNumber", { length: 100 }),
+  purchaseOrder: varchar("purchaseOrder", { length: 100 }),
+  supplier: varchar("supplier", { length: 150 }),
+  unitPrice: decimal("unitPrice", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WarehouseMovement = typeof warehouseMovements.$inferSelect;
+export type InsertWarehouseMovement = typeof warehouseMovements.$inferInsert;

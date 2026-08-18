@@ -1,0 +1,41 @@
+CREATE TABLE `warehouseItems` (
+	`id` varchar(64) NOT NULL,
+	`contract` varchar(40) NOT NULL DEFAULT 'lom',
+	`code` varchar(100) NOT NULL,
+	`name` varchar(255) NOT NULL,
+	`type` enum('epi','ferramenta','equipamento','material_consumo','material_limpeza','gas','material') NOT NULL DEFAULT 'material_consumo',
+	`unit` varchar(20) NOT NULL DEFAULT 'un',
+	`quantity` decimal(12,2) NOT NULL DEFAULT '0',
+	`ca` varchar(50),
+	`dataValidadeCa` varchar(10),
+	`patrimonio` varchar(100),
+	`estoqueMinimo` decimal(12,2) NOT NULL DEFAULT '10',
+	`estoqueSeguranca` decimal(12,2) NOT NULL DEFAULT '12',
+	`localizacao` varchar(150),
+	`fornecedor` varchar(150),
+	`precoUnitario` decimal(12,2) NOT NULL DEFAULT '0',
+	`dataValidade` varchar(10),
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `warehouseItems_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE `warehouseMovements` (
+	`id` varchar(64) NOT NULL,
+	`contract` varchar(40) NOT NULL DEFAULT 'lom',
+	`itemId` varchar(64),
+	`itemCode` varchar(100) NOT NULL,
+	`itemName` varchar(255) NOT NULL,
+	`movementType` enum('entrada','saida') NOT NULL,
+	`quantity` decimal(12,2) NOT NULL,
+	`date` timestamp NOT NULL DEFAULT (now()),
+	`destination` varchar(255),
+	`responsible` varchar(150),
+	`invoiceNumber` varchar(100),
+	`purchaseOrder` varchar(100),
+	`supplier` varchar(150),
+	`unitPrice` decimal(12,2),
+	`notes` text,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `warehouseMovements_id` PRIMARY KEY(`id`)
+);

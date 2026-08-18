@@ -52,6 +52,16 @@ import {
   deleteTrainingType,
   addMonthsToDate,
 } from "./db-training-types";
+import {
+  listWarehouseItems,
+  listWarehouseMovements,
+  getWarehouseItemById,
+  createWarehouseItem,
+  updateWarehouseItem,
+  deleteWarehouseItem,
+  createWarehouseMovement,
+} from "./db-warehouse";
+import { WAREHOUSE_ITEM_TYPES, WAREHOUSE_MOVEMENT_TYPES } from "@shared/warehouse";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import {
   listInvoices,
@@ -1261,6 +1271,139 @@ export const appRouter = router({
           targetId: input.id,
         });
         return { success: true } as const;
+      }),
+  }),
+
+  // Almoxarifado — itens em estoque e movimentações, por contrato.
+  warehouse: router({
+    listItems: requirePermission('viewWarehouse').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listWarehouseItems(ctx.siteContract);
+    }),
+
+    listMovements: requirePermission('viewWarehouse').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listWarehouseMovements(ctx.siteContract);
+    }),
+
+    upsertItem: requirePermission('manageWarehouse')
+      .input(
+        z.object({
+          id: z.string().optional(),
+          code: z.string().trim().min(1, "Informe o código"),
+          name: z.string().trim().min(1, "Informe o nome"),
+          type: z.enum(WAREHOUSE_ITEM_TYPES),
+          unit: z.string().trim().min(1).default("un"),
+          quantity: z.number().min(0),
+          ca: z.string().nullish(),
+          dataValidadeCa: z.string().nullish(),
+          patrimonio: z.string().nullish(),
+          estoqueMinimo: z.number().min(0),
+          localizacao: z.string().nullish(),
+          fornecedor: z.string().nullish(),
+          precoUnitario: z.number().min(0),
+          dataValidade: z.string().nullish(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha um contrato no cabeçalho antes de cadastrar um item.",
+          });
+        }
+        if (input.type === "epi" && !input.ca) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Para EPI é obrigatório informar o CA." });
+        }
+        if (input.type === "ferramenta" && !input.patrimonio) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Para Ferramenta é obrigatório informar o Patrimônio.",
+          });
+        }
+
+        if (input.id) {
+          const existing = await getWarehouseItemById(input.id);
+          if (!existing || existing.contract !== ctx.siteContract) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Item não encontrado." });
+          }
+          await updateWarehouseItem(input.id, ctx.siteContract, input);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "warehouse.itemUpdate",
+            targetType: "warehouseItem",
+            targetId: input.id,
+            targetName: input.name,
+          });
+          return (await getWarehouseItemById(input.id))!;
+        }
+
+        const created = await createWarehouseItem(uuidv4(), ctx.siteContract, input);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.itemCreate",
+          targetType: "warehouseItem",
+          targetId: created.id,
+          targetName: created.name,
+        });
+        return created;
+      }),
+
+    deleteItem: requirePermission('manageWarehouse')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await deleteWarehouseItem(input.id, ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.itemDelete",
+          targetType: "warehouseItem",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    createMovement: requirePermission('manageWarehouse')
+      .input(
+        z.object({
+          itemId: z.string(),
+          movementType: z.enum(WAREHOUSE_MOVEMENT_TYPES),
+          quantity: z.number().positive("Informe uma quantidade maior que zero"),
+          destination: z.string().nullish(),
+          responsible: z.string().nullish(),
+          invoiceNumber: z.string().nullish(),
+          purchaseOrder: z.string().nullish(),
+          supplier: z.string().nullish(),
+          unitPrice: z.number().nullish(),
+          notes: z.string().nullish(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        try {
+          const movement = await createWarehouseMovement(uuidv4(), ctx.siteContract, input);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: movement.movementType === "entrada" ? "warehouse.stockIn" : "warehouse.stockOut",
+            targetType: "warehouseMovement",
+            targetId: movement.id,
+            targetName: `${movement.itemName} (${movement.quantity})`,
+          });
+          return movement;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro ao registrar movimentação.",
+          });
+        }
       }),
   }),
 

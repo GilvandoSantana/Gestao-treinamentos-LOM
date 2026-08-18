@@ -20,6 +20,8 @@ export const PERMISSION_KEYS = [
   'manageCloud',
   'viewInvoices',
   'manageInvoices',
+  'viewWarehouse',
+  'manageWarehouse',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -72,6 +74,14 @@ export const PERMISSION_LABELS: Record<PermissionKey, { label: string; descripti
     label: 'Gerenciar notas fiscais',
     description: 'Cadastrar, editar e excluir notas fiscais e recibos',
   },
+  viewWarehouse: {
+    label: 'Ver almoxarifado',
+    description: 'Consultar itens em estoque e movimentações do contrato',
+  },
+  manageWarehouse: {
+    label: 'Gerenciar almoxarifado',
+    description: 'Cadastrar, editar itens e registrar entradas/saídas de estoque',
+  },
 };
 
 /** Permissões de um usuário recém-criado: só leitura. */
@@ -87,6 +97,8 @@ export const DEFAULT_USER_PERMISSIONS: Permissions = {
   manageCloud: false,
   viewInvoices: false,
   manageInvoices: false,
+  viewWarehouse: false,
+  manageWarehouse: false,
 };
 
 /** O administrador principal sempre tem tudo liberado. */

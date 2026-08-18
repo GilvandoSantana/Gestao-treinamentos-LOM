@@ -50,7 +50,12 @@ export type ActivityAction =
   | "role.delete"
   | "trainingType.create"
   | "trainingType.update"
-  | "trainingType.delete";
+  | "trainingType.delete"
+  | "warehouse.itemCreate"
+  | "warehouse.itemUpdate"
+  | "warehouse.itemDelete"
+  | "warehouse.stockIn"
+  | "warehouse.stockOut";
 
 export type LogActivityInput = {
   username: string | null;
