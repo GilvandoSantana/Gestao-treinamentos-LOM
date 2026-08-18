@@ -37,6 +37,7 @@ import ExcelImportModal from '@/components/ExcelImportModal';
 import RenewTrainingModal from '@/components/RenewTrainingModal';
 import CloudModal from '@/components/CloudModal';
 import InvoicesModal from '@/components/InvoicesModal';
+import RolesTrainingTypesModal from '@/components/RolesTrainingTypesModal';
 import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
 import ComplianceCharts from '@/components/ComplianceCharts';
 import AuditHistory from '@/components/AuditHistory';
@@ -69,6 +70,7 @@ export default function Home() {
   const [showRenewBulk, setShowRenewBulk] = useState(false);
   const [showCloud, setShowCloud] = useState(false);
   const [showInvoices, setShowInvoices] = useState(false);
+  const [showRolesTrainingTypes, setShowRolesTrainingTypes] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
@@ -633,6 +635,7 @@ export default function Home() {
           onRenewBulk={session.can('editEmployees') ? () => setShowRenewBulk(true) : undefined}
           onShowCloud={session.can('viewCloud') ? () => setShowCloud(true) : undefined}
           onShowInvoices={session.can('viewInvoices') ? () => setShowInvoices(true) : undefined}
+          onShowRolesTrainingTypes={session.isMasterAdmin ? () => setShowRolesTrainingTypes(true) : undefined}
           notificationItems={trainingAlerts.items}
           onNotificationSelect={(item) => {
             setSearchQuery(item.employeeName);
@@ -851,6 +854,11 @@ export default function Home() {
         onClose={() => setShowInvoices(false)}
         canManage={session.can('manageInvoices')}
         isMasterAdmin={session.isMasterAdmin}
+      />
+
+      <RolesTrainingTypesModal
+        isOpen={showRolesTrainingTypes}
+        onClose={() => setShowRolesTrainingTypes(false)}
       />
 
       {selectedEmployeeForAudit && (

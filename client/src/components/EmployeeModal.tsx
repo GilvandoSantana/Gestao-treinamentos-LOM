@@ -10,9 +10,22 @@ import { X, Plus, Edit2, Trash2, User, Shield, Upload, File, FileText, Loader, C
 import type { DateSuggestion } from '@/lib/certificate-date-suggestion';
 import DateInputBR from '@/components/DateInputBR';
 import type { Employee, Training } from '@/lib/types';
-import { PREDEFINED_TRAININGS, PREDEFINED_ROLES } from '@/lib/types';
+import { PREDEFINED_ROLES } from '@/lib/types';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+
+/** Soma meses a uma data (AAAA-MM-DD) — mesma regra usada no servidor, aqui
+ * só para mostrar o vencimento calculado assim que a pessoa escolhe o
+ * treinamento, sem esperar salvar. */
+function addMonthsToDateBR(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 interface EmployeeModalProps {
   isOpen: boolean;
@@ -48,15 +61,24 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const skipDirtyCheck = useRef(true);
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
-  const trainingNamesQuery = trpc.employees.trainingNames.useQuery(undefined, { enabled: isOpen });
   const customFieldsQuery = trpc.contracts.fields.list.useQuery(undefined, { enabled: isOpen });
+  const customRolesQuery = trpc.roles.list.useQuery(undefined, { enabled: isOpen });
+  const trainingTypesQuery = trpc.trainingTypes.list.useQuery(undefined, { enabled: isOpen });
+
+  // Lista de funções: predefinidas + as que o administrador cadastrou,
+  // juntas e em ordem alfabética.
+  const allRoles = [...PREDEFINED_ROLES, ...(customRolesQuery.data?.map((r) => r.name) ?? [])].sort(
+    (a, b) => a.localeCompare(b)
+  );
+  // Lista de treinamentos: só o catálogo (predefinidos + do administrador)
+  // — precisa ter validade cadastrada para calcular o vencimento sozinho.
+  const allTrainingTypes = trainingTypesQuery.data ?? [];
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
   const [showCustomRole, setShowCustomRole] = useState(false);
   const [trainings, setTrainings] = useState<Training[]>([]);
 
   // New training form
   const [trainingName, setTrainingName] = useState('');
-  const [showCustomTraining, setShowCustomTraining] = useState(false);
   const [completionDate, setCompletionDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [editingTraining, setEditingTraining] = useState<Training | null>(null);
@@ -90,7 +112,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setReassignContract(employee.contract || '');
       setCustomFieldValues(employee.customFields || {});
       setPhotoPreview(employee.photoUrl || null);
-      setShowCustomRole(!PREDEFINED_ROLES.includes(employee.role as any));
+      setShowCustomRole(!allRoles.includes(employee.role as any));
       setTrainings(employee.trainings || []);
     } else {
       setName('');
@@ -104,7 +126,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setRole(duplicateFrom?.role || '');
       setPhone('');
       setPhotoPreview(null);
-      setShowCustomRole(duplicateFrom ? !PREDEFINED_ROLES.includes(duplicateFrom.role as any) : false);
+      setShowCustomRole(duplicateFrom ? !allRoles.includes(duplicateFrom.role as any) : false);
       setTrainings(
         duplicateFrom?.trainings?.map((t) => ({ ...t, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` })) || []
       );
@@ -153,7 +175,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
 
   const resetTrainingForm = () => {
     setTrainingName('');
-    setShowCustomTraining(false);
     setCompletionDate('');
     setExpirationDate('');
     setEditingTraining(null);
@@ -175,14 +196,28 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   };
 
   const handleTrainingSelect = (value: string) => {
-    if (value === 'CUSTOM') {
-      setShowCustomTraining(true);
-      setTrainingName('');
+    setTrainingName(value);
+    // Recalcula o vencimento na hora, se já tiver uma data de realização
+    // preenchida — o efeito abaixo cobre o caso de trocar a data depois.
+    const type = allTrainingTypes.find((t) => t.name === value);
+    if (type && completionDate) {
+      setExpirationDate(addMonthsToDateBR(completionDate, type.validityMonths));
     } else {
-      setShowCustomTraining(false);
-      setTrainingName(value);
+      setExpirationDate('');
     }
   };
+
+  // Se a pessoa já escolheu o treinamento e depois muda a data de
+  // realização, recalcula o vencimento — sem isso, mudar só a data deixaria
+  // o vencimento mostrado desatualizado.
+  useEffect(() => {
+    if (!trainingName || !completionDate) return;
+    const type = allTrainingTypes.find((t) => t.name === trainingName);
+    if (type) {
+      setExpirationDate(addMonthsToDateBR(completionDate, type.validityMonths));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completionDate, trainingName]);
 
   const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -244,7 +279,12 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   };
 
   const addTraining = () => {
-    if (!trainingName.trim() || !completionDate || !expirationDate) {
+    if (!trainingName.trim() || !completionDate) {
+      toast.error('Escolha o treinamento e a data de realização.');
+      return;
+    }
+    if (!expirationDate) {
+      toast.error('Não foi possível calcular o vencimento — o treinamento escolhido pode ter sido removido do catálogo.');
       return;
     }
 
@@ -293,7 +333,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const editTrainingItem = (training: Training) => {
     setEditingTraining(training);
     setTrainingName(training.name);
-    setShowCustomTraining(!PREDEFINED_TRAININGS.includes(training.name as any));
     setCompletionDate(training.completionDate);
     setExpirationDate(training.expirationDate);
     
@@ -550,7 +589,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors mb-2"
               >
                 <option value="">Selecione uma função</option>
-                {PREDEFINED_ROLES.map((r) => (
+                {allRoles.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -637,42 +676,26 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             <div className="space-y-4">
               <div>
                 <label className="block text-foreground font-semibold mb-2 text-sm">
-                  Nome do Treinamento
+                  Tipo de Treinamento
                 </label>
                 <select
-                  value={showCustomTraining ? 'CUSTOM' : trainingName}
+                  value={trainingName}
                   onChange={(e) => handleTrainingSelect(e.target.value)}
-                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors mb-2"
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 >
                   <option value="">Selecione um treinamento</option>
-                  {PREDEFINED_TRAININGS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  {allTrainingTypes.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name} ({t.validityMonths}{' '}
+                      {t.validityMonths === 1 ? 'mês' : 'meses'})
                     </option>
                   ))}
-                  <option value="CUSTOM">Digitar treinamento personalizado</option>
                 </select>
-                {showCustomTraining && (
-                  <>
-                    <input
-                      type="text"
-                      list="training-name-suggestions"
-                      value={trainingName}
-                      onChange={(e) => setTrainingName(e.target.value)}
-                      className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                      placeholder="Digite o nome do treinamento"
-                    />
-                    {/* Sugestões dos nomes já usados no sistema — evita "NR-35",
-                        "NR 35" e "NR35 - Trabalho em Altura" coexistindo como
-                        treinamentos diferentes. */}
-                    <datalist id="training-name-suggestions">
-                      {trainingNamesQuery.data
-                        ?.filter((n) => !PREDEFINED_TRAININGS.includes(n as any))
-                        .map((n) => (
-                          <option key={n} value={n} />
-                        ))}
-                    </datalist>
-                  </>
+                {allTrainingTypes.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Nenhum tipo de treinamento cadastrado ainda. Peça ao administrador para
+                    cadastrar em "Funções e Treinamentos" no menu.
+                  </p>
                 )}
               </div>
 
@@ -691,11 +714,14 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                   <label className="block text-foreground font-semibold mb-2 text-sm">
                     Data de Vencimento
                   </label>
-                  <DateInputBR
-                    value={expirationDate}
-                    onChange={setExpirationDate}
-                    className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                  />
+                  <div className="w-full border-2 border-input rounded-lg p-3 bg-muted text-muted-foreground">
+                    {expirationDate
+                      ? new Date(`${expirationDate}T00:00:00`).toLocaleDateString('pt-BR')
+                      : '—'}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Calculada automaticamente pela validade do treinamento escolhido.
+                  </p>
                 </div>
               </div>
 

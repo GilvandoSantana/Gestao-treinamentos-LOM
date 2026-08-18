@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Cloud,
   Receipt,
+  UserCog,
   Shield,
   FileText,
   LayoutGrid,
@@ -59,6 +60,7 @@ interface HeaderProps {
   onRenewBulk?: () => void;
   onShowCloud?: () => void;
   onShowInvoices?: () => void;
+  onShowRolesTrainingTypes?: () => void;
   notificationItems?: TrainingAlertItem[];
   onNotificationSelect?: (item: TrainingAlertItem) => void;
   onSeeAllNotifications?: () => void;
@@ -94,6 +96,7 @@ export default function Header({
   onRenewBulk,
   onShowCloud,
   onShowInvoices,
+  onShowRolesTrainingTypes,
   notificationItems,
   onNotificationSelect,
   onSeeAllNotifications,
@@ -426,6 +429,15 @@ export default function Header({
                       <button onClick={runAndClose(onShowInvoices)} className={menuItemClass} role="menuitem">
                         <Receipt size={16} className="text-muted-foreground" />
                         Notas Fiscais
+                      </button>
+                    </div>
+                  )}
+
+                  {onShowRolesTrainingTypes && (
+                    <div className="py-1 border-b border-border">
+                      <button onClick={runAndClose(onShowRolesTrainingTypes)} className={menuItemClass} role="menuitem">
+                        <UserCog size={16} className="text-muted-foreground" />
+                        Funções e Treinamentos
                       </button>
                     </div>
                   )}
