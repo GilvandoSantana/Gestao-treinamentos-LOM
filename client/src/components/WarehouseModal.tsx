@@ -9,9 +9,10 @@
  */
 
 import { useState } from 'react';
-import { X, Warehouse, Boxes, ArrowLeftRight } from 'lucide-react';
+import { X, Warehouse, Boxes, ArrowLeftRight, HandCoins } from 'lucide-react';
 import WarehouseItemsPanel from '@/components/WarehouseItemsPanel';
 import WarehouseMovementsPanel from '@/components/WarehouseMovementsPanel';
+import WarehouseDeliveryPanel from '@/components/WarehouseDeliveryPanel';
 
 interface WarehouseModalProps {
   isOpen: boolean;
@@ -19,11 +20,12 @@ interface WarehouseModalProps {
   canManage: boolean;
 }
 
-type Tab = 'items' | 'movements';
+type Tab = 'items' | 'movements' | 'delivery';
 
 const TABS: { key: Tab; label: string; Icon: typeof Boxes }[] = [
   { key: 'items', label: 'Itens', Icon: Boxes },
   { key: 'movements', label: 'Movimentações', Icon: ArrowLeftRight },
+  { key: 'delivery', label: 'Entrega/Devolução', Icon: HandCoins },
 ];
 
 export default function WarehouseModal({ isOpen, onClose, canManage }: WarehouseModalProps) {
@@ -83,8 +85,10 @@ export default function WarehouseModal({ isOpen, onClose, canManage }: Warehouse
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {tab === 'items' ? (
               <WarehouseItemsPanel canManage={canManage} />
-            ) : (
+            ) : tab === 'movements' ? (
               <WarehouseMovementsPanel canManage={canManage} />
+            ) : (
+              <WarehouseDeliveryPanel canManage={canManage} />
             )}
           </div>
         </div>
