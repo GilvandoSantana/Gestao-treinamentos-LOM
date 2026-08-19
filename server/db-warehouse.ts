@@ -232,3 +232,67 @@ export async function createWarehouseMovement(
   const rows = await db.select().from(warehouseMovements).where(eq(warehouseMovements.id, id));
   return toMovementInfo(rows[0]);
 }
+
+// ---------------------------------------------------------------------
+// Histórico de preços — cada entrada com preço registrado vira um ponto no
+// histórico do item. Diferente do sistema original (que só mostrava o
+// preço atual, sem historico de verdade), aqui usa as entradas reais.
+// ---------------------------------------------------------------------
+
+export interface PriceHistoryPoint {
+  date: string;
+  unitPrice: number;
+  quantity: number;
+  supplier: string | null;
+  invoiceNumber: string | null;
+}
+
+export interface ItemPriceHistory {
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  currentPrice: number;
+  history: PriceHistoryPoint[];
+}
+
+export async function getPriceHistory(contract: string): Promise<ItemPriceHistory[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const items = await listWarehouseItems(contract);
+  const movements = await db
+    .select()
+    .from(warehouseMovements)
+    .where(and(eq(warehouseMovements.contract, contract), eq(warehouseMovements.movementType, "entrada")))
+    .orderBy(desc(warehouseMovements.date));
+
+  const byItem = new Map<string, PriceHistoryPoint[]>();
+  for (const m of movements) {
+    if (!m.itemId || m.unitPrice == null) continue;
+    const list = byItem.get(m.itemId) ?? [];
+    list.push({
+      date: m.date.toISOString(),
+      unitPrice: Number(m.unitPrice),
+      quantity: Number(m.quantity),
+      supplier: m.supplier,
+      invoiceNumber: m.invoiceNumber,
+    });
+    byItem.set(m.itemId, list);
+  }
+
+  const result: ItemPriceHistory[] = [];
+  for (const item of items) {
+    const history = byItem.get(item.id);
+    if (!history || history.length === 0) continue;
+    result.push({
+      itemId: item.id,
+      itemCode: item.code,
+      itemName: item.name,
+      currentPrice: item.precoUnitario,
+      // Mais antigo primeiro, pra mostrar a evolução na ordem certa.
+      history: [...history].reverse(),
+    });
+  }
+
+  return result.sort((a, b) => a.itemName.localeCompare(b.itemName));
+}

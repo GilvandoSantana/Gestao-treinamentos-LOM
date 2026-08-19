@@ -60,6 +60,7 @@ import {
   updateWarehouseItem,
   deleteWarehouseItem,
   createWarehouseMovement,
+  getPriceHistory,
 } from "./db-warehouse";
 import { WAREHOUSE_ITEM_TYPES, WAREHOUSE_MOVEMENT_TYPES } from "@shared/warehouse";
 import {
@@ -1298,6 +1299,11 @@ export const appRouter = router({
     listMovements: requirePermission('viewWarehouse').query(async ({ ctx }) => {
       if (!ctx.siteContract) return [];
       return listWarehouseMovements(ctx.siteContract);
+    }),
+
+    listPriceHistory: requirePermission('viewWarehouse').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return getPriceHistory(ctx.siteContract);
     }),
 
     upsertItem: requirePermission('manageWarehouse')
