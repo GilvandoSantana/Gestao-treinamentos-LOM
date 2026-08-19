@@ -76,6 +76,7 @@ import {
   cancelPurchaseRequest,
   deletePurchaseRequest,
 } from "./db-purchase-requests";
+import { migrateWarehouseFromSupabase } from "./warehouse-migration";
 import { PURCHASE_REQUEST_PRIORITIES, PURCHASE_REQUEST_STATUSES } from "@shared/warehouse";
 import { uploadCloudFileToSupabase, deleteCloudFileFromSupabase } from "./supabase-storage";
 import {
@@ -1582,6 +1583,43 @@ export const appRouter = router({
         }
         await deletePurchaseRequest(input.id, ctx.siteContract);
         return { success: true } as const;
+      }),
+
+    // Migração única dos dados do almoxarifado antigo (Supabase) — só o
+    // administrador principal, e só roda se o almoxarifado deste contrato
+    // ainda estiver vazio (evita duplicar dado migrando duas vezes).
+    migrateFromSupabase: masterAdminProcedure
+      .input(
+        z.object({
+          supabaseUrl: z.string().url(),
+          supabaseServiceKey: z.string().min(20),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Escolha o contrato de destino no cabeçalho antes de migrar.",
+          });
+        }
+        try {
+          const result = await migrateWarehouseFromSupabase(
+            { url: input.supabaseUrl, serviceKey: input.supabaseServiceKey },
+            ctx.siteContract
+          );
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "warehouse.migration",
+            details: `${result.items} itens, ${result.movements} movimentações, ${result.deliveries} entregas, ${result.purchaseRequests} solicitações`,
+          });
+          return result;
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro na migração.",
+          });
+        }
       }),
   }),
 

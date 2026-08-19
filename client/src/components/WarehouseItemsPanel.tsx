@@ -9,6 +9,7 @@ import { Plus, Trash2, Pencil, X, Search, AlertTriangle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import DateInputBR from '@/components/DateInputBR';
+import WarehouseMigrationPanel from '@/components/WarehouseMigrationPanel';
 import {
   WAREHOUSE_ITEM_TYPES,
   WAREHOUSE_ITEM_TYPE_LABELS,
@@ -18,6 +19,7 @@ import {
 
 interface WarehouseItemsPanelProps {
   canManage: boolean;
+  isMasterAdmin?: boolean;
 }
 
 const emptyForm = {
@@ -36,7 +38,7 @@ const emptyForm = {
   dataValidade: '',
 };
 
-export default function WarehouseItemsPanel({ canManage }: WarehouseItemsPanelProps) {
+export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: WarehouseItemsPanelProps) {
   const utils = trpc.useUtils();
   const itemsQuery = trpc.warehouse.listItems.useQuery();
   const upsertMutation = trpc.warehouse.upsertItem.useMutation();
@@ -161,6 +163,10 @@ export default function WarehouseItemsPanel({ canManage }: WarehouseItemsPanelPr
           ))}
         </select>
       </div>
+
+      {isMasterAdmin && (itemsQuery.data?.length ?? 0) === 0 && !itemsQuery.isLoading && (
+        <WarehouseMigrationPanel />
+      )}
 
       {canManage && !showForm && (
         <button

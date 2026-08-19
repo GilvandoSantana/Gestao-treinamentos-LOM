@@ -23,6 +23,7 @@ interface WarehouseModalProps {
   isOpen: boolean;
   onClose: () => void;
   canManage: boolean;
+  isMasterAdmin?: boolean;
 }
 
 type Tab = 'items' | 'movements' | 'delivery' | 'purchases' | 'alerts' | 'prices' | 'labels' | 'charts';
@@ -38,7 +39,7 @@ const TABS: { key: Tab; label: string; Icon: typeof Boxes }[] = [
   { key: 'charts', label: 'Gráficos', Icon: BarChart3 },
 ];
 
-export default function WarehouseModal({ isOpen, onClose, canManage }: WarehouseModalProps) {
+export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdmin }: WarehouseModalProps) {
   const [tab, setTab] = useState<Tab>('items');
 
   if (!isOpen) return null;
@@ -94,7 +95,7 @@ export default function WarehouseModal({ isOpen, onClose, canManage }: Warehouse
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {tab === 'items' ? (
-              <WarehouseItemsPanel canManage={canManage} />
+              <WarehouseItemsPanel canManage={canManage} isMasterAdmin={isMasterAdmin} />
             ) : tab === 'movements' ? (
               <WarehouseMovementsPanel canManage={canManage} />
             ) : tab === 'delivery' ? (

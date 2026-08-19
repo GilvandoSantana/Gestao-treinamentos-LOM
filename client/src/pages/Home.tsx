@@ -868,6 +868,7 @@ export default function Home() {
         isOpen={showWarehouse}
         onClose={() => setShowWarehouse(false)}
         canManage={session.can('manageWarehouse')}
+        isMasterAdmin={session.isMasterAdmin}
       />
 
       {selectedEmployeeForAudit && (
