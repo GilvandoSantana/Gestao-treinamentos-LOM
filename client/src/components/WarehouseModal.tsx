@@ -4,20 +4,38 @@
  * movimentações. Migrado de um sistema separado (Vercel + Supabase).
  *
  * Tela quase em tela cheia, diferente dos outros modais do sistema — é um
- * programa completo por si só (itens, movimentações, e mais abas por vir),
- * não cabe numa caixinha pequena.
+ * programa completo por si só, não cabe numa caixinha pequena.
  */
 
 import { useState } from 'react';
-import { X, Warehouse, Boxes, ArrowLeftRight, HandCoins, ShoppingCart, Bell, LineChart, Tag, BarChart3 } from 'lucide-react';
+import {
+  X,
+  Warehouse,
+  Boxes,
+  ArrowLeftRight,
+  HandCoins,
+  Users,
+  ShoppingCart,
+  Bell,
+  Calendar,
+  LineChart,
+  Tag,
+  BarChart3,
+  Database,
+  HelpCircle,
+} from 'lucide-react';
 import WarehouseItemsPanel from '@/components/WarehouseItemsPanel';
 import WarehouseMovementsPanel from '@/components/WarehouseMovementsPanel';
 import WarehouseDeliveryPanel from '@/components/WarehouseDeliveryPanel';
+import WarehouseToolsByEmployeePanel from '@/components/WarehouseToolsByEmployeePanel';
 import WarehousePurchaseRequestsPanel from '@/components/WarehousePurchaseRequestsPanel';
 import WarehouseAlertsPanel from '@/components/WarehouseAlertsPanel';
+import WarehouseDailyHistoryPanel from '@/components/WarehouseDailyHistoryPanel';
 import WarehousePriceHistoryPanel from '@/components/WarehousePriceHistoryPanel';
 import WarehouseLabelsPanel from '@/components/WarehouseLabelsPanel';
 import WarehouseChartsPanel from '@/components/WarehouseChartsPanel';
+import WarehouseBackupPanel from '@/components/WarehouseBackupPanel';
+import WarehouseHelpPanel from '@/components/WarehouseHelpPanel';
 
 interface WarehouseModalProps {
   isOpen: boolean;
@@ -26,17 +44,33 @@ interface WarehouseModalProps {
   isMasterAdmin?: boolean;
 }
 
-type Tab = 'items' | 'movements' | 'delivery' | 'purchases' | 'alerts' | 'prices' | 'labels' | 'charts';
+type Tab =
+  | 'items'
+  | 'movements'
+  | 'delivery'
+  | 'toolsByEmployee'
+  | 'purchases'
+  | 'alerts'
+  | 'dailyHistory'
+  | 'prices'
+  | 'labels'
+  | 'charts'
+  | 'backup'
+  | 'help';
 
 const TABS: { key: Tab; label: string; Icon: typeof Boxes }[] = [
   { key: 'items', label: 'Itens', Icon: Boxes },
   { key: 'movements', label: 'Movimentações', Icon: ArrowLeftRight },
   { key: 'delivery', label: 'Entrega/Devolução', Icon: HandCoins },
+  { key: 'toolsByEmployee', label: 'Ferramentas por Funcionário', Icon: Users },
   { key: 'purchases', label: 'Solicitações de Compra', Icon: ShoppingCart },
   { key: 'alerts', label: 'Alertas', Icon: Bell },
+  { key: 'dailyHistory', label: 'Histórico Diário', Icon: Calendar },
   { key: 'prices', label: 'Histórico de Preços', Icon: LineChart },
   { key: 'labels', label: 'Etiquetas', Icon: Tag },
   { key: 'charts', label: 'Gráficos', Icon: BarChart3 },
+  { key: 'backup', label: 'Backup', Icon: Database },
+  { key: 'help', label: 'Ajuda', Icon: HelpCircle },
 ];
 
 export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdmin }: WarehouseModalProps) {
@@ -67,12 +101,12 @@ export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdm
               <p className="text-[11px] text-white/60">Itens do contrato</p>
             </div>
           </div>
-          <div className="flex sm:flex-col flex-1 p-2 gap-1 overflow-x-auto">
+          <div className="flex sm:flex-col flex-1 p-2 gap-1 overflow-x-auto sm:overflow-y-auto">
             {TABS.map(({ key, label, Icon }) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition shrink-0 ${
                   tab === key ? 'bg-orange text-white' : 'text-white/70 hover:bg-white/10'
                 }`}
               >
@@ -94,23 +128,18 @@ export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdm
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            {tab === 'items' ? (
-              <WarehouseItemsPanel canManage={canManage} isMasterAdmin={isMasterAdmin} />
-            ) : tab === 'movements' ? (
-              <WarehouseMovementsPanel canManage={canManage} />
-            ) : tab === 'delivery' ? (
-              <WarehouseDeliveryPanel canManage={canManage} />
-            ) : tab === 'purchases' ? (
-              <WarehousePurchaseRequestsPanel canManage={canManage} />
-            ) : tab === 'alerts' ? (
-              <WarehouseAlertsPanel />
-            ) : tab === 'prices' ? (
-              <WarehousePriceHistoryPanel />
-            ) : tab === 'labels' ? (
-              <WarehouseLabelsPanel />
-            ) : (
-              <WarehouseChartsPanel />
-            )}
+            {tab === 'items' && <WarehouseItemsPanel canManage={canManage} isMasterAdmin={isMasterAdmin} />}
+            {tab === 'movements' && <WarehouseMovementsPanel canManage={canManage} />}
+            {tab === 'delivery' && <WarehouseDeliveryPanel canManage={canManage} />}
+            {tab === 'toolsByEmployee' && <WarehouseToolsByEmployeePanel />}
+            {tab === 'purchases' && <WarehousePurchaseRequestsPanel canManage={canManage} />}
+            {tab === 'alerts' && <WarehouseAlertsPanel />}
+            {tab === 'dailyHistory' && <WarehouseDailyHistoryPanel />}
+            {tab === 'prices' && <WarehousePriceHistoryPanel />}
+            {tab === 'labels' && <WarehouseLabelsPanel />}
+            {tab === 'charts' && <WarehouseChartsPanel />}
+            {tab === 'backup' && <WarehouseBackupPanel />}
+            {tab === 'help' && <WarehouseHelpPanel />}
           </div>
         </div>
       </div>
