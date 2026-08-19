@@ -45,6 +45,50 @@ const TELEFONE = '(79) 99918-9191';
 const SITE = 'www.supportmining.com.br';
 const EMAIL = 'contato@supportmining.com.br';
 
+const navy = '#1a3a6b';
+const gray = '#9a9a9a';
+const white = '#ffffff';
+const lightGray = '#e8e8e8';
+const bannerGray = '#d4d4d4';
+
+/**
+ * Faixa diagonal do rodapé — presente nas duas faces do crachá original.
+ * Um retângulo cinza claro de base, com um triângulo azul-marinho cobrindo
+ * a esquerda (criando o corte diagonal), ícone/texto em cima.
+ */
+function drawBottomBanner(doc: jsPDF, offsetX: number, logoBase64: string | null) {
+  const top = 68;
+  const bottom = 85;
+  const left = offsetX;
+  const right = offsetX + 55;
+
+  // Base clara
+  doc.setFillColor(bannerGray);
+  doc.rect(left, top, 55, bottom - top, 'F');
+
+  // Cunha azul diagonal (esquerda mais alta, direita mais baixa)
+  doc.setFillColor(navy);
+  doc.triangle(left, top, left + 34, top, left, bottom, 'F');
+  doc.triangle(left + 34, top, left, bottom, left + 20, bottom, 'F');
+
+  // Ícone (capacete simplificado) + texto, na parte azul
+  doc.setDrawColor(white);
+  doc.setLineWidth(0.4);
+  doc.circle(left + 5, top + 5.5, 2.2, 'S');
+  doc.line(left + 3, top + 5.5, left + 7, top + 5.5);
+
+  doc.setTextColor(white);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(4.3);
+  doc.text('SOLUÇÕES VERSÁTIS', left + 9, top + 4.3);
+  doc.text('EM ENGENHARIA', left + 9, top + 7.3);
+
+  // Losango com o logo, na parte clara à direita
+  if (logoBase64) {
+    doc.addImage(logoBase64, 'PNG', left + 33, top + 1, 19, 15, undefined, 'FAST');
+  }
+}
+
 export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá para ${employee.name}...`);
 
@@ -53,10 +97,12 @@ export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: js
     // tamanho físico dos demais crachás do sistema.
     const doc = createBadgeDoc(110, 85, true, sharedDoc);
 
-    const navy = '#1a3a6b';
-    const gray = '#9a9a9a';
-    const white = '#ffffff';
-    const lightGray = '#e8e8e8';
+    let logoBase64: string | null = null;
+    try {
+      logoBase64 = await loadImage(logoMining);
+    } catch {
+      logoBase64 = null;
+    }
 
     // =====================================================================
     // FRENTE
@@ -82,7 +128,7 @@ export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: js
     const photoX = 13;
     const photoY = 13;
     const photoW = 29;
-    const photoH = 32;
+    const photoH = 25;
     doc.setFillColor(lightGray);
     doc.rect(photoX, photoY, photoW, photoH, 'F');
     if (employee.photoUrl) {
@@ -103,57 +149,57 @@ export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: js
     // Nome (até 2 linhas)
     doc.setTextColor(navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(7);
     const nameLines = doc.splitTextToSize(employee.name.toUpperCase(), 48);
-    doc.text(nameLines.slice(0, 2), 27.5, 49, { align: 'center' });
+    doc.text(nameLines.slice(0, 2), 27.5, 42, { align: 'center' });
 
     doc.setDrawColor(210, 210, 210);
     doc.setLineWidth(0.15);
-    doc.line(3, 54.5, 52, 54.5);
+    doc.line(3, 46.5, 52, 46.5);
 
     // Função
     doc.setTextColor(gray);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(4.5);
-    doc.text('FUNÇÃO', 27.5, 58, { align: 'center' });
+    doc.setFontSize(4);
+    doc.text('FUNÇÃO', 27.5, 49.5, { align: 'center' });
     doc.setTextColor(navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
+    doc.setFontSize(5.5);
     const roleLines = doc.splitTextToSize((employee.role || '').toUpperCase(), 48);
-    doc.text(roleLines.slice(0, 1), 27.5, 62, { align: 'center' });
+    doc.text(roleLines.slice(0, 1), 27.5, 53, { align: 'center' });
 
     doc.setDrawColor(210, 210, 210);
-    doc.line(3, 65, 52, 65);
+    doc.line(3, 55.5, 52, 55.5);
 
     // Empresa
     doc.setTextColor(gray);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(4.5);
-    doc.text('EMPRESA', 27.5, 68.5, { align: 'center' });
+    doc.setFontSize(4);
+    doc.text('EMPRESA', 27.5, 58.5, { align: 'center' });
     doc.setTextColor(navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text(EMPRESA, 27.5, 72.5, { align: 'center' });
+    doc.setFontSize(5.5);
+    doc.text(EMPRESA, 27.5, 62, { align: 'center' });
 
     doc.setDrawColor(210, 210, 210);
-    doc.line(3, 75.5, 52, 75.5);
+    doc.line(3, 64.5, 52, 64.5);
 
     // Matrícula | Registro
     doc.setTextColor(gray);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(3.8);
-    doc.text('MATRÍCULA', 4, 79.5);
-    doc.text('REGISTRO', 29, 79.5);
+    doc.setFontSize(3.5);
+    doc.text('MATRÍCULA', 4, 66.5);
+    doc.text('REGISTRO', 29, 66.5);
 
     doc.setTextColor(navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.text(employee.registration || '—', 4, 83);
-    doc.setFontSize(5);
-    doc.text(REGISTRO_CNPJ, 29, 83);
+    doc.setFontSize(5.5);
+    doc.text(employee.registration || '—', 4, 67.5 + 2.5);
+    doc.setFontSize(4.5);
+    doc.text(REGISTRO_CNPJ, 29, 67.5 + 2.5);
 
-    doc.setDrawColor(210, 210, 210);
-    doc.line(27.5, 76, 27.5, 84);
+    // Rodapé (faixa diagonal)
+    drawBottomBanner(doc, 0, logoBase64);
 
     // =====================================================================
     // VERSO
@@ -168,23 +214,22 @@ export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: js
     doc.setFillColor(230, 230, 230);
     doc.roundedRect(bx + 22, 2.5, 11, 3, 1.5, 1.5, 'F');
 
-    // Logo (mesmo arquivo usado nos demais crachás)
-    try {
-      const logoBase64 = await loadImage(logoMining);
-      doc.addImage(logoBase64, 'PNG', bx + 12.5, 8, 30, 24, undefined, 'FAST');
-    } catch {
+    // Logo grande, centralizado
+    if (logoBase64) {
+      doc.addImage(logoBase64, 'PNG', bx + 14, 7, 27, 21, undefined, 'FAST');
+    } else {
       doc.setTextColor(navy);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
-      doc.text('SUPPORT+MINING', bx + 27.5, 18, { align: 'center' });
+      doc.text('SUPPORT+MINING', bx + 27.5, 16, { align: 'center' });
       doc.setFontSize(5);
-      doc.text('ENGENHARIA', bx + 27.5, 22, { align: 'center' });
+      doc.text('ENGENHARIA', bx + 27.5, 20, { align: 'center' });
     }
 
     doc.setDrawColor(210, 210, 210);
-    doc.line(bx + 4, 35, bx + 51, 35);
+    doc.line(bx + 4, 31, bx + 51, 31);
     doc.setFillColor(navy);
-    doc.rect(bx + 25, 34.3, 5, 1.4, 'F');
+    doc.rect(bx + 25, 30.3, 5, 1.4, 'F');
 
     // Três avisos, com marcador circular no lugar do ícone
     const notices: [string, string][] = [
@@ -192,34 +237,33 @@ export const generateBadgeSupportPDF = async (employee: Employee, sharedDoc?: js
       ['DEVERÁ SER APRESENTADO', 'SEMPRE QUE SOLICITADO.'],
       ['EM CASO DE PERDA,', 'FAVOR ENTRAR EM CONTATO.'],
     ];
-    let noticeY = 41;
+    let noticeY = 37;
     for (const [line1, line2] of notices) {
       doc.setFillColor(navy);
-      doc.circle(bx + 7, noticeY - 1, 2.2, 'F');
+      doc.circle(bx + 7, noticeY - 1, 2, 'F');
       doc.setTextColor(navy);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(4.8);
+      doc.setFontSize(4.3);
       doc.text(line1, bx + 12, noticeY - 1.8);
-      doc.text(line2, bx + 12, noticeY + 1);
-      noticeY += 9;
+      doc.text(line2, bx + 12, noticeY + 0.8);
+      noticeY += 7.5;
     }
 
     // Contato
-    let contactY = noticeY + 2;
+    let contactY = noticeY + 1.5;
     doc.setTextColor(navy);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.5);
     doc.text(TELEFONE, bx + 12, contactY);
-    contactY += 5;
+    contactY += 4.2;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(5);
+    doc.setFontSize(4.5);
     doc.text(SITE, bx + 12, contactY);
-    contactY += 5;
+    contactY += 4.2;
     doc.text(EMAIL, bx + 12, contactY);
 
-    // Faixa inferior
-    doc.setFillColor(navy);
-    doc.rect(bx, 79, 55, 6, 'F');
+    // Rodapé (faixa diagonal) — igual ao da frente
+    drawBottomBanner(doc, bx, logoBase64);
 
     const rawDoc = unwrapBadgeDoc(doc);
     if (!sharedDoc) {
