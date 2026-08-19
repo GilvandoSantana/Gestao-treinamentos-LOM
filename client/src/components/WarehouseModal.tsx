@@ -9,13 +9,14 @@
  */
 
 import { useState } from 'react';
-import { X, Warehouse, Boxes, ArrowLeftRight, HandCoins, ShoppingCart, Bell, LineChart } from 'lucide-react';
+import { X, Warehouse, Boxes, ArrowLeftRight, HandCoins, ShoppingCart, Bell, LineChart, Tag } from 'lucide-react';
 import WarehouseItemsPanel from '@/components/WarehouseItemsPanel';
 import WarehouseMovementsPanel from '@/components/WarehouseMovementsPanel';
 import WarehouseDeliveryPanel from '@/components/WarehouseDeliveryPanel';
 import WarehousePurchaseRequestsPanel from '@/components/WarehousePurchaseRequestsPanel';
 import WarehouseAlertsPanel from '@/components/WarehouseAlertsPanel';
 import WarehousePriceHistoryPanel from '@/components/WarehousePriceHistoryPanel';
+import WarehouseLabelsPanel from '@/components/WarehouseLabelsPanel';
 
 interface WarehouseModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface WarehouseModalProps {
   canManage: boolean;
 }
 
-type Tab = 'items' | 'movements' | 'delivery' | 'purchases' | 'alerts' | 'prices';
+type Tab = 'items' | 'movements' | 'delivery' | 'purchases' | 'alerts' | 'prices' | 'labels';
 
 const TABS: { key: Tab; label: string; Icon: typeof Boxes }[] = [
   { key: 'items', label: 'Itens', Icon: Boxes },
@@ -32,6 +33,7 @@ const TABS: { key: Tab; label: string; Icon: typeof Boxes }[] = [
   { key: 'purchases', label: 'Solicitações de Compra', Icon: ShoppingCart },
   { key: 'alerts', label: 'Alertas', Icon: Bell },
   { key: 'prices', label: 'Histórico de Preços', Icon: LineChart },
+  { key: 'labels', label: 'Etiquetas', Icon: Tag },
 ];
 
 export default function WarehouseModal({ isOpen, onClose, canManage }: WarehouseModalProps) {
@@ -99,8 +101,10 @@ export default function WarehouseModal({ isOpen, onClose, canManage }: Warehouse
               <WarehousePurchaseRequestsPanel canManage={canManage} />
             ) : tab === 'alerts' ? (
               <WarehouseAlertsPanel />
-            ) : (
+            ) : tab === 'prices' ? (
               <WarehousePriceHistoryPanel />
+            ) : (
+              <WarehouseLabelsPanel />
             )}
           </div>
         </div>
