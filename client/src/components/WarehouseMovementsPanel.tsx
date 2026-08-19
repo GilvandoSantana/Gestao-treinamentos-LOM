@@ -12,15 +12,19 @@ import type { WarehouseMovementType } from '@shared/warehouse';
 
 interface WarehouseMovementsPanelProps {
   canManage: boolean;
+  /** Quando definido, trava o tipo de movimentação e esconde o alternador —
+   * usado nas abas dedicadas "Saída de Material" e "Reposição de Estoque",
+   * que no sistema original são páginas separadas. */
+  fixedType?: WarehouseMovementType;
 }
 
-export default function WarehouseMovementsPanel({ canManage }: WarehouseMovementsPanelProps) {
+export default function WarehouseMovementsPanel({ canManage, fixedType }: WarehouseMovementsPanelProps) {
   const utils = trpc.useUtils();
   const itemsQuery = trpc.warehouse.listItems.useQuery();
   const movementsQuery = trpc.warehouse.listMovements.useQuery();
   const createMutation = trpc.warehouse.createMovement.useMutation();
 
-  const [movementType, setMovementType] = useState<WarehouseMovementType>('saida');
+  const [movementType, setMovementType] = useState<WarehouseMovementType>(fixedType ?? 'saida');
   const [itemId, setItemId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [destination, setDestination] = useState('');
@@ -68,32 +72,34 @@ export default function WarehouseMovementsPanel({ canManage }: WarehouseMovement
     <div>
       {canManage && (
         <form onSubmit={handleSubmit} className="mb-5 p-4 rounded-xl border border-border bg-muted/30 space-y-3">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setMovementType('saida')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold border transition ${
-                movementType === 'saida'
-                  ? 'bg-danger text-white border-danger'
-                  : 'bg-card text-muted-foreground border-border'
-              }`}
-            >
-              <ArrowUpCircle size={15} />
-              Saída
-            </button>
-            <button
-              type="button"
-              onClick={() => setMovementType('entrada')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold border transition ${
-                movementType === 'entrada'
-                  ? 'bg-teal text-white border-teal'
-                  : 'bg-card text-muted-foreground border-border'
-              }`}
-            >
-              <ArrowDownCircle size={15} />
-              Entrada
-            </button>
-          </div>
+          {!fixedType && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMovementType('saida')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold border transition ${
+                  movementType === 'saida'
+                    ? 'bg-danger text-white border-danger'
+                    : 'bg-card text-muted-foreground border-border'
+                }`}
+              >
+                <ArrowUpCircle size={15} />
+                Saída
+              </button>
+              <button
+                type="button"
+                onClick={() => setMovementType('entrada')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold border transition ${
+                  movementType === 'entrada'
+                    ? 'bg-teal text-white border-teal'
+                    : 'bg-card text-muted-foreground border-border'
+                }`}
+              >
+                <ArrowDownCircle size={15} />
+                Entrada
+              </button>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1">Item</label>
@@ -173,23 +179,29 @@ export default function WarehouseMovementsPanel({ canManage }: WarehouseMovement
         </form>
       )}
 
-      <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
-        Histórico ({movementsQuery.data?.length ?? 0})
-      </p>
+      {(() => {
+        const filtered = fixedType
+          ? (movementsQuery.data ?? []).filter((m) => m.movementType === fixedType)
+          : movementsQuery.data ?? [];
+        return (
+          <>
+            <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+              Histórico ({filtered.length})
+            </p>
 
-      {movementsQuery.isLoading && (
-        <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
-          <Loader size={14} className="animate-spin" /> Carregando...
-        </p>
-      )}
-      {movementsQuery.data?.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação ainda.</p>
-      )}
+            {movementsQuery.isLoading && (
+              <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
+                <Loader size={14} className="animate-spin" /> Carregando...
+              </p>
+            )}
+            {!movementsQuery.isLoading && filtered.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação ainda.</p>
+            )}
 
-      <div className="space-y-1.5">
-        {movementsQuery.data?.map((m) => (
-          <div
-            key={m.id}
+            <div className="space-y-1.5">
+              {filtered.map((m) => (
+                <div
+                  key={m.id}
             className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-muted/20"
           >
             <div className="flex items-center gap-2.5 min-w-0">
@@ -212,8 +224,11 @@ export default function WarehouseMovementsPanel({ canManage }: WarehouseMovement
               </div>
             </div>
           </div>
-        ))}
-      </div>
+              ))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

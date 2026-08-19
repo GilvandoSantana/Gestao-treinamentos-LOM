@@ -11,12 +11,15 @@ import { toast } from 'sonner';
 
 interface WarehouseDeliveryPanelProps {
   canManage: boolean;
+  /** Quando definido, trava o modo e esconde o alternador — usado nas abas
+   * dedicadas "Entrega de Ferramentas" e "Devolução de Ferramentas". */
+  fixedMode?: Mode;
 }
 
 type Mode = 'deliver' | 'return';
 
-export default function WarehouseDeliveryPanel({ canManage }: WarehouseDeliveryPanelProps) {
-  const [mode, setMode] = useState<Mode>('deliver');
+export default function WarehouseDeliveryPanel({ canManage, fixedMode }: WarehouseDeliveryPanelProps) {
+  const [mode, setMode] = useState<Mode>(fixedMode ?? 'deliver');
   const utils = trpc.useUtils();
 
   const employeesQuery = trpc.employees.list.useQuery();
@@ -126,28 +129,30 @@ export default function WarehouseDeliveryPanel({ canManage }: WarehouseDeliveryP
 
   return (
     <div className="max-w-3xl">
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setMode('deliver')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
-            mode === 'deliver'
-              ? 'bg-orange text-white border-orange'
-              : 'bg-card text-muted-foreground border-border'
-          }`}
-        >
-          <PackageOpen size={15} />
-          Entregar
-        </button>
-        <button
-          onClick={() => setMode('return')}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
-            mode === 'return' ? 'bg-teal text-white border-teal' : 'bg-card text-muted-foreground border-border'
-          }`}
-        >
-          <PackageCheck size={15} />
-          Devolver
-        </button>
-      </div>
+      {!fixedMode && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setMode('deliver')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
+              mode === 'deliver'
+                ? 'bg-orange text-white border-orange'
+                : 'bg-card text-muted-foreground border-border'
+            }`}
+          >
+            <PackageOpen size={15} />
+            Entregar
+          </button>
+          <button
+            onClick={() => setMode('return')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
+              mode === 'return' ? 'bg-teal text-white border-teal' : 'bg-card text-muted-foreground border-border'
+            }`}
+          >
+            <PackageCheck size={15} />
+            Devolver
+          </button>
+        </div>
+      )}
 
       {/* Seleção de colaborador — comum aos dois modos */}
       <div className="mb-4">
