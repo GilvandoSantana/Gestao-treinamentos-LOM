@@ -1,4 +1,4 @@
-import { boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
+import { bigint, boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -251,6 +251,10 @@ export const cloudFolders = mysqlTable("cloudFolders", {
   name: varchar("name", { length: 255 }).notNull(),
   createdBy: varchar("createdBy", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  // Lixeira: null = ativa. Preenchido = está na lixeira, pode ser restaurada
+  // até ser excluída definitivamente.
+  deletedAt: timestamp("deletedAt"),
+  deletedBy: varchar("deletedBy", { length: 100 }),
 });
 
 export const cloudFiles = mysqlTable("cloudFiles", {
@@ -259,15 +263,66 @@ export const cloudFiles = mysqlTable("cloudFiles", {
   // null = arquivo na raiz do contrato (fora de qualquer pasta)
   folderId: varchar("folderId", { length: 64 }),
   name: varchar("name", { length: 255 }).notNull(),
-  fileUrl: text("fileUrl").notNull(),
+  // Legado: arquivos enviados antes da migração para o R2 continuam com o
+  // link direto do Supabase Storage aqui. Novos uploads deixam isso vazio e
+  // usam r2Key.
+  fileUrl: text("fileUrl"),
+  // Novo: chave do objeto no Cloudflare R2 — o conteúdo físico do arquivo
+  // fica lá, nunca no banco. Download gera uma URL assinada temporária.
+  r2Key: text("r2Key"),
   fileSize: int("fileSize"),
   mimeType: varchar("mimeType", { length: 100 }),
   uploadedBy: varchar("uploadedBy", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  deletedBy: varchar("deletedBy", { length: 100 }),
 });
 
 export type CloudFolderRow = typeof cloudFolders.$inferSelect;
 export type CloudFileRow = typeof cloudFiles.$inferSelect;
+
+/** Favoritos — um arquivo ou uma pasta, nunca os dois ao mesmo tempo. */
+export const cloudFavorites = mysqlTable("cloudFavorites", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  username: varchar("username", { length: 100 }).notNull(),
+  fileId: varchar("fileId", { length: 64 }),
+  folderId: varchar("folderId", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * Compartilhamento pessoa a pessoa (arquivo ou pasta). Concede acesso a
+ * quem normalmente não veria aquele item, com um nível de permissão
+ * específico — independe da permissão geral viewCloud/manageCloud de quem
+ * recebe.
+ */
+export const cloudShares = mysqlTable("cloudShares", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  fileId: varchar("fileId", { length: 64 }),
+  folderId: varchar("folderId", { length: 64 }),
+  itemName: varchar("itemName", { length: 255 }).notNull(),
+  sharedBy: varchar("sharedBy", { length: 100 }).notNull(),
+  sharedWith: varchar("sharedWith", { length: 100 }).notNull(),
+  permission: mysqlEnum("permission", ["view", "download", "edit"]).default("view").notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * Configuração de espaço de armazenamento por contrato. limitBytes começa
+ * em 10GB — é só mudar esse número (sem tocar em código) pra crescer para
+ * 100GB, 1TB, etc. usedBytes é mantido em dia a cada upload/exclusão, com
+ * uma rotina de recálculo disponível caso algo fique dessincronizado.
+ */
+export const cloudStorageConfig = mysqlTable("cloudStorageConfig", {
+  contractSlug: varchar("contractSlug", { length: 60 }).primaryKey(),
+  limitBytes: bigint("limitBytes", { mode: "number" }).default(10737418240).notNull(), // 10 GB
+  usedBytes: bigint("usedBytes", { mode: "number" }).default(0).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 /**
  * Notas Fiscais e recibos — separadas por contrato, com anexo opcional

@@ -39,10 +39,31 @@ import {
   listFolderContents,
   getFolderPath,
   createFolder,
+  renameFolder,
   deleteFolderRecursive,
+  restoreFolder,
   createFileRecord,
-  deleteFileRecord,
+  renameFile,
+  moveFile,
+  getFileById,
+  softDeleteFile,
+  restoreFile,
+  permanentlyDeleteFile,
+  listTrash,
+  listFavorites,
+  toggleFavorite,
+  listRecentFiles,
+  searchFiles,
+  listSharedWithMe,
+  listSharedByMe,
+  createShare,
+  revokeShare,
+  getStorageInfo,
+  setStorageLimit,
+  adjustStorageUsed,
+  recalculateStorageUsed,
 } from "./db-cloud";
+import { uploadToR2, deleteFromR2, getR2DownloadUrl, isR2Configured } from "./r2-storage";
 import { listCustomRoles, createCustomRole, deleteCustomRole } from "./db-roles";
 import {
   listTrainingTypes,
@@ -493,6 +514,33 @@ export const appRouter = router({
         return { ...contents, path };
       }),
 
+    // Espaço usado/limite do contrato — mostrado no topo da Nuvem.
+    storageInfo: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return { limitBytes: 0, usedBytes: 0 };
+      return getStorageInfo(ctx.siteContract);
+    }),
+
+    // Só o administrador principal pode aumentar o limite (10GB -> 1TB, etc).
+    setStorageLimit: masterAdminProcedure
+      .input(z.object({ limitBytes: z.number().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await setStorageLimit(ctx.siteContract, input.limitBytes);
+        return { success: true } as const;
+      }),
+
+    // Rotina de segurança: recalcula o espaço usado somando os arquivos de
+    // verdade, caso o contador fique dessincronizado por algum motivo.
+    recalculateStorage: masterAdminProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.siteContract) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+      }
+      const usedBytes = await recalculateStorageUsed(ctx.siteContract);
+      return { usedBytes } as const;
+    }),
+
     createFolder: requirePermission('manageCloud')
       .input(z.object({ parentId: z.string().nullable(), name: z.string().trim().min(1).max(255) }))
       .mutation(async ({ input, ctx }) => {
@@ -520,20 +568,53 @@ export const appRouter = router({
         return folder;
       }),
 
+    renameFolder: requirePermission('manageCloud')
+      .input(z.object({ id: z.string(), name: z.string().trim().min(1).max(255) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await renameFolder(input.id, ctx.siteContract, input.name);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderRename",
+          targetType: "cloudFolder",
+          targetId: input.id,
+          targetName: input.name,
+        });
+        return { success: true } as const;
+      }),
+
+    // Move a pasta pra lixeira (não apaga de vez).
     deleteFolder: requirePermission('manageCloud')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
-        const fileUrls = await deleteFolderRecursive(input.id, ctx.siteContract);
-        for (const url of fileUrls) {
-          await deleteCloudFileFromSupabase(url);
-        }
+        await deleteFolderRecursive(input.id, ctx.siteContract, ctx.siteAdminUsername, false);
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
           action: "cloud.folderDelete",
+          targetType: "cloudFolder",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    restoreFolder: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await restoreFolder(input.id, ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderRestore",
           targetType: "cloudFolder",
           targetId: input.id,
         });
@@ -559,35 +640,50 @@ export const appRouter = router({
         }
 
         const fileBuffer = Buffer.from(input.fileData, "base64");
-        const MAX_CLOUD_BYTES = 20 * 1024 * 1024;
+        const MAX_CLOUD_BYTES = 200 * 1024 * 1024;
         if (fileBuffer.length > MAX_CLOUD_BYTES) {
-          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 20MB." });
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 200MB." });
         }
 
-        // Espelha as pastas do sistema no caminho salvo no Supabase, para o
-        // arquivo aparecer organizado também olhando direto lá (não só pela
-        // navegação do site) — ex: cloud/lom/contratos/assinados/arquivo.pdf
+        // Confere se cabe no espaço disponível ANTES de subir pro R2.
+        const storage = await getStorageInfo(ctx.siteContract);
+        if (storage.usedBytes + fileBuffer.length > storage.limitBytes) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Espaço de armazenamento insuficiente.",
+          });
+        }
+
+        if (!isR2Configured) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "O armazenamento em nuvem (Cloudflare R2) ainda não foi configurado. Defina R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY e R2_BUCKET_NAME no Railway.",
+          });
+        }
+
+        // Espelha as pastas do sistema na chave do R2, para o arquivo
+        // aparecer organizado também olhando direto lá — ex:
+        // lom/contratos/assinados/uuid-arquivo.pdf
         const folderChain = input.folderId ? await getFolderPath(input.folderId) : [];
         const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+        const fileId = uuidv4();
+        const r2Key = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${fileId}-${input.fileName}`;
 
-        const upload = await uploadCloudFileToSupabase(
-          fileBuffer,
-          input.fileName,
-          input.mimeType,
-          ctx.siteContract,
-          folderPath
-        );
+        await uploadToR2(r2Key, fileBuffer, input.mimeType);
 
         const file = await createFileRecord({
-          id: uuidv4(),
+          id: fileId,
           contractSlug: ctx.siteContract,
           folderId: input.folderId,
           name: input.name,
-          fileUrl: upload.url,
+          r2Key,
           fileSize: fileBuffer.length,
           mimeType: input.mimeType,
           uploadedBy: ctx.siteAdminUsername,
         });
+
+        await adjustStorageUsed(ctx.siteContract, fileBuffer.length);
 
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -601,14 +697,80 @@ export const appRouter = router({
         return file;
       }),
 
+    renameFile: requirePermission('manageCloud')
+      .input(z.object({ id: z.string(), name: z.string().trim().min(1).max(255) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await renameFile(input.id, ctx.siteContract, input.name);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileRename",
+          targetType: "cloudFile",
+          targetId: input.id,
+          targetName: input.name,
+        });
+        return { success: true } as const;
+      }),
+
+    moveFile: requirePermission('manageCloud')
+      .input(z.object({ id: z.string(), folderId: z.string().nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await moveFile(input.id, ctx.siteContract, input.folderId);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileMove",
+          targetType: "cloudFile",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    // Gera uma URL temporária (1h) pra baixar — nunca expõe um link fixo.
+    // Verifica permissão de acesso: dono do contrato (viewCloud) ou alguém
+    // com quem o arquivo foi compartilhado.
+    getDownloadUrl: requirePermission('viewCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const file = await getFileById(input.id);
+        if (!file || file.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
+        }
+        if (file.r2Key) {
+          if (!isR2Configured) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Armazenamento não configurado." });
+          }
+          const url = await getR2DownloadUrl(file.r2Key, file.name);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "cloud.fileDownload",
+            targetType: "cloudFile",
+            targetId: file.id,
+            targetName: file.name,
+          });
+          return { url };
+        }
+        // Arquivo antigo, ainda no Supabase — link direto (legado).
+        if (file.fileUrl) return { url: file.fileUrl };
+        throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo sem conteúdo associado." });
+      }),
+
+    // Move pra lixeira (não apaga de vez, não mexe no R2 ainda).
     deleteFile: requirePermission('manageCloud')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
-        const file = await deleteFileRecord(input.id, ctx.siteContract);
-        if (file) await deleteCloudFileFromSupabase(file.fileUrl);
+        const file = await getFileById(input.id);
+        await softDeleteFile(input.id, ctx.siteContract, ctx.siteAdminUsername);
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
@@ -616,6 +778,180 @@ export const appRouter = router({
           targetType: "cloudFile",
           targetId: input.id,
           targetName: file?.name,
+        });
+        return { success: true } as const;
+      }),
+
+    restoreFile: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await restoreFile(input.id, ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileRestore",
+          targetType: "cloudFile",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    // Lixeira — pastas e arquivos marcados como excluídos.
+    listTrash: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return { folders: [], files: [] };
+      return listTrash(ctx.siteContract);
+    }),
+
+    // Exclusão definitiva — some do banco e do R2, nunca mais volta.
+    permanentlyDeleteFile: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const file = await permanentlyDeleteFile(input.id, ctx.siteContract);
+        if (file) {
+          if (file.r2Key) await deleteFromR2(file.r2Key);
+          else if (file.fileUrl) await deleteCloudFileFromSupabase(file.fileUrl);
+          await adjustStorageUsed(ctx.siteContract, -(file.fileSize ?? 0));
+        }
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.filePermanentDelete",
+          targetType: "cloudFile",
+          targetId: input.id,
+          targetName: file?.name,
+        });
+        return { success: true } as const;
+      }),
+
+    permanentlyDeleteFolder: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const removed = await deleteFolderRecursive(input.id, ctx.siteContract, ctx.siteAdminUsername, true);
+        let freedBytes = 0;
+        for (const key of removed.r2Keys) {
+          await deleteFromR2(key);
+        }
+        for (const url of removed.fileUrls) {
+          await deleteCloudFileFromSupabase(url);
+        }
+        // Não temos o tamanho aqui de cada arquivo removido — recalcula pra
+        // garantir consistência em vez de tentar somar às cegas.
+        await recalculateStorageUsed(ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderPermanentDelete",
+          targetType: "cloudFolder",
+          targetId: input.id,
+        });
+        return { success: true, freedBytes } as const;
+      }),
+
+    // Favoritos — arquivo ou pasta, nunca os dois.
+    listFavorites: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract || !ctx.siteAdminUsername) return [];
+      return listFavorites(ctx.siteContract, ctx.siteAdminUsername);
+    }),
+
+    toggleFavorite: requirePermission('viewCloud')
+      .input(z.object({ fileId: z.string().optional(), folderId: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract || !ctx.siteAdminUsername) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Sessão inválida." });
+        }
+        if (!input.fileId && !input.folderId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um arquivo ou pasta." });
+        }
+        const isFavorite = await toggleFavorite(uuidv4(), ctx.siteContract, ctx.siteAdminUsername, input);
+        return { isFavorite } as const;
+      }),
+
+    // Recentes — últimos enviados/modificados.
+    listRecent: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listRecentFiles(ctx.siteContract);
+    }),
+
+    // Busca por nome, dentro do contrato do usuário.
+    search: requirePermission('viewCloud')
+      .input(z.object({ query: z.string() }))
+      .query(async ({ input, ctx }) => {
+        if (!ctx.siteContract) return [];
+        return searchFiles(ctx.siteContract, input.query);
+      }),
+
+    // Compartilhamento pessoa a pessoa.
+    listSharedWithMe: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract || !ctx.siteAdminUsername) return [];
+      return listSharedWithMe(ctx.siteContract, ctx.siteAdminUsername);
+    }),
+
+    listSharedByMe: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract || !ctx.siteAdminUsername) return [];
+      return listSharedByMe(ctx.siteContract, ctx.siteAdminUsername);
+    }),
+
+    shareFile: requirePermission('manageCloud')
+      .input(
+        z.object({
+          fileId: z.string(),
+          sharedWith: z.string().trim().min(1, "Escolha com quem compartilhar"),
+          permission: z.enum(["view", "download", "edit"]),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract || !ctx.siteAdminUsername) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Sessão inválida." });
+        }
+        const file = await getFileById(input.fileId);
+        if (!file || file.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
+        }
+        if (input.sharedWith === ctx.siteAdminUsername) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível compartilhar consigo mesmo." });
+        }
+        const share = await createShare({
+          id: uuidv4(),
+          contractSlug: ctx.siteContract,
+          fileId: input.fileId,
+          itemName: file.name,
+          sharedBy: ctx.siteAdminUsername,
+          sharedWith: input.sharedWith,
+          permission: input.permission,
+        });
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.share",
+          targetType: "cloudFile",
+          targetId: input.fileId,
+          targetName: `${file.name} → ${input.sharedWith}`,
+        });
+        return share;
+      }),
+
+    revokeShare: requirePermission('manageCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await revokeShare(input.id, ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.unshare",
+          targetType: "cloudShare",
+          targetId: input.id,
         });
         return { success: true } as const;
       }),

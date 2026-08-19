@@ -1,27 +1,28 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * CloudModal: nuvem de arquivos por contrato, estilo SharePoint — pastas,
- * upload e download. O acesso é controlado pelas permissões
- * viewCloud/manageCloud, individuais por usuário (não é liberado sozinho
- * junto com outras permissões).
+ * CloudModal: central da Nuvem — meus arquivos, compartilhados, recentes,
+ * favoritos e lixeira. Armazenamento real no Cloudflare R2.
+ *
+ * Tela quase em tela cheia (mesmo padrão do Almoxarifado) — é um programa
+ * completo, não cabe numa caixinha pequena.
  */
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   X,
   Cloud,
-  Folder,
-  FolderPlus,
-  Upload,
-  Download,
-  Trash2,
-  ChevronRight,
   Home,
-  Loader,
-  File as FileIcon,
+  Users,
+  Share2,
+  Clock,
+  Star,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
+import { formatBytes } from '@shared/cloud';
+import CloudBrowser from '@/components/CloudBrowser';
+import CloudFlatList from '@/components/CloudFlatList';
 
 interface CloudModalProps {
   isOpen: boolean;
@@ -29,270 +30,246 @@ interface CloudModalProps {
   canManage: boolean;
 }
 
-const MAX_MB = 20;
+type Tab = 'files' | 'sharedWithMe' | 'sharedByMe' | 'recent' | 'favorites' | 'trash';
 
-function formatSize(bytes: number | null): string {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const TABS: { key: Tab; label: string; Icon: typeof Home }[] = [
+  { key: 'files', label: 'Meus arquivos', Icon: Home },
+  { key: 'sharedWithMe', label: 'Compartilhados comigo', Icon: Users },
+  { key: 'sharedByMe', label: 'Compartilhados por mim', Icon: Share2 },
+  { key: 'recent', label: 'Recentes', Icon: Clock },
+  { key: 'favorites', label: 'Favoritos', Icon: Star },
+  { key: 'trash', label: 'Lixeira', Icon: Trash2 },
+];
 
 export default function CloudModal({ isOpen, onClose, canManage }: CloudModalProps) {
+  const [tab, setTab] = useState<Tab>('files');
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
-  const listQuery = trpc.cloud.list.useQuery({ folderId: currentFolderId }, { enabled: isOpen });
-  const createFolderMutation = trpc.cloud.createFolder.useMutation();
-  const deleteFolderMutation = trpc.cloud.deleteFolder.useMutation();
-  const uploadMutation = trpc.cloud.upload.useMutation();
-  const deleteFileMutation = trpc.cloud.deleteFile.useMutation();
-  const [isUploading, setIsUploading] = useState(false);
+  const storageQuery = trpc.cloud.storageInfo.useQuery(undefined, { enabled: isOpen });
+  const sharedWithMeQuery = trpc.cloud.listSharedWithMe.useQuery(undefined, { enabled: isOpen && tab === 'sharedWithMe' });
+  const sharedByMeQuery = trpc.cloud.listSharedByMe.useQuery(undefined, { enabled: isOpen && tab === 'sharedByMe' });
+  const recentQuery = trpc.cloud.listRecent.useQuery(undefined, { enabled: isOpen && tab === 'recent' });
+  const favoritesQuery = trpc.cloud.listFavorites.useQuery(undefined, { enabled: isOpen && tab === 'favorites' });
+  const trashQuery = trpc.cloud.listTrash.useQuery(undefined, { enabled: isOpen && tab === 'trash' });
 
-  const refresh = () => utils.cloud.list.invalidate();
+  const getDownloadUrlMutation = trpc.cloud.getDownloadUrl.useMutation();
+  const revokeShareMutation = trpc.cloud.revokeShare.useMutation();
+  const restoreFileMutation = trpc.cloud.restoreFile.useMutation();
+  const restoreFolderMutation = trpc.cloud.restoreFolder.useMutation();
+  const permanentDeleteFileMutation = trpc.cloud.permanentlyDeleteFile.useMutation();
+  const permanentDeleteFolderMutation = trpc.cloud.permanentlyDeleteFolder.useMutation();
 
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return;
+  const handleDownload = async (id: string) => {
     try {
-      await createFolderMutation.mutateAsync({ parentId: currentFolderId, name: newFolderName.trim() });
-      setNewFolderName('');
-      setShowNewFolder(false);
-      await refresh();
-      toast.success('Pasta criada.');
+      const { url } = await getDownloadUrlMutation.mutateAsync({ id });
+      window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao criar pasta.');
+      toast.error(error instanceof Error ? error.message : 'Erro ao gerar o download.');
     }
   };
 
-  const handleDeleteFolder = async (id: string, name: string) => {
-    if (!window.confirm(`Excluir a pasta "${name}" e tudo dentro dela? Não é possível desfazer.`)) return;
+  const handleRevoke = async (id: string) => {
+    if (!window.confirm('Remover este compartilhamento?')) return;
     try {
-      await deleteFolderMutation.mutateAsync({ id });
-      await refresh();
-      toast.success('Pasta excluída.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao excluir pasta.');
+      await revokeShareMutation.mutateAsync({ id });
+      toast.success('Compartilhamento removido.');
+      await utils.cloud.listSharedByMe.invalidate();
+    } catch {
+      toast.error('Erro ao remover compartilhamento.');
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (!file) return;
+  const refreshTrash = () =>
+    Promise.all([
+      utils.cloud.listTrash.invalidate(),
+      utils.cloud.list.invalidate(),
+      utils.cloud.storageInfo.invalidate(),
+    ]);
 
-    if (file.size > MAX_MB * 1024 * 1024) {
-      toast.error(`O arquivo excede o limite de ${MAX_MB}MB.`);
-      return;
-    }
-
-    setIsUploading(true);
+  const handleRestoreFile = async (id: string) => {
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1]);
-        reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
-        reader.readAsDataURL(file);
-      });
-
-      await uploadMutation.mutateAsync({
-        folderId: currentFolderId,
-        name: file.name,
-        fileName: file.name,
-        fileData: base64,
-        mimeType: file.type || 'application/octet-stream',
-      });
-
-      await refresh();
-      toast.success('Arquivo enviado.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao enviar arquivo.');
-    } finally {
-      setIsUploading(false);
+      await restoreFileMutation.mutateAsync({ id });
+      toast.success('Arquivo restaurado.');
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao restaurar.');
     }
   };
 
-  const handleDeleteFile = async (id: string, name: string) => {
-    if (!window.confirm(`Excluir "${name}"?`)) return;
+  const handleRestoreFolder = async (id: string) => {
     try {
-      await deleteFileMutation.mutateAsync({ id });
-      await refresh();
-      toast.success('Arquivo excluído.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao excluir arquivo.');
+      await restoreFolderMutation.mutateAsync({ id });
+      toast.success('Pasta restaurada.');
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao restaurar.');
+    }
+  };
+
+  const handlePermanentDeleteFile = async (id: string) => {
+    if (!window.confirm('Excluir definitivamente? Não é possível desfazer.')) return;
+    try {
+      await permanentDeleteFileMutation.mutateAsync({ id });
+      toast.success('Excluído definitivamente.');
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao excluir.');
+    }
+  };
+
+  const handlePermanentDeleteFolder = async (id: string) => {
+    if (!window.confirm('Excluir a pasta e tudo dentro dela definitivamente? Não é possível desfazer.')) return;
+    try {
+      await permanentDeleteFolderMutation.mutateAsync({ id });
+      toast.success('Excluído definitivamente.');
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao excluir.');
     }
   };
 
   if (!isOpen) return null;
 
-  const path = listQuery.data?.path ?? [];
-  const folders = listQuery.data?.folders ?? [];
-  const files = listQuery.data?.files ?? [];
-  const isEmpty = folders.length === 0 && files.length === 0;
+  const storage = storageQuery.data;
+  const storagePct = storage && storage.limitBytes > 0 ? Math.min(100, (storage.usedBytes / storage.limitBytes) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Cloud className="text-orange shrink-0" size={21} />
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">Nuvem de Arquivos</h2>
-              <p className="text-xs text-muted-foreground">Pastas e arquivos do contrato</p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[94vh] max-w-6xl flex flex-col sm:flex-row overflow-hidden">
+        {/* Cabeçalho — só no celular */}
+        <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Cloud className="text-orange shrink-0" size={19} />
+            <h2 className="font-display text-base font-bold text-foreground truncate">Nuvem</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X size={23} />
+            <X size={22} />
           </button>
         </div>
 
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-1 px-4 pt-3 text-xs overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            onClick={() => setCurrentFolderId(null)}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg shrink-0 transition-colors ${
-              currentFolderId === null ? 'text-orange font-semibold' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Home size={13} />
-            Raiz
-          </button>
-          {path.map((folder) => (
-            <span key={folder.id} className="flex items-center gap-1 shrink-0">
-              <ChevronRight size={13} className="text-muted-foreground" />
+        {/* Barra lateral */}
+        <div className="flex flex-col sm:w-60 shrink-0 bg-navy sm:bg-navy/95 text-white">
+          <div className="hidden sm:flex items-center gap-2.5 p-5 border-b border-white/10">
+            <Cloud className="text-orange shrink-0" size={22} />
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-bold leading-tight">Nuvem</h2>
+              <p className="text-[11px] text-white/60">Arquivos do contrato</p>
+            </div>
+          </div>
+
+          <div className="flex sm:flex-col flex-1 p-2 gap-1 overflow-x-auto">
+            {TABS.map(({ key, label, Icon }) => (
               <button
-                onClick={() => setCurrentFolderId(folder.id)}
-                className={`px-2 py-1 rounded-lg transition-colors ${
-                  folder.id === currentFolderId
-                    ? 'text-orange font-semibold'
-                    : 'text-muted-foreground hover:text-foreground'
+                key={key}
+                onClick={() => setTab(key)}
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
+                  tab === key ? 'bg-orange text-white' : 'text-white/70 hover:bg-white/10'
                 }`}
               >
-                {folder.name}
+                <Icon size={16} />
+                {label}
               </button>
-            </span>
-          ))}
+            ))}
+          </div>
+
+          {/* Espaço usado */}
+          {storage && (
+            <div className="p-4 border-t border-white/10 hidden sm:block">
+              <p className="text-[11px] text-white/60 mb-1.5">
+                {formatBytes(storage.usedBytes)} de {formatBytes(storage.limitBytes)}
+              </p>
+              <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
+                <div
+                  className={`h-full transition-all ${storagePct > 90 ? 'bg-danger' : 'bg-orange'}`}
+                  style={{ width: `${storagePct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Ações */}
-        {canManage && (
-          <div className="flex gap-2 px-4 pt-3">
-            <button
-              onClick={() => setShowNewFolder((v) => !v)}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/70 transition"
-            >
-              <FolderPlus size={14} />
-              Nova pasta
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-orange text-white hover:opacity-90 disabled:opacity-50 transition"
-            >
-              {isUploading ? <Loader size={14} className="animate-spin" /> : <Upload size={14} />}
-              {isUploading ? 'Enviando...' : 'Enviar arquivo'}
-            </button>
-            <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
-          </div>
-        )}
-
-        {showNewFolder && (
-          <div className="flex gap-2 px-4 pt-2">
-            <input
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              placeholder="Nome da pasta"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-              className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
-            />
-            <button
-              onClick={handleCreateFolder}
-              disabled={createFolderMutation.isPending || !newFolderName.trim()}
-              className="shrink-0 px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-            >
-              Criar
-            </button>
-          </div>
-        )}
-
         {/* Conteúdo */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {listQuery.isLoading && (
-            <p className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
-              <Loader size={14} className="animate-spin" /> Carregando...
-            </p>
-          )}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="hidden sm:flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+            <h3 className="font-display text-lg font-bold text-foreground">
+              {TABS.find((t) => t.key === tab)?.label}
+            </h3>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X size={23} />
+            </button>
+          </div>
 
-          {!listQuery.isLoading && isEmpty && (
-            <p className="text-sm text-muted-foreground text-center py-10">
-              Pasta vazia.
-              {canManage ? ' Use os botões acima para criar uma pasta ou enviar um arquivo.' : ''}
-            </p>
-          )}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            {tab === 'files' && (
+              <CloudBrowser canManage={canManage} currentFolderId={currentFolderId} onNavigate={setCurrentFolderId} />
+            )}
 
-          <div className="space-y-1">
-            {folders.map((folder) => (
-              <div
-                key={folder.id}
-                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors group"
-              >
-                <button
-                  onClick={() => setCurrentFolderId(folder.id)}
-                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
-                >
-                  <Folder size={18} className="text-orange shrink-0" />
-                  <span className="text-sm font-medium text-foreground truncate">{folder.name}</span>
-                </button>
-                {canManage && (
-                  <button
-                    onClick={() => handleDeleteFolder(folder.id, folder.name)}
-                    className="p-1.5 text-muted-foreground hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
-                    title="Excluir pasta"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-            ))}
+            {tab === 'sharedWithMe' && (
+              <CloudFlatList
+                isLoading={sharedWithMeQuery.isLoading}
+                emptyMessage="Ninguém compartilhou nada com você ainda."
+                items={(sharedWithMeQuery.data ?? [])
+                  .filter((s) => s.fileId)
+                  .map((s) => ({ id: s.fileId!, name: s.itemName, subtitle: `de ${s.sharedBy}` }))}
+                onDownload={handleDownload}
+              />
+            )}
 
-            {files.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors group"
-              >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <FileIcon size={18} className="text-muted-foreground shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-                    <p className="text-xs text-muted-foreground font-technical">{formatSize(file.fileSize)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <a
-                    href={file.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
-                    className="p-1.5 text-muted-foreground hover:text-orange transition-colors"
-                    title="Baixar"
-                  >
-                    <Download size={15} />
-                  </a>
-                  {canManage && (
-                    <button
-                      onClick={() => handleDeleteFile(file.id, file.name)}
-                      className="p-1.5 text-muted-foreground hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
-                      title="Excluir"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+            {tab === 'sharedByMe' && (
+              <CloudFlatList
+                isLoading={sharedByMeQuery.isLoading}
+                emptyMessage="Você ainda não compartilhou nada."
+                items={(sharedByMeQuery.data ?? []).map((s) => ({
+                  id: s.id,
+                  name: s.itemName,
+                  subtitle: `com ${s.sharedWith}`,
+                }))}
+                onRevoke={handleRevoke}
+              />
+            )}
+
+            {tab === 'recent' && (
+              <CloudFlatList
+                isLoading={recentQuery.isLoading}
+                emptyMessage="Nenhum arquivo recente."
+                items={(recentQuery.data ?? []).map((f) => ({ id: f.id, name: f.name, size: f.fileSize }))}
+                onDownload={handleDownload}
+              />
+            )}
+
+            {tab === 'favorites' && (
+              <CloudFlatList
+                isLoading={favoritesQuery.isLoading}
+                emptyMessage="Nenhum favorito ainda."
+                items={(favoritesQuery.data ?? []).map((f) => ({
+                  id: f.fileId ?? f.folderId!,
+                  name: f.name,
+                  isFolder: f.isFolder,
+                  size: f.size,
+                }))}
+                onDownload={handleDownload}
+              />
+            )}
+
+            {tab === 'trash' && (
+              <CloudFlatList
+                isLoading={trashQuery.isLoading}
+                emptyMessage="A lixeira está vazia."
+                items={[
+                  ...(trashQuery.data?.folders ?? []).map((f) => ({ id: f.id, name: f.name, isFolder: true })),
+                  ...(trashQuery.data?.files ?? []).map((f) => ({ id: f.id, name: f.name, size: f.fileSize })),
+                ]}
+                onRestore={(id) => {
+                  const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
+                  return isFolder ? handleRestoreFolder(id) : handleRestoreFile(id);
+                }}
+                onPermanentDelete={(id) => {
+                  const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
+                  return isFolder ? handlePermanentDeleteFolder(id) : handlePermanentDeleteFile(id);
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
