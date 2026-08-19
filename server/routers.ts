@@ -62,8 +62,10 @@ import {
   setStorageLimit,
   adjustStorageUsed,
   recalculateStorageUsed,
+  listFilesNeedingR2Migration,
+  pointFileToR2,
 } from "./db-cloud";
-import { uploadToR2, deleteFromR2, getR2DownloadUrl, isR2Configured } from "./r2-storage";
+import { uploadToR2, deleteFromR2, getR2DownloadUrl, getR2PreviewUrl, isR2Configured } from "./r2-storage";
 import { listCustomRoles, createCustomRole, deleteCustomRole } from "./db-roles";
 import {
   listTrainingTypes,
@@ -762,6 +764,26 @@ export const appRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo sem conteúdo associado." });
       }),
 
+    // URL pra abrir o arquivo direto no navegador (PDF/imagem), sem forçar
+    // download. Mesma checagem de permissão da rota de download.
+    getPreviewUrl: requirePermission('viewCloud')
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const file = await getFileById(input.id);
+        if (!file || file.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
+        }
+        if (file.r2Key) {
+          if (!isR2Configured) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Armazenamento não configurado." });
+          }
+          const url = await getR2PreviewUrl(file.r2Key);
+          return { url, mimeType: file.mimeType };
+        }
+        if (file.fileUrl) return { url: file.fileUrl, mimeType: file.mimeType };
+        throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo sem conteúdo associado." });
+      }),
+
     // Move pra lixeira (não apaga de vez, não mexe no R2 ainda).
     deleteFile: requirePermission('manageCloud')
       .input(z.object({ id: z.string() }))
@@ -955,6 +977,52 @@ export const appRouter = router({
         });
         return { success: true } as const;
       }),
+
+    // Migração dos arquivos que ainda estão só no Supabase (de antes do R2
+    // existir) — baixa o conteúdo de lá e sobe pro R2, sem perder nada se
+    // der erro no meio (cada arquivo é independente).
+    migrateLegacyToR2: masterAdminProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.siteContract) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+      }
+      if (!isR2Configured) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cloudflare R2 não está configurado." });
+      }
+
+      const pending = await listFilesNeedingR2Migration(ctx.siteContract);
+      let migrated = 0;
+      const failed: string[] = [];
+
+      for (const file of pending) {
+        try {
+          if (!file.fileUrl) continue;
+          const res = await fetch(file.fileUrl);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buffer = Buffer.from(await res.arrayBuffer());
+
+          const folderChain = file.folderId ? await getFolderPath(file.folderId) : [];
+          const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+          const r2Key = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${file.id}-${file.name}`;
+
+          await uploadToR2(r2Key, buffer, file.mimeType || "application/octet-stream");
+          await pointFileToR2(file.id, r2Key);
+          await deleteCloudFileFromSupabase(file.fileUrl);
+          migrated++;
+        } catch (error) {
+          console.error(`[migrateLegacyToR2] Falha em "${file.name}":`, error);
+          failed.push(file.name);
+        }
+      }
+
+      void logActivity({
+        username: ctx.siteAdminUsername,
+        role: ctx.siteRole,
+        action: "cloud.migrateLegacy",
+        details: `${migrated} migrado(s), ${failed.length} falha(s)`,
+      });
+
+      return { total: pending.length, migrated, failed } as const;
+    }),
   }),
 
   // Notas Fiscais e recibos — separados por contrato.

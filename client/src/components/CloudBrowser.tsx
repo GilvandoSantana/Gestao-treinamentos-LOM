@@ -24,16 +24,19 @@ import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
 import CloudShareDialog from '@/components/CloudShareDialog';
+import CloudPreviewModal from '@/components/CloudPreviewModal';
+import CloudMigrationPanel from '@/components/CloudMigrationPanel';
 
 interface CloudBrowserProps {
   canManage: boolean;
   currentFolderId: string | null;
   onNavigate: (folderId: string | null) => void;
+  isMasterAdmin?: boolean;
 }
 
 const MAX_UPLOAD_MB = 200;
 
-export default function CloudBrowser({ canManage, currentFolderId, onNavigate }: CloudBrowserProps) {
+export default function CloudBrowser({ canManage, currentFolderId, onNavigate, isMasterAdmin }: CloudBrowserProps) {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -42,6 +45,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate }:
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
@@ -211,6 +215,8 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate }:
 
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      {isMasterAdmin && currentFolderId === null && <CloudMigrationPanel />}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 pb-3 text-xs overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
@@ -388,7 +394,10 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate }:
                 className="flex-1 px-2 py-1 text-sm border border-orange rounded-lg bg-background text-foreground"
               />
             ) : (
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <button
+                onClick={() => setPreviewTarget({ id: file.id, name: file.name })}
+                className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+              >
                 <FileIcon size={18} className="text-muted-foreground shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
@@ -397,7 +406,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate }:
                   </p>
                   <p className="text-xs text-muted-foreground font-technical">{formatBytes(file.fileSize ?? 0)}</p>
                 </div>
-              </div>
+              </button>
             )}
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -465,6 +474,15 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate }:
           fileId={shareTarget.id}
           fileName={shareTarget.name}
           onClose={() => setShareTarget(null)}
+        />
+      )}
+
+      {previewTarget && (
+        <CloudPreviewModal
+          fileId={previewTarget.id}
+          fileName={previewTarget.name}
+          onClose={() => setPreviewTarget(null)}
+          onDownload={handleDownload}
         />
       )}
     </div>

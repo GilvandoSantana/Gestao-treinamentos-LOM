@@ -28,6 +28,7 @@ interface CloudModalProps {
   isOpen: boolean;
   onClose: () => void;
   canManage: boolean;
+  isMasterAdmin?: boolean;
 }
 
 type Tab = 'files' | 'sharedWithMe' | 'sharedByMe' | 'recent' | 'favorites' | 'trash';
@@ -41,7 +42,7 @@ const TABS: { key: Tab; label: string; Icon: typeof Home }[] = [
   { key: 'trash', label: 'Lixeira', Icon: Trash2 },
 ];
 
-export default function CloudModal({ isOpen, onClose, canManage }: CloudModalProps) {
+export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }: CloudModalProps) {
   const [tab, setTab] = useState<Tab>('files');
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
@@ -202,7 +203,7 @@ export default function CloudModal({ isOpen, onClose, canManage }: CloudModalPro
 
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {tab === 'files' && (
-              <CloudBrowser canManage={canManage} currentFolderId={currentFolderId} onNavigate={setCurrentFolderId} />
+              <CloudBrowser canManage={canManage} currentFolderId={currentFolderId} onNavigate={setCurrentFolderId} isMasterAdmin={isMasterAdmin} />
             )}
 
             {tab === 'sharedWithMe' && (

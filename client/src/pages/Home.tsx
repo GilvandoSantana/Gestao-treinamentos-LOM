@@ -850,6 +850,7 @@ export default function Home() {
         isOpen={showCloud}
         onClose={() => setShowCloud(false)}
         canManage={session.can('manageCloud')}
+        isMasterAdmin={session.isMasterAdmin}
       />
 
       <InvoicesModal

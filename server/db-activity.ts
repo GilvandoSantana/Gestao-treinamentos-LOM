@@ -53,6 +53,7 @@ export type ActivityAction =
   | "cloud.filePermanentDelete"
   | "cloud.share"
   | "cloud.unshare"
+  | "cloud.migrateLegacy"
   | "invoice.create"
   | "invoice.update"
   | "invoice.delete"

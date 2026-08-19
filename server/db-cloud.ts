@@ -610,3 +610,34 @@ export async function searchFiles(contractSlug: string, query: string): Promise<
     .limit(50);
   return rows.map(toFileInfo);
 }
+
+// ---------------------------------------------------------------------
+// Migração dos arquivos antigos (Supabase Storage) para o R2
+// ---------------------------------------------------------------------
+
+/** Arquivos deste contrato que ainda estão só no Supabase (fileUrl
+ * preenchido, r2Key vazio) — o que falta migrar pro R2. */
+export async function listFilesNeedingR2Migration(contractSlug: string): Promise<CloudFileInfo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(cloudFiles)
+    .where(
+      and(
+        eq(cloudFiles.contractSlug, contractSlug),
+        isNotNull(cloudFiles.fileUrl),
+        isNull(cloudFiles.r2Key),
+        isNull(cloudFiles.deletedAt)
+      )
+    );
+  return rows.map(toFileInfo);
+}
+
+/** Depois que o conteúdo foi copiado pro R2 por fora, só atualiza o
+ * apontamento — deixa de usar o link do Supabase, passa a usar o R2. */
+export async function pointFileToR2(id: string, r2Key: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(cloudFiles).set({ r2Key, fileUrl: null }).where(eq(cloudFiles.id, id));
+}
