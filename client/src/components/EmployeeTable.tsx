@@ -3,7 +3,7 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets, IdCard } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +18,7 @@ import ComplianceStamp from './ComplianceStamp';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
+import { generateBadgeSupportPDF } from './BadgeSupportGenerator';
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -65,6 +66,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 
   const handleGenerateWaterBadge = (employee: Employee) => {
     generateBadgeWaterPDF(employee);
+  };
+
+  const handleGenerateSupportBadge = (employee: Employee) => {
+    generateBadgeSupportPDF(employee);
   };
 
   return (
@@ -184,6 +189,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
 <DropdownMenuItem onClick={() => handleGenerateWaterBadge(employee)}>
 			                                    <Droplets className="mr-2 h-4 w-4" />
 			                                    <span>Crachá de Água</span>
+			                                  </DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleGenerateSupportBadge(employee)}>
+			                                    <IdCard className="mr-2 h-4 w-4" />
+			                                    <span>Crachá Support</span>
 			                                  </DropdownMenuItem>
 		                                </DropdownMenuContent>
 		                              </DropdownMenu>

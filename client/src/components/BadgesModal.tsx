@@ -8,13 +8,14 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, CreditCard, Lock, Droplets, Search, Loader, Download } from 'lucide-react';
+import { X, CreditCard, Lock, Droplets, IdCard, Search, Loader, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 import type { jsPDF } from 'jspdf';
 import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
+import { generateBadgeSupportPDF } from './BadgeSupportGenerator';
 
 interface BadgesModalProps {
   isOpen: boolean;
@@ -22,24 +23,27 @@ interface BadgesModalProps {
   employees: Employee[];
 }
 
-type BadgeType = 'padrao' | 'bloqueio' | 'agua';
+type BadgeType = 'padrao' | 'bloqueio' | 'agua' | 'support';
 
 const BADGE_TYPES: { key: BadgeType; label: string; Icon: typeof CreditCard }[] = [
   { key: 'padrao', label: 'Padrão', Icon: CreditCard },
   { key: 'bloqueio', label: 'Bloqueio', Icon: Lock },
   { key: 'agua', label: 'Água', Icon: Droplets },
+  { key: 'support', label: 'Support', Icon: IdCard },
 ];
 
 const GENERATORS: Record<BadgeType, (employee: Employee, sharedDoc?: jsPDF) => Promise<jsPDF>> = {
   padrao: generateBadgePDF,
   bloqueio: generateBadgeLockPDF,
   agua: generateBadgeWaterPDF,
+  support: generateBadgeSupportPDF,
 };
 
 const BADGE_TYPE_FILE_PREFIX: Record<BadgeType, string> = {
   padrao: 'crachas',
   bloqueio: 'crachas-bloqueio',
   agua: 'crachas-agua',
+  support: 'crachas-support',
 };
 
 export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalProps) {
