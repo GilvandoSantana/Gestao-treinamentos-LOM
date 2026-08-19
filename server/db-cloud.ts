@@ -4,13 +4,15 @@
  * aqui só ficam os metadados.
  */
 
-import { eq, and, isNull, isNotNull, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull, desc, sql } from "drizzle-orm";
 import {
   cloudFolders,
   cloudFiles,
   cloudFavorites,
   cloudShares,
   cloudStorageConfig,
+  cloudGroups,
+  cloudGroupMembers,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 
@@ -53,9 +55,19 @@ export interface CloudShareInfo {
   folderId: string | null;
   itemName: string;
   sharedBy: string;
-  sharedWith: string;
+  sharedWith: string | null;
+  sharedWithGroupId: string | null;
+  sharedWithGroupName: string | null;
   permission: "view" | "download" | "edit";
   expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface CloudGroupInfo {
+  id: string;
+  contractSlug: string;
+  name: string;
+  memberCount: number;
   createdAt: string;
 }
 
@@ -88,7 +100,7 @@ function toFileInfo(row: typeof cloudFiles.$inferSelect): CloudFileInfo {
   };
 }
 
-function toShareInfo(row: typeof cloudShares.$inferSelect): CloudShareInfo {
+function toShareInfo(row: typeof cloudShares.$inferSelect, groupName: string | null = null): CloudShareInfo {
   return {
     id: row.id,
     contractSlug: row.contractSlug,
@@ -97,6 +109,8 @@ function toShareInfo(row: typeof cloudShares.$inferSelect): CloudShareInfo {
     itemName: row.itemName,
     sharedBy: row.sharedBy,
     sharedWith: row.sharedWith,
+    sharedWithGroupId: row.sharedWithGroupId,
+    sharedWithGroupName: groupName,
     permission: row.permission as "view" | "download" | "edit",
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -443,7 +457,8 @@ export async function createShare(input: {
   folderId?: string | null;
   itemName: string;
   sharedBy: string;
-  sharedWith: string;
+  sharedWith?: string | null;
+  sharedWithGroupId?: string | null;
   permission: "view" | "download" | "edit";
   expiresAt?: Date | null;
 }): Promise<CloudShareInfo> {
@@ -456,10 +471,16 @@ export async function createShare(input: {
     folderId: input.folderId ?? null,
     itemName: input.itemName,
     sharedBy: input.sharedBy,
-    sharedWith: input.sharedWith,
+    sharedWith: input.sharedWith ?? null,
+    sharedWithGroupId: input.sharedWithGroupId ?? null,
     permission: input.permission,
     expiresAt: input.expiresAt ?? null,
   });
+  let groupName: string | null = null;
+  if (input.sharedWithGroupId) {
+    const group = await getGroupById(input.sharedWithGroupId);
+    groupName = group?.name ?? null;
+  }
   return {
     id: input.id,
     contractSlug: input.contractSlug,
@@ -467,22 +488,32 @@ export async function createShare(input: {
     folderId: input.folderId ?? null,
     itemName: input.itemName,
     sharedBy: input.sharedBy,
-    sharedWith: input.sharedWith,
+    sharedWith: input.sharedWith ?? null,
+    sharedWithGroupId: input.sharedWithGroupId ?? null,
+    sharedWithGroupName: groupName,
     permission: input.permission,
     expiresAt: input.expiresAt ? input.expiresAt.toISOString() : null,
     createdAt: new Date().toISOString(),
   };
 }
 
+/** Compartilhados diretamente com a pessoa, MAIS os compartilhados com
+ * qualquer grupo do qual ela seja membro. */
 export async function listSharedWithMe(contractSlug: string, username: string): Promise<CloudShareInfo[]> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db
-    .select()
-    .from(cloudShares)
-    .where(and(eq(cloudShares.contractSlug, contractSlug), eq(cloudShares.sharedWith, username)))
-    .orderBy(desc(cloudShares.createdAt));
-  return rows.map(toShareInfo);
+
+  const myGroupIds = await getGroupIdsForUsername(contractSlug, username);
+
+  const condition = myGroupIds.length > 0
+    ? and(
+        eq(cloudShares.contractSlug, contractSlug),
+        sql`(${cloudShares.sharedWith} = ${username} OR ${cloudShares.sharedWithGroupId} IN (${sql.join(myGroupIds, sql`, `)}))`
+      )
+    : and(eq(cloudShares.contractSlug, contractSlug), eq(cloudShares.sharedWith, username));
+
+  const rows = await db.select().from(cloudShares).where(condition).orderBy(desc(cloudShares.createdAt));
+  return enrichSharesWithGroupNames(rows);
 }
 
 export async function listSharedByMe(contractSlug: string, username: string): Promise<CloudShareInfo[]> {
@@ -493,24 +524,129 @@ export async function listSharedByMe(contractSlug: string, username: string): Pr
     .from(cloudShares)
     .where(and(eq(cloudShares.contractSlug, contractSlug), eq(cloudShares.sharedBy, username)))
     .orderBy(desc(cloudShares.createdAt));
-  return rows.map(toShareInfo);
+  return enrichSharesWithGroupNames(rows);
 }
 
-/** Compartilhamentos que dão acesso a este arquivo específico, pra checar permissão. */
-export async function getSharesForFile(fileId: string, username: string): Promise<CloudShareInfo[]> {
+async function enrichSharesWithGroupNames(rows: (typeof cloudShares.$inferSelect)[]): Promise<CloudShareInfo[]> {
+  const groupIds = Array.from(new Set(rows.map((r) => r.sharedWithGroupId).filter((v): v is string => !!v)));
+  const groupNames = new Map<string, string>();
+  for (const id of groupIds) {
+    const group = await getGroupById(id);
+    if (group) groupNames.set(id, group.name);
+  }
+  return rows.map((r) => toShareInfo(r, r.sharedWithGroupId ? groupNames.get(r.sharedWithGroupId) ?? null : null));
+}
+
+/** Compartilhamentos que dão acesso a este arquivo específico (direto ou via
+ * grupo), pra checar permissão. */
+export async function getSharesForFile(
+  fileId: string,
+  contractSlug: string,
+  username: string
+): Promise<CloudShareInfo[]> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db
-    .select()
-    .from(cloudShares)
-    .where(and(eq(cloudShares.fileId, fileId), eq(cloudShares.sharedWith, username)));
-  return rows.map(toShareInfo);
+  const myGroupIds = await getGroupIdsForUsername(contractSlug, username);
+
+  const condition = myGroupIds.length > 0
+    ? and(
+        eq(cloudShares.fileId, fileId),
+        sql`(${cloudShares.sharedWith} = ${username} OR ${cloudShares.sharedWithGroupId} IN (${sql.join(myGroupIds, sql`, `)}))`
+      )
+    : and(eq(cloudShares.fileId, fileId), eq(cloudShares.sharedWith, username));
+
+  const rows = await db.select().from(cloudShares).where(condition);
+  return enrichSharesWithGroupNames(rows);
 }
 
 export async function revokeShare(id: string, contractSlug: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(cloudShares).where(and(eq(cloudShares.id, id), eq(cloudShares.contractSlug, contractSlug)));
+}
+
+// ---------------------------------------------------------------------
+// Grupos — setor/cargo/equipe. Compartilhar com um grupo dá acesso a
+// todos os membros dele de uma vez.
+// ---------------------------------------------------------------------
+
+export async function listGroups(contractSlug: string): Promise<CloudGroupInfo[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const groups = await db.select().from(cloudGroups).where(eq(cloudGroups.contractSlug, contractSlug));
+  const result: CloudGroupInfo[] = [];
+  for (const g of groups) {
+    const members = await db.select().from(cloudGroupMembers).where(eq(cloudGroupMembers.groupId, g.id));
+    result.push({
+      id: g.id,
+      contractSlug: g.contractSlug,
+      name: g.name,
+      memberCount: members.length,
+      createdAt: g.createdAt.toISOString(),
+    });
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getGroupById(id: string): Promise<{ id: string; contractSlug: string; name: string } | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(cloudGroups).where(eq(cloudGroups.id, id));
+  return rows[0] ? { id: rows[0].id, contractSlug: rows[0].contractSlug, name: rows[0].name } : undefined;
+}
+
+export async function createGroup(id: string, contractSlug: string, name: string): Promise<CloudGroupInfo> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(cloudGroups).values({ id, contractSlug, name: name.trim() });
+  return { id, contractSlug, name: name.trim(), memberCount: 0, createdAt: new Date().toISOString() };
+}
+
+export async function deleteGroup(id: string, contractSlug: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cloudGroupMembers).where(eq(cloudGroupMembers.groupId, id));
+  await db.delete(cloudGroups).where(and(eq(cloudGroups.id, id), eq(cloudGroups.contractSlug, contractSlug)));
+  // Compartilhamentos que apontavam pra esse grupo ficam órfãos e param de
+  // valer sozinhos (o filtro em listSharedWithMe já exige o grupo existir
+  // entre os do usuário) — não precisa limpar cloudShares manualmente.
+}
+
+export async function listGroupMembers(groupId: string): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(cloudGroupMembers).where(eq(cloudGroupMembers.groupId, groupId));
+  return rows.map((r) => r.username);
+}
+
+export async function addGroupMember(id: string, groupId: string, username: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(cloudGroupMembers)
+    .where(and(eq(cloudGroupMembers.groupId, groupId), eq(cloudGroupMembers.username, username)));
+  if (existing.length > 0) return; // já é membro, não duplica
+  await db.insert(cloudGroupMembers).values({ id, groupId, username });
+}
+
+export async function removeGroupMember(groupId: string, username: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .delete(cloudGroupMembers)
+    .where(and(eq(cloudGroupMembers.groupId, groupId), eq(cloudGroupMembers.username, username)));
+}
+
+async function getGroupIdsForUsername(contractSlug: string, username: string): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const myGroups = await db
+    .select({ id: cloudGroups.id })
+    .from(cloudGroupMembers)
+    .innerJoin(cloudGroups, eq(cloudGroupMembers.groupId, cloudGroups.id))
+    .where(and(eq(cloudGroupMembers.username, username), eq(cloudGroups.contractSlug, contractSlug)));
+  return myGroups.map((g) => g.id);
 }
 
 // ---------------------------------------------------------------------

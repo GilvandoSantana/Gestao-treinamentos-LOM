@@ -61,8 +61,18 @@ export interface CloudShareInfo {
   folderId: string | null;
   itemName: string;
   sharedBy: string;
-  sharedWith: string;
+  sharedWith: string | null;
+  sharedWithGroupId: string | null;
+  sharedWithGroupName: string | null;
   permission: CloudSharePermission;
   expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface CloudGroupInfo {
+  id: string;
+  contractSlug: string;
+  name: string;
+  memberCount: number;
   createdAt: string;
 }

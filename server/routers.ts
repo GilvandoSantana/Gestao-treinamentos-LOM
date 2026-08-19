@@ -62,6 +62,12 @@ import {
   setStorageLimit,
   adjustStorageUsed,
   recalculateStorageUsed,
+  listGroups,
+  createGroup,
+  deleteGroup,
+  listGroupMembers,
+  addGroupMember,
+  removeGroupMember,
   listFilesNeedingR2Migration,
   pointFileToR2,
 } from "./db-cloud";
@@ -922,17 +928,23 @@ export const appRouter = router({
       return listSharedByMe(ctx.siteContract, ctx.siteAdminUsername);
     }),
 
+    // Compartilha com uma pessoa OU com um grupo — nunca os dois ao mesmo
+    // tempo. Informe exatamente um dos dois: sharedWith ou groupId.
     shareFile: requirePermission('manageCloud')
       .input(
         z.object({
           fileId: z.string(),
-          sharedWith: z.string().trim().min(1, "Escolha com quem compartilhar"),
+          sharedWith: z.string().trim().optional(),
+          groupId: z.string().optional(),
           permission: z.enum(["view", "download", "edit"]),
         })
       )
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract || !ctx.siteAdminUsername) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Sessão inválida." });
+        }
+        if (!input.sharedWith && !input.groupId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha uma pessoa ou um grupo." });
         }
         const file = await getFileById(input.fileId);
         if (!file || file.contractSlug !== ctx.siteContract) {
@@ -947,7 +959,8 @@ export const appRouter = router({
           fileId: input.fileId,
           itemName: file.name,
           sharedBy: ctx.siteAdminUsername,
-          sharedWith: input.sharedWith,
+          sharedWith: input.sharedWith || null,
+          sharedWithGroupId: input.groupId || null,
           permission: input.permission,
         });
         void logActivity({
@@ -956,7 +969,7 @@ export const appRouter = router({
           action: "cloud.share",
           targetType: "cloudFile",
           targetId: input.fileId,
-          targetName: `${file.name} → ${input.sharedWith}`,
+          targetName: `${file.name} → ${share.sharedWith ?? share.sharedWithGroupName ?? "?"}`,
         });
         return share;
       }),
@@ -974,6 +987,86 @@ export const appRouter = router({
           action: "cloud.unshare",
           targetType: "cloudShare",
           targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    // Grupos (setor/cargo/equipe) — compartilhar com o grupo dá acesso a
+    // todos os membros dele de uma vez. Só o administrador principal
+    // cria/apaga grupo e mexe nos membros; qualquer um com manageCloud
+    // pode listar (é o que preenche o seletor na hora de compartilhar).
+    listGroups: requirePermission('manageCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listGroups(ctx.siteContract);
+    }),
+
+    createGroup: masterAdminProcedure
+      .input(z.object({ name: z.string().trim().min(2, "Informe o nome do grupo").max(120) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const group = await createGroup(uuidv4(), ctx.siteContract, input.name);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.groupCreate",
+          targetType: "cloudGroup",
+          targetId: group.id,
+          targetName: group.name,
+        });
+        return group;
+      }),
+
+    deleteGroup: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await deleteGroup(input.id, ctx.siteContract);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.groupDelete",
+          targetType: "cloudGroup",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    listGroupMembers: requirePermission('manageCloud')
+      .input(z.object({ groupId: z.string() }))
+      .query(async ({ input }) => {
+        return listGroupMembers(input.groupId);
+      }),
+
+    addGroupMember: masterAdminProcedure
+      .input(z.object({ groupId: z.string(), username: z.string().trim().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        await addGroupMember(uuidv4(), input.groupId, input.username.trim());
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.groupAddMember",
+          targetType: "cloudGroup",
+          targetId: input.groupId,
+          targetName: input.username,
+        });
+        return { success: true } as const;
+      }),
+
+    removeGroupMember: masterAdminProcedure
+      .input(z.object({ groupId: z.string(), username: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        await removeGroupMember(input.groupId, input.username);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.groupRemoveMember",
+          targetType: "cloudGroup",
+          targetId: input.groupId,
+          targetName: input.username,
         });
         return { success: true } as const;
       }),

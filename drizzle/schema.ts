@@ -305,9 +305,27 @@ export const cloudShares = mysqlTable("cloudShares", {
   folderId: varchar("folderId", { length: 64 }),
   itemName: varchar("itemName", { length: 255 }).notNull(),
   sharedBy: varchar("sharedBy", { length: 100 }).notNull(),
-  sharedWith: varchar("sharedWith", { length: 100 }).notNull(),
+  // Um compartilhamento é com uma PESSOA (sharedWith) OU com um GRUPO
+  // (sharedWithGroupId) — nunca os dois ao mesmo tempo.
+  sharedWith: varchar("sharedWith", { length: 100 }),
+  sharedWithGroupId: varchar("sharedWithGroupId", { length: 64 }),
   permission: mysqlEnum("permission", ["view", "download", "edit"]).default("view").notNull(),
   expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Grupos (setor/cargo/equipe) — compartilhar com o grupo inteiro de uma vez. */
+export const cloudGroups = mysqlTable("cloudGroups", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const cloudGroupMembers = mysqlTable("cloudGroupMembers", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  groupId: varchar("groupId", { length: 64 }).notNull(),
+  username: varchar("username", { length: 100 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
