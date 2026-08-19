@@ -17,12 +17,14 @@ import {
   Clock,
   Star,
   Trash2,
+  Building2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
 import CloudBrowser from '@/components/CloudBrowser';
 import CloudFlatList from '@/components/CloudFlatList';
+import CloudGroupsPanel from '@/components/CloudGroupsPanel';
 
 interface CloudModalProps {
   isOpen: boolean;
@@ -31,7 +33,7 @@ interface CloudModalProps {
   isMasterAdmin?: boolean;
 }
 
-type Tab = 'files' | 'sharedWithMe' | 'sharedByMe' | 'recent' | 'favorites' | 'trash';
+type Tab = 'files' | 'sharedWithMe' | 'sharedByMe' | 'recent' | 'favorites' | 'trash' | 'groups';
 
 const TABS: { key: Tab; label: string; Icon: typeof Home }[] = [
   { key: 'files', label: 'Meus arquivos', Icon: Home },
@@ -42,8 +44,13 @@ const TABS: { key: Tab; label: string; Icon: typeof Home }[] = [
   { key: 'trash', label: 'Lixeira', Icon: Trash2 },
 ];
 
+const ADMIN_TABS: { key: Tab; label: string; Icon: typeof Home }[] = [
+  { key: 'groups', label: 'Grupos', Icon: Building2 },
+];
+
 export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }: CloudModalProps) {
   const [tab, setTab] = useState<Tab>('files');
+  const visibleTabs = isMasterAdmin ? [...TABS, ...ADMIN_TABS] : TABS;
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
@@ -160,7 +167,7 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
           </div>
 
           <div className="flex sm:flex-col flex-1 p-2 gap-1 overflow-x-auto">
-            {TABS.map(({ key, label, Icon }) => (
+            {visibleTabs.map(({ key, label, Icon }) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
@@ -194,7 +201,7 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
         <div className="flex-1 flex flex-col min-w-0">
           <div className="hidden sm:flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
             <h3 className="font-display text-lg font-bold text-foreground">
-              {TABS.find((t) => t.key === tab)?.label}
+              {visibleTabs.find((t) => t.key === tab)?.label}
             </h3>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
               <X size={23} />
@@ -271,6 +278,8 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
                 }}
               />
             )}
+
+            {tab === 'groups' && <CloudGroupsPanel />}
           </div>
         </div>
       </div>
