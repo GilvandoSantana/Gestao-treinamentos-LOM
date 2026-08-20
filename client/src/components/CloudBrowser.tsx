@@ -1,6 +1,7 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * CloudBrowser: "Meus arquivos" — navegação por pasta, upload real pro R2,
+ * CloudBrowser: "Meus arquivos" — navegação por pasta, upload real pro R2
+ * (arquivo avulso ou pasta inteira, recriando a estrutura de subpastas),
  * criar pasta, renomear, mover, favoritar, compartilhar, excluir (lixeira).
  */
 
@@ -8,6 +9,7 @@ import { useRef, useState } from 'react';
 import {
   Folder,
   FolderPlus,
+  FolderUp,
   Upload,
   Download,
   Trash2,
@@ -36,17 +38,55 @@ interface CloudBrowserProps {
 
 const MAX_UPLOAD_MB = 200;
 
+interface FileWithPath {
+  file: File;
+  relativePath: string;
+}
+
+/** Lê recursivamente uma entrada arrastada (arquivo ou pasta) do navegador,
+ * reconstruindo o caminho relativo — usado no arrastar-e-soltar de pastas. */
+function readEntry(entry: FileSystemEntry, basePath: string, results: FileWithPath[]): Promise<void> {
+  return new Promise((resolve) => {
+    if (entry.isFile) {
+      (entry as FileSystemFileEntry).file((file) => {
+        results.push({ file, relativePath: basePath + file.name });
+        resolve();
+      });
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const children: FileSystemEntry[] = [];
+      const readBatch = () => {
+        reader.readEntries(async (batch) => {
+          if (batch.length === 0) {
+            for (const child of children) {
+              await readEntry(child, `${basePath}${entry.name}/`, results);
+            }
+            resolve();
+          } else {
+            children.push(...batch);
+            readBatch(); // o navegador pode devolver os itens em várias chamadas
+          }
+        });
+      };
+      readBatch();
+    } else {
+      resolve();
+    }
+  });
+}
+
 export default function CloudBrowser({ canManage, currentFolderId, onNavigate, isMasterAdmin }: CloudBrowserProps) {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ name: string; pct: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; done: number; total: number } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
   const listQuery = trpc.cloud.list.useQuery({ folderId: currentFolderId });
@@ -94,60 +134,129 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (!file) return;
-
-    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      toast.error(`O arquivo excede o limite de ${MAX_UPLOAD_MB}MB.`);
-      return;
+  /** Garante que a cadeia de subpastas do caminho relativo exista, criando
+   * só o que faltar (reaproveita pasta já existente com o mesmo nome). */
+  const resolveFolderPath = async (
+    parts: string[],
+    cache: Map<string, string | null>
+  ): Promise<string | null> => {
+    let parentId = cache.get('') ?? currentFolderId;
+    let cacheKey = '';
+    for (const part of parts) {
+      const nextKey = cacheKey ? `${cacheKey}/${part}` : part;
+      const cached = cache.get(nextKey);
+      if (cached !== undefined) {
+        parentId = cached;
+        cacheKey = nextKey;
+        continue;
+      }
+      const existing = await utils.client.cloud.list.query({ folderId: parentId });
+      const match = existing.folders.find((f) => f.name.toLowerCase() === part.toLowerCase());
+      const folderId = match ? match.id : (await createFolderMutation.mutateAsync({ parentId, name: part })).id;
+      cache.set(nextKey, folderId);
+      parentId = folderId;
+      cacheKey = nextKey;
     }
+    return parentId;
+  };
+
+  const uploadMultiple = async (items: FileWithPath[]) => {
+    if (items.length === 0) return;
+
+    const oversized = items.filter((i) => i.file.size > MAX_UPLOAD_MB * 1024 * 1024);
+    const valid = items.filter((i) => i.file.size <= MAX_UPLOAD_MB * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast.error(`${oversized.length} arquivo(s) excedem ${MAX_UPLOAD_MB}MB e não serão enviados.`);
+    }
+    if (valid.length === 0) return;
 
     setIsUploading(true);
-    setUploadProgress({ name: file.name, pct: 0 });
-    try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            setUploadProgress({ name: file.name, pct: Math.round((ev.loaded / ev.total) * 60) });
-          }
-        };
-        reader.onload = () => resolve(String(reader.result).split(',')[1]);
-        reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
-        reader.readAsDataURL(file);
-      });
+    const folderCache = new Map<string, string | null>();
+    let uploaded = 0;
+    let failed = 0;
 
-      setUploadProgress({ name: file.name, pct: 70 });
-      await uploadMutation.mutateAsync({
-        folderId: currentFolderId,
-        name: file.name,
-        fileName: file.name,
-        fileData: base64,
-        mimeType: file.type || 'application/octet-stream',
-      });
-      setUploadProgress({ name: file.name, pct: 100 });
+    for (const { file, relativePath } of valid) {
+      setUploadProgress({ name: file.name, done: uploaded, total: valid.length });
+      try {
+        const parts = relativePath.split('/').filter(Boolean);
+        const fileName = parts.pop() ?? file.name;
+        const targetFolderId = await resolveFolderPath(parts, folderCache);
 
-      await refresh();
-      toast.success('Upload concluído.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao enviar arquivo.');
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(null);
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',')[1]);
+          reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+          reader.readAsDataURL(file);
+        });
+
+        await uploadMutation.mutateAsync({
+          folderId: targetFolderId,
+          name: fileName,
+          fileName,
+          fileData: base64,
+          mimeType: file.type || 'application/octet-stream',
+        });
+        uploaded++;
+      } catch (error) {
+        failed++;
+        console.error(`Falha ao enviar "${file.name}":`, error);
+      }
+    }
+
+    setUploadProgress(null);
+    setIsUploading(false);
+    await refresh();
+
+    if (failed === 0) {
+      toast.success(`${uploaded} arquivo${uploaded !== 1 ? 's' : ''} enviado${uploaded !== 1 ? 's' : ''}.`);
+    } else {
+      toast.error(`${uploaded} enviado(s), ${failed} falharam.`);
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!files || files.length === 0) return;
+    await uploadMultiple(Array.from(files).map((file) => ({ file, relativePath: file.name })));
+  };
+
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (folderInputRef.current) folderInputRef.current.value = '';
+    if (!files || files.length === 0) return;
+    await uploadMultiple(
+      Array.from(files).map((file) => ({
+        file,
+        relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+      }))
+    );
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     if (!canManage) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file && fileInputRef.current) {
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      fileInputRef.current.files = dt.files;
-      fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === 'function') {
+      const entries: FileSystemEntry[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) entries.push(entry);
+      }
+      if (entries.length > 0) {
+        const results: FileWithPath[] = [];
+        for (const entry of entries) {
+          await readEntry(entry, '', results);
+        }
+        await uploadMultiple(results);
+        return;
+      }
+    }
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await uploadMultiple(Array.from(files).map((file) => ({ file, relativePath: file.name })));
     }
   };
 
@@ -247,7 +356,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
 
       {/* Ações */}
       {canManage && (
-        <div className="flex gap-2 pb-3">
+        <div className="flex flex-wrap gap-2 pb-3">
           <button
             onClick={() => setShowNewFolder((v) => !v)}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/70 transition"
@@ -263,17 +372,34 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
             {isUploading ? <Loader size={14} className="animate-spin" /> : <Upload size={14} />}
             {isUploading ? 'Enviando...' : 'Enviar arquivo'}
           </button>
-          <input ref={fileInputRef} type="file" onChange={handleFileSelect} className="hidden" />
+          <button
+            onClick={() => folderInputRef.current?.click()}
+            disabled={isUploading}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-navy text-white hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {isUploading ? <Loader size={14} className="animate-spin" /> : <FolderUp size={14} />}
+            {isUploading ? 'Enviando...' : 'Enviar pasta'}
+          </button>
+          <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+          <input
+            ref={folderInputRef}
+            type="file"
+            onChange={handleFolderSelect}
+            className="hidden"
+            {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+          />
         </div>
       )}
 
       {uploadProgress && (
         <div className="mb-3 p-3 rounded-lg border border-border bg-muted/30">
-          <p className="text-xs text-foreground truncate mb-1.5">Enviando {uploadProgress.name}...</p>
+          <p className="text-xs text-foreground truncate mb-1.5">
+            Enviando {uploadProgress.name}... ({uploadProgress.done + 1} de {uploadProgress.total})
+          </p>
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full bg-orange transition-all duration-300"
-              style={{ width: `${uploadProgress.pct}%` }}
+              style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
             />
           </div>
         </div>
@@ -309,7 +435,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
       {!listQuery.isLoading && isEmpty && (
         <p className="text-sm text-muted-foreground text-center py-10">
           Pasta vazia.
-          {canManage ? ' Arraste um arquivo aqui, ou use os botões acima.' : ''}
+          {canManage ? ' Arraste um arquivo ou pasta aqui, ou use os botões acima.' : ''}
         </p>
       )}
 
