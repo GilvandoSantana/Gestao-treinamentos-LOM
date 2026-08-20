@@ -5,10 +5,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import { UserCheck, PackageCheck, PackageOpen, Search, Plus, Loader, QrCode } from 'lucide-react';
+import { UserCheck, PackageCheck, PackageOpen, Search, Plus, Loader, QrCode, Printer } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import QrCodeReader from '@/components/QrCodeReader';
+import { printReceipt } from '@/lib/warehouse-print';
 
 interface WarehouseDeliveryPanelProps {
   canManage: boolean;
@@ -113,6 +114,7 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
       toast.error('Informe uma quantidade válida.');
       return;
     }
+    const item = items.find((i) => i.id === selectedItemId);
     try {
       await deliverMutation.mutateAsync({
         employeeId: selectedEmployeeId,
@@ -122,6 +124,14 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
         obs: obs || null,
       });
       toast.success('Entrega registrada.');
+      if (item) {
+        printReceipt({
+          title: 'Termo de Entrega de Ferramenta/EPI',
+          employeeName: selectedEmployee.name,
+          items: [{ name: item.name, quantity: qty, unit: item.unit }],
+          obs: obs || null,
+        });
+      }
       setSelectedItemId('');
       setItemSearch('');
       setQuantity('1');

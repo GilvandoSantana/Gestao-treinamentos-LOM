@@ -4,11 +4,12 @@
  * histórico de movimentações.
  */
 
-import { useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Loader, QrCode } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ArrowDownCircle, ArrowUpCircle, Loader, QrCode, Clock } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import QrCodeReader from '@/components/QrCodeReader';
+import { printReceipt } from '@/lib/warehouse-print';
 import type { WarehouseMovementType } from '@shared/warehouse';
 
 interface WarehouseMovementsPanelProps {
@@ -34,6 +35,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseOrder, setPurchaseOrder] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
+  const [areaUso, setAreaUso] = useState('');
   const [showQrReader, setShowQrReader] = useState(false);
 
   const handleQrScan = (value: string) => {
@@ -57,7 +59,20 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
     setInvoiceNumber('');
     setPurchaseOrder('');
     setUnitPrice('');
+    setAreaUso('');
   };
+
+  const items = itemsQuery.data ?? [];
+
+  /** Última vez que o item selecionado saiu do estoque — só faz sentido
+   * mostrar no modo saída. */
+  const lastWithdrawal = useMemo(() => {
+    if (movementType !== 'saida' || !itemId) return null;
+    const matches = (movementsQuery.data ?? [])
+      .filter((m) => m.itemId === itemId && m.movementType === 'saida')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return matches[0] ?? null;
+  }, [movementsQuery.data, movementType, itemId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +81,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
       toast.error('Escolha o item e informe uma quantidade válida.');
       return;
     }
+    const item = items.find((i) => i.id === itemId);
     try {
       await createMutation.mutateAsync({
         itemId,
@@ -77,16 +93,23 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
         invoiceNumber: movementType === 'entrada' ? invoiceNumber || null : null,
         purchaseOrder: movementType === 'entrada' ? purchaseOrder || null : null,
         unitPrice: movementType === 'entrada' && unitPrice ? parseFloat(unitPrice) : null,
+        notes: movementType === 'saida' ? areaUso || null : null,
       });
       toast.success(movementType === 'entrada' ? 'Entrada registrada.' : 'Saída registrada.');
+      if (movementType === 'saida' && item && destination) {
+        printReceipt({
+          title: 'Termo de Retirada de Material',
+          employeeName: destination,
+          items: [{ name: item.name, quantity: qty, unit: item.unit }],
+          areaUso: areaUso || null,
+        });
+      }
       reset();
       await Promise.all([utils.warehouse.listItems.invalidate(), utils.warehouse.listMovements.invalidate()]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao registrar movimentação.');
     }
   };
-
-  const items = itemsQuery.data ?? [];
 
   return (
     <div>
@@ -145,6 +168,14 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
                 <QrCode size={16} />
               </button>
             </div>
+            {lastWithdrawal && (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground mt-1.5">
+                <Clock size={11} />
+                Última retirada: {new Date(lastWithdrawal.date).toLocaleDateString('pt-BR')}
+                {lastWithdrawal.destination && <> · {lastWithdrawal.destination}</>}
+                {' '}({lastWithdrawal.quantity} {items.find((i) => i.id === itemId)?.unit})
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -171,6 +202,18 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
               />
             </div>
           </div>
+
+          {movementType === 'saida' && (
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Área de uso</label>
+              <input
+                value={areaUso}
+                onChange={(e) => setAreaUso(e.target.value)}
+                placeholder="Ex: Manutenção, Almoxarifado, Obra 3..."
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              />
+            </div>
+          )}
 
           {movementType === 'entrada' && (
             <div className="grid grid-cols-2 gap-3">
