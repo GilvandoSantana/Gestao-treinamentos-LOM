@@ -31,6 +31,8 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
   const [responsible, setResponsible] = useState('');
   const [supplier, setSupplier] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [purchaseOrder, setPurchaseOrder] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
 
   const reset = () => {
     setItemId('');
@@ -39,6 +41,8 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
     setResponsible('');
     setSupplier('');
     setInvoiceNumber('');
+    setPurchaseOrder('');
+    setUnitPrice('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,6 +61,8 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
         responsible: responsible || null,
         supplier: movementType === 'entrada' ? supplier || null : null,
         invoiceNumber: movementType === 'entrada' ? invoiceNumber || null : null,
+        purchaseOrder: movementType === 'entrada' ? purchaseOrder || null : null,
+        unitPrice: movementType === 'entrada' && unitPrice ? parseFloat(unitPrice) : null,
       });
       toast.success(movementType === 'entrada' ? 'Entrada registrada.' : 'Saída registrada.');
       reset();
@@ -157,6 +163,24 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
                 <input
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Pedido de compra</label>
+                <input
+                  value={purchaseOrder}
+                  onChange={(e) => setPurchaseOrder(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Valor unitário (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={unitPrice}
+                  onChange={(e) => setUnitPrice(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
                 />
               </div>
