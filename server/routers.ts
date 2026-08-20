@@ -45,6 +45,7 @@ import {
   createFileRecord,
   renameFile,
   moveFile,
+  moveFolder,
   getFileById,
   softDeleteFile,
   restoreFile,
@@ -735,6 +736,30 @@ export const appRouter = router({
           role: ctx.siteRole,
           action: "cloud.fileMove",
           targetType: "cloudFile",
+          targetId: input.id,
+        });
+        return { success: true } as const;
+      }),
+
+    moveFolder: requirePermission('manageCloud')
+      .input(z.object({ id: z.string(), targetFolderId: z.string().nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        try {
+          await moveFolder(input.id, ctx.siteContract, input.targetFolderId);
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro ao mover pasta.",
+          });
+        }
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.folderMove",
+          targetType: "cloudFolder",
           targetId: input.id,
         });
         return { success: true } as const;

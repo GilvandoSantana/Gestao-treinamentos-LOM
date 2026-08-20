@@ -20,6 +20,7 @@ import {
   MoreVertical,
   Star,
   Pencil,
+  FolderInput,
   Share2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ import { formatBytes } from '@shared/cloud';
 import CloudShareDialog from '@/components/CloudShareDialog';
 import CloudPreviewModal from '@/components/CloudPreviewModal';
 import CloudMigrationPanel from '@/components/CloudMigrationPanel';
+import CloudMoveDialog from '@/components/CloudMoveDialog';
 
 interface CloudBrowserProps {
   canManage: boolean;
@@ -85,6 +87,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const [renameValue, setRenameValue] = useState('');
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ id: string; name: string } | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{ id: string; name: string; isFolder: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -498,6 +501,16 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                     <button
                       onClick={() => {
                         setOpenMenuId(null);
+                        setMoveTarget({ id: folder.id, name: folder.name, isFolder: true });
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
+                    >
+                      <FolderInput size={13} />
+                      Mover para...
+                    </button>
+                    <button
+                      onClick={() => {
+                        setOpenMenuId(null);
                         handleDeleteFolder(folder.id, folder.name);
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-danger hover:bg-muted transition-colors"
@@ -576,6 +589,16 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                       <button
                         onClick={() => {
                           setOpenMenuId(null);
+                          setMoveTarget({ id: file.id, name: file.name, isFolder: false });
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
+                      >
+                        <FolderInput size={13} />
+                        Mover para...
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOpenMenuId(null);
                           setShareTarget({ id: file.id, name: file.name });
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
@@ -616,6 +639,16 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           fileName={previewTarget.name}
           onClose={() => setPreviewTarget(null)}
           onDownload={handleDownload}
+        />
+      )}
+
+      {moveTarget && (
+        <CloudMoveDialog
+          itemId={moveTarget.id}
+          itemName={moveTarget.name}
+          isFolder={moveTarget.isFolder}
+          onClose={() => setMoveTarget(null)}
+          onMoved={refresh}
         />
       )}
     </div>

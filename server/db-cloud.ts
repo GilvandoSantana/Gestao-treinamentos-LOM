@@ -247,6 +247,38 @@ export async function moveFile(id: string, contractSlug: string, folderId: strin
     .where(and(eq(cloudFiles.id, id), eq(cloudFiles.contractSlug, contractSlug)));
 }
 
+/** Move uma pasta pra dentro de outra (ou pra raiz, se destino for null).
+ * Bloqueia mover a pasta pra dentro dela mesma ou de uma de suas próprias
+ * subpastas — isso criaria um ciclo impossível de navegar. */
+export async function moveFolder(
+  id: string,
+  contractSlug: string,
+  targetFolderId: string | null
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (targetFolderId) {
+    if (targetFolderId === id) {
+      throw new Error("Não é possível mover uma pasta para dentro dela mesma.");
+    }
+    let current = await getFolderById(targetFolderId);
+    let guard = 0;
+    while (current && guard < 30) {
+      if (current.id === id) {
+        throw new Error("Não é possível mover uma pasta para dentro de uma subpasta dela mesma.");
+      }
+      current = current.parentId ? await getFolderById(current.parentId) : undefined;
+      guard++;
+    }
+  }
+
+  await db
+    .update(cloudFolders)
+    .set({ parentId: targetFolderId })
+    .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
+}
+
 // ---------------------------------------------------------------------
 // Lixeira — exclusão nunca é imediata: marca deletedAt, some da listagem
 // normal, e some do R2 só na exclusão definitiva.
