@@ -24,6 +24,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
   const utils = trpc.useUtils();
   const itemsQuery = trpc.warehouse.listItems.useQuery();
   const movementsQuery = trpc.warehouse.listMovements.useQuery();
+  const employeesQuery = trpc.employees.list.useQuery();
   const createMutation = trpc.warehouse.createMovement.useMutation();
 
   const [movementType, setMovementType] = useState<WarehouseMovementType>(fixedType ?? 'saida');
@@ -36,9 +37,26 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
   const [purchaseOrder, setPurchaseOrder] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [areaUso, setAreaUso] = useState('');
-  const [showQrReader, setShowQrReader] = useState(false);
+  const [qrReaderFor, setQrReaderFor] = useState<'item' | 'employee' | null>(null);
+
+  const employees = employeesQuery.data ?? [];
 
   const handleQrScan = (value: string) => {
+    if (qrReaderFor === 'employee') {
+      const code = value.replace(/^FUNC:/, '');
+      const found = employees.find(
+        (e) => e.registration === code || e.name.toUpperCase().replace(/\s+/g, '_') === code
+      );
+      if (found) {
+        setDestination(found.name);
+        toast.success(`Colaborador identificado: ${found.name}`);
+      } else {
+        toast.error('Colaborador não encontrado para esse QR code.');
+      }
+      setQrReaderFor(null);
+      return;
+    }
+
     const code = value.replace(/^MAT:/, '');
     const found = items.find((i) => i.code === code);
     if (found) {
@@ -47,7 +65,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
     } else {
       toast.error('Item não encontrado para esse QR code.');
     }
-    setShowQrReader(false);
+    setQrReaderFor(null);
   };
 
   const reset = () => {
@@ -161,7 +179,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
               </select>
               <button
                 type="button"
-                onClick={() => setShowQrReader(true)}
+                onClick={() => setQrReaderFor('item')}
                 title="Ler QR code do item"
                 className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
               >
@@ -193,13 +211,25 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
               <label className="block text-xs font-semibold text-foreground mb-1">
                 {movementType === 'saida' ? 'Destino / quem retirou' : 'Responsável'}
               </label>
-              <input
-                value={movementType === 'saida' ? destination : responsible}
-                onChange={(e) =>
-                  movementType === 'saida' ? setDestination(e.target.value) : setResponsible(e.target.value)
-                }
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
-              />
+              <div className="flex gap-1.5">
+                <input
+                  value={movementType === 'saida' ? destination : responsible}
+                  onChange={(e) =>
+                    movementType === 'saida' ? setDestination(e.target.value) : setResponsible(e.target.value)
+                  }
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                />
+                {movementType === 'saida' && (
+                  <button
+                    type="button"
+                    onClick={() => setQrReaderFor('employee')}
+                    title="Ler QR code do colaborador"
+                    className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+                  >
+                    <QrCode size={16} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -321,7 +351,7 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
         );
       })()}
 
-      {showQrReader && <QrCodeReader onScan={handleQrScan} onClose={() => setShowQrReader(false)} />}
+      {qrReaderFor && <QrCodeReader onScan={handleQrScan} onClose={() => setQrReaderFor(null)} />}
     </div>
   );
 }
