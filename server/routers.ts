@@ -13,7 +13,7 @@ import { uploadCertificate, getCertificatesByTrainingId, getCertificatesByEmploy
 import { uploadCertificateToSupabase, deleteCertificateFromSupabase, uploadPhotoToSupabase, getPhotoUrl, getAllPhotoUrls, uploadFdsToSupabase, deleteFdsFromSupabase } from "./supabase-storage";
 import { listSafetySheets, getSafetySheetById, createSafetySheet, updateSafetySheetRoles, deleteSafetySheet, setSafetySheetContract } from "./db-fds";
 import { checkSitePassword, createSiteSessionToken, SITE_SESSION_COOKIE, IMPERSONATION_BACKUP_COOKIE, getRawCookie, verifyBackupToken, generateSessionMarker, checkLoginRateLimit, registerFailedLoginAttempt, clearLoginAttempts, getClientKey, hashAdminPassword, verifyAdminPassword } from "./site-auth";
-import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, getAdminById } from "./db-admins";
+import { listAdmins, getAdminByUsername, createAdmin, deleteAdmin, countAdminsByRole, updateAdminPermissions, updateAdminSetor, listSetores, getAdminById } from "./db-admins";
 import { PERMISSION_KEYS, DEFAULT_USER_PERMISSIONS, normalizePermissions, type Permissions } from "@shared/permissions";
 import { DOCUMENT_TYPES } from "@shared/document-types";
 import { DEFAULT_CONTRACT_SLUG, slugifyContract } from "@shared/contracts";
@@ -65,8 +65,10 @@ import {
   recalculateStorageUsed,
   listGroups,
   createGroup,
+  updateGroupAutoSetor,
   deleteGroup,
   listGroupMembers,
+  listEffectiveGroupMembers,
   addGroupMember,
   removeGroupMember,
   listFilesNeedingR2Migration,
@@ -354,6 +356,7 @@ export const appRouter = router({
               .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline"),
             password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
             contract: z.string().min(1),
+            setor: z.string().trim().max(100).nullish(),
             permissions: z.record(z.string(), z.boolean()).optional(),
           })
         )
@@ -387,8 +390,16 @@ export const appRouter = router({
             // aqui são sempre usuários, com permissões definidas na criação.
             role: "user",
             contract: input.contract,
+            setor: input.setor,
             permissions: normalizePermissions(input.permissions ?? DEFAULT_USER_PERMISSIONS, "user"),
           });
+        }),
+
+      setSetor: masterAdminProcedure
+        .input(z.object({ id: z.string(), setor: z.string().trim().max(100).nullable() }))
+        .mutation(async ({ input }) => {
+          await updateAdminSetor(input.id, input.setor);
+          return { success: true } as const;
         }),
 
       setPermissions: masterAdminProcedure
@@ -1026,12 +1037,17 @@ export const appRouter = router({
     }),
 
     createGroup: masterAdminProcedure
-      .input(z.object({ name: z.string().trim().min(2, "Informe o nome do grupo").max(120) }))
+      .input(
+        z.object({
+          name: z.string().trim().min(2, "Informe o nome do grupo").max(120),
+          autoSetor: z.string().trim().max(100).nullish(),
+        })
+      )
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
-        const group = await createGroup(uuidv4(), ctx.siteContract, input.name);
+        const group = await createGroup(uuidv4(), ctx.siteContract, input.name, input.autoSetor);
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
@@ -1042,6 +1058,23 @@ export const appRouter = router({
         });
         return group;
       }),
+
+    updateGroupAutoSetor: masterAdminProcedure
+      .input(z.object({ id: z.string(), autoSetor: z.string().trim().max(100).nullable() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        await updateGroupAutoSetor(input.id, ctx.siteContract, input.autoSetor);
+        return { success: true } as const;
+      }),
+
+    // Setores já em uso neste contrato, pra sugerir na hora de criar um
+    // grupo automático (em vez de precisar digitar o nome exato de cabeça).
+    listSetores: masterAdminProcedure.query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return listSetores(ctx.siteContract);
+    }),
 
     deleteGroup: masterAdminProcedure
       .input(z.object({ id: z.string() }))
@@ -1062,8 +1095,9 @@ export const appRouter = router({
 
     listGroupMembers: requirePermission('manageCloud')
       .input(z.object({ groupId: z.string() }))
-      .query(async ({ input }) => {
-        return listGroupMembers(input.groupId);
+      .query(async ({ input, ctx }) => {
+        if (!ctx.siteContract) return [];
+        return listEffectiveGroupMembers(input.groupId, ctx.siteContract);
       }),
 
     addGroupMember: masterAdminProcedure

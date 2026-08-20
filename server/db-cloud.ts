@@ -15,6 +15,7 @@ import {
   cloudGroupMembers,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { getAdminByUsername, listUsernamesBySetor } from "./db-admins";
 
 export interface CloudFolderInfo {
   id: string;
@@ -67,8 +68,14 @@ export interface CloudGroupInfo {
   id: string;
   contractSlug: string;
   name: string;
+  autoSetor: string | null;
   memberCount: number;
   createdAt: string;
+}
+
+export interface CloudGroupMemberInfo {
+  username: string;
+  source: 'manual' | 'auto';
 }
 
 function toFolderInfo(row: typeof cloudFolders.$inferSelect): CloudFolderInfo {
@@ -608,11 +615,12 @@ export async function listGroups(contractSlug: string): Promise<CloudGroupInfo[]
   const groups = await db.select().from(cloudGroups).where(eq(cloudGroups.contractSlug, contractSlug));
   const result: CloudGroupInfo[] = [];
   for (const g of groups) {
-    const members = await db.select().from(cloudGroupMembers).where(eq(cloudGroupMembers.groupId, g.id));
+    const members = await listEffectiveGroupMembers(g.id, contractSlug);
     result.push({
       id: g.id,
       contractSlug: g.contractSlug,
       name: g.name,
+      autoSetor: g.autoSetor,
       memberCount: members.length,
       createdAt: g.createdAt.toISOString(),
     });
@@ -620,18 +628,44 @@ export async function listGroups(contractSlug: string): Promise<CloudGroupInfo[]
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getGroupById(id: string): Promise<{ id: string; contractSlug: string; name: string } | undefined> {
+export async function getGroupById(
+  id: string
+): Promise<{ id: string; contractSlug: string; name: string; autoSetor: string | null } | undefined> {
   const db = await getDb();
   if (!db) return undefined;
   const rows = await db.select().from(cloudGroups).where(eq(cloudGroups.id, id));
-  return rows[0] ? { id: rows[0].id, contractSlug: rows[0].contractSlug, name: rows[0].name } : undefined;
+  return rows[0]
+    ? { id: rows[0].id, contractSlug: rows[0].contractSlug, name: rows[0].name, autoSetor: rows[0].autoSetor }
+    : undefined;
 }
 
-export async function createGroup(id: string, contractSlug: string, name: string): Promise<CloudGroupInfo> {
+export async function createGroup(
+  id: string,
+  contractSlug: string,
+  name: string,
+  autoSetor?: string | null
+): Promise<CloudGroupInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(cloudGroups).values({ id, contractSlug, name: name.trim() });
-  return { id, contractSlug, name: name.trim(), memberCount: 0, createdAt: new Date().toISOString() };
+  const cleanSetor = autoSetor?.trim() || null;
+  await db.insert(cloudGroups).values({ id, contractSlug, name: name.trim(), autoSetor: cleanSetor });
+  return {
+    id,
+    contractSlug,
+    name: name.trim(),
+    autoSetor: cleanSetor,
+    memberCount: 0,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function updateGroupAutoSetor(id: string, contractSlug: string, autoSetor: string | null): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(cloudGroups)
+    .set({ autoSetor: autoSetor?.trim() || null })
+    .where(and(eq(cloudGroups.id, id), eq(cloudGroups.contractSlug, contractSlug)));
 }
 
 export async function deleteGroup(id: string, contractSlug: string): Promise<void> {
@@ -644,11 +678,33 @@ export async function deleteGroup(id: string, contractSlug: string): Promise<voi
   // entre os do usuário) — não precisa limpar cloudShares manualmente.
 }
 
+/** Membros manuais (adicionados um por um) — sem os automáticos por setor. */
 export async function listGroupMembers(groupId: string): Promise<string[]> {
   const db = await getDb();
   if (!db) return [];
   const rows = await db.select().from(cloudGroupMembers).where(eq(cloudGroupMembers.groupId, groupId));
   return rows.map((r) => r.username);
+}
+
+/** Membros de verdade do grupo: manuais + todo mundo do setor automático
+ * (se configurado), sem duplicar quem estiver nos dois. */
+export async function listEffectiveGroupMembers(
+  groupId: string,
+  contractSlug: string
+): Promise<CloudGroupMemberInfo[]> {
+  const group = await getGroupById(groupId);
+  const manual = await listGroupMembers(groupId);
+  const result = new Map<string, CloudGroupMemberInfo>();
+  for (const username of manual) result.set(username, { username, source: 'manual' });
+
+  if (group?.autoSetor) {
+    const bySetor = await listUsernamesBySetor(contractSlug, group.autoSetor);
+    for (const username of bySetor) {
+      if (!result.has(username)) result.set(username, { username, source: 'auto' });
+    }
+  }
+
+  return Array.from(result.values()).sort((a, b) => a.username.localeCompare(b.username));
 }
 
 export async function addGroupMember(id: string, groupId: string, username: string): Promise<void> {
@@ -670,15 +726,29 @@ export async function removeGroupMember(groupId: string, username: string): Prom
     .where(and(eq(cloudGroupMembers.groupId, groupId), eq(cloudGroupMembers.username, username)));
 }
 
+/** Grupos dos quais o usuário faz parte — manualmente OU por bater o setor
+ * com o setor automático de algum grupo. */
 async function getGroupIdsForUsername(contractSlug: string, username: string): Promise<string[]> {
   const db = await getDb();
   if (!db) return [];
-  const myGroups = await db
+
+  const manualGroups = await db
     .select({ id: cloudGroups.id })
     .from(cloudGroupMembers)
     .innerJoin(cloudGroups, eq(cloudGroupMembers.groupId, cloudGroups.id))
     .where(and(eq(cloudGroupMembers.username, username), eq(cloudGroups.contractSlug, contractSlug)));
-  return myGroups.map((g) => g.id);
+  const ids = new Set(manualGroups.map((g) => g.id));
+
+  const account = await getAdminByUsername(username);
+  if (account?.setor) {
+    const autoGroups = await db
+      .select({ id: cloudGroups.id })
+      .from(cloudGroups)
+      .where(and(eq(cloudGroups.contractSlug, contractSlug), eq(cloudGroups.autoSetor, account.setor)));
+    for (const g of autoGroups) ids.add(g.id);
+  }
+
+  return Array.from(ids);
 }
 
 // ---------------------------------------------------------------------

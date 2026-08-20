@@ -142,6 +142,9 @@ export const admins = mysqlTable("admins", {
   role: varchar("role", { length: 20 }).notNull().default("user"),
   // Contrato do usuário: ele só enxerga dados deste contrato
   contract: varchar("contract", { length: 40 }).default("lom").notNull(),
+  // Setor/departamento (ex: "RH", "Segurança") — usado pra grupos
+  // automáticos da Nuvem: todo mundo do mesmo setor entra sozinho no grupo.
+  setor: varchar("setor", { length: 100 }),
   // JSON com as permissões concedidas a usuários comuns
   permissions: text("permissions"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -319,6 +322,9 @@ export const cloudGroups = mysqlTable("cloudGroups", {
   id: varchar("id", { length: 64 }).primaryKey(),
   contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
   name: varchar("name", { length: 120 }).notNull(),
+  // Quando preenchido, todo mundo cujo setor (admins.setor) bater com este
+  // valor entra no grupo automaticamente, sem precisar adicionar um por um.
+  autoSetor: varchar("autoSetor", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

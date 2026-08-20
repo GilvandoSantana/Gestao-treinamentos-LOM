@@ -30,21 +30,25 @@ export default function AdminManagementModal({
   currentUsername,
 }: AdminManagementModalProps) {
   const [newUsername, setNewUsername] = useState('');
+  const [newSetor, setNewSetor] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPermissions, setNewPermissions] = useState<Permissions>({ ...DEFAULT_USER_PERMISSIONS });
   const [newContract, setNewContract] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftPermissions, setDraftPermissions] = useState<Permissions | null>(null);
+  const [draftSetor, setDraftSetor] = useState('');
 
   const utils = trpc.useUtils();
   const listQuery = trpc.auth.admins.list.useQuery(undefined, { enabled: isOpen });
   // Só contratos ativos entram nas opções de cadastro; um excluído continua
   // existindo nas contas antigas, mas não pode receber gente nova.
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isOpen });
+  const setoresQuery = trpc.cloud.listSetores.useQuery(undefined, { enabled: isOpen });
   const contractNameBySlug = new Map((contractsQuery.data ?? []).map((c) => [c.slug, c.name]));
   const createMutation = trpc.auth.admins.create.useMutation();
   const deleteMutation = trpc.auth.admins.delete.useMutation();
   const setPermissionsMutation = trpc.auth.admins.setPermissions.useMutation();
+  const setSetorMutation = trpc.auth.admins.setSetor.useMutation();
   const impersonateMutation = trpc.auth.admins.impersonate.useMutation();
   const testEmailMutation = trpc.auth.testEmail.useMutation();
   const testWhatsAppMutation = trpc.auth.testWhatsApp.useMutation();
@@ -81,10 +85,12 @@ export default function AdminManagementModal({
         username: newUsername,
         password: newPassword,
         contract: newContract,
+        setor: newSetor.trim() || null,
         permissions: newPermissions,
       });
       toast.success('Usuário cadastrado!');
       setNewUsername('');
+      setNewSetor('');
       setNewContract('');
       setNewPassword('');
       setNewPermissions({ ...DEFAULT_USER_PERMISSIONS });
@@ -127,6 +133,16 @@ export default function AdminManagementModal({
       await utils.auth.admins.list.invalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao salvar permissões');
+    }
+  };
+
+  const handleSaveSetor = async (id: string) => {
+    try {
+      await setSetorMutation.mutateAsync({ id, setor: draftSetor.trim() || null });
+      toast.success('Setor atualizado.');
+      await Promise.all([utils.auth.admins.list.invalidate(), utils.cloud.listSetores.invalidate()]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar setor');
     }
   };
 
@@ -223,6 +239,7 @@ export default function AdminManagementModal({
                         onClick={() => {
                           setEditingId(isEditing ? null : account.id);
                           setDraftPermissions(isEditing ? null : { ...account.permissions });
+                          setDraftSetor(isEditing ? '' : account.setor ?? '');
                         }}
                         className="p-2 text-muted-foreground hover:text-orange transition-colors"
                         title="Definir permissões"
@@ -243,6 +260,27 @@ export default function AdminManagementModal({
 
                 {isEditing && draftPermissions && (
                   <div className="p-3 border-t border-border">
+                    <div className="mb-3">
+                      <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                        Setor
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          value={draftSetor}
+                          onChange={(e) => setDraftSetor(e.target.value)}
+                          placeholder="Ex: RH, Segurança..."
+                          list="setores-usuarios"
+                          className="flex-1 min-w-0 px-3 py-1.5 text-sm border border-border rounded-lg bg-background text-foreground"
+                        />
+                        <button
+                          onClick={() => handleSaveSetor(account.id)}
+                          disabled={setSetorMutation.isPending}
+                          className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-navy text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          Salvar setor
+                        </button>
+                      </div>
+                    </div>
                     <PermissionChecklist value={draftPermissions} onChange={setDraftPermissions} />
                     <button
                       onClick={() => handleSavePermissions(account.id)}
@@ -335,6 +373,20 @@ export default function AdminManagementModal({
             className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
             disabled={createMutation.isPending}
           />
+          <input
+            type="text"
+            value={newSetor}
+            onChange={(e) => setNewSetor(e.target.value)}
+            placeholder="Setor (opcional, ex: RH, Segurança...)"
+            list="setores-usuarios"
+            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+            disabled={createMutation.isPending}
+          />
+          <datalist id="setores-usuarios">
+            {setoresQuery.data?.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
           <div>
             <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
               Contrato

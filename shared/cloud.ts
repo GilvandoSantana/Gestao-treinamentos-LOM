@@ -73,6 +73,12 @@ export interface CloudGroupInfo {
   id: string;
   contractSlug: string;
   name: string;
+  autoSetor: string | null;
   memberCount: number;
   createdAt: string;
+}
+
+export interface CloudGroupMemberInfo {
+  username: string;
+  source: 'manual' | 'auto';
 }

@@ -18,6 +18,7 @@ export type PublicAdmin = {
   username: string;
   contract: string;
   role: SiteRole;
+  setor: string | null;
   permissions: Permissions;
   createdAt: Date;
 };
@@ -29,6 +30,7 @@ function toPublic(row: Admin): PublicAdmin {
     username: row.username,
     contract: row.contract || DEFAULT_CONTRACT_SLUG,
     role,
+    setor: row.setor ?? null,
     permissions: normalizePermissions(row.permissions, role),
     createdAt: row.createdAt,
   };
@@ -98,6 +100,7 @@ export async function createAdmin(input: {
   contract: string;
   passwordHash: string;
   role: SiteRole;
+  setor?: string | null;
   permissions?: Permissions;
 }): Promise<PublicAdmin> {
   const db = await getDb();
@@ -113,6 +116,7 @@ export async function createAdmin(input: {
     contract: input.contract,
     passwordHash: input.passwordHash,
     role: input.role,
+    setor: input.setor?.trim() || null,
     permissions,
   });
 
@@ -121,9 +125,42 @@ export async function createAdmin(input: {
     username: normalizedUsername,
     contract: input.contract,
     role: input.role,
+    setor: input.setor?.trim() || null,
     permissions: normalizePermissions(permissions, input.role),
     createdAt: new Date(),
   };
+}
+
+export async function updateAdminSetor(id: string, setor: string | null): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(admins)
+    .set({ setor: setor?.trim() || null })
+    .where(eq(admins.id, id));
+  invalidateAdminCache(id);
+}
+
+/** Setores já em uso neste contrato — pra sugerir na hora de criar um
+ * grupo automático, em vez da pessoa ter que lembrar o nome exato. */
+export async function listSetores(contract: string): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(admins).where(eq(admins.contract, contract));
+  const setores = new Set<string>();
+  for (const row of rows) {
+    if (row.setor) setores.add(row.setor);
+  }
+  return Array.from(setores).sort();
+}
+
+/** Nomes de usuário de todo mundo com esse setor, neste contrato — usado
+ * pra resolver quem entra num grupo automático. */
+export async function listUsernamesBySetor(contract: string, setor: string): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(admins).where(eq(admins.contract, contract));
+  return rows.filter((r) => r.setor?.toLowerCase() === setor.toLowerCase()).map((r) => r.username);
 }
 
 export async function updateAdminPermissions(
