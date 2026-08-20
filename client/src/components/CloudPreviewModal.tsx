@@ -1,6 +1,9 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial
- * CloudPreviewModal: abre PDF/imagem direto na tela, sem precisar baixar.
+ * CloudPreviewModal: abre PDF/imagem/Word/Excel/PowerPoint direto na tela,
+ * sem precisar baixar. Documentos do Office usam o visualizador do próprio
+ * Microsoft Office Online, que renderiza o arquivo de verdade a partir de
+ * um link temporário — não precisa de conta, chave, nem instalar nada.
  * Formatos não suportados mostram um aviso com botão de baixar.
  */
 
@@ -16,11 +19,22 @@ interface CloudPreviewModalProps {
   onDownload: (id: string, name: string) => void;
 }
 
-function canPreview(mimeType: string | null): 'pdf' | 'image' | 'text' | null {
-  if (!mimeType) return null;
+const OFFICE_MIME_TYPES = new Set([
+  'application/msword', // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/vnd.ms-excel', // .xls
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-powerpoint', // .ppt
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+]);
+
+const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx?)$/i;
+
+function canPreview(mimeType: string | null, fileName: string): 'pdf' | 'image' | 'text' | 'office' | null {
   if (mimeType === 'application/pdf') return 'pdf';
-  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType?.startsWith('image/')) return 'image';
   if (mimeType === 'text/plain') return 'text';
+  if ((mimeType && OFFICE_MIME_TYPES.has(mimeType)) || OFFICE_EXTENSIONS.test(fileName)) return 'office';
   return null;
 }
 
@@ -53,7 +67,7 @@ export default function CloudPreviewModal({ fileId, fileName, onClose, onDownloa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId]);
 
-  const kind = canPreview(mimeType);
+  const kind = canPreview(mimeType, fileName);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
@@ -94,6 +108,14 @@ export default function CloudPreviewModal({ fileId, fileName, onClose, onDownloa
 
           {!loading && url && kind === 'text' && (
             <iframe src={url} title={fileName} className="w-full h-full border-0 bg-white" />
+          )}
+
+          {!loading && url && kind === 'office' && (
+            <iframe
+              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+              title={fileName}
+              className="w-full h-full border-0 bg-white"
+            />
           )}
 
           {!loading && (!url || !kind) && (
