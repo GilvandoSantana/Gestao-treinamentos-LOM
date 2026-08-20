@@ -335,7 +335,7 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1">Unidade</label>
               <input
@@ -355,7 +355,7 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
               />
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <label className="block text-xs font-semibold text-foreground mb-1">Estoque mínimo</label>
               <input
                 type="number"

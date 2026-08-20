@@ -266,7 +266,7 @@ export default function Header({
                 {contractMenuOpen && (
                   <div
                     role="menu"
-                    className="absolute right-0 top-full mt-2 w-56 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto"
+                    className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto"
                   >
                     <button
                       role="menuitem"
@@ -370,7 +370,7 @@ export default function Header({
               {menuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 top-full mt-2 w-60 bg-card rounded-xl shadow-2xl border border-border z-50 animate-in fade-in zoom-in-95 duration-150 max-h-[75vh] overflow-y-auto"
+                  className="absolute right-0 top-full mt-2 w-60 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border z-50 animate-in fade-in zoom-in-95 duration-150 max-h-[75vh] overflow-y-auto"
                 >
                   {username && (
                     <div className="px-3.5 py-2.5 border-b border-border">

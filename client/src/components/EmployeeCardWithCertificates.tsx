@@ -197,7 +197,7 @@ export default function EmployeeCardWithCertificates({
                 {actionsOpen && (
                   <div
                     role="menu"
-                    className="absolute right-0 top-full mt-1.5 w-48 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-30"
+                    className="absolute right-0 top-full mt-1.5 w-48 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-30"
                   >
                     <button
                       role="menuitem"

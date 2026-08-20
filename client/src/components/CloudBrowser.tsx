@@ -347,7 +347,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                   <MoreVertical size={15} />
                 </button>
                 {openMenuId === folder.id && (
-                  <div className="absolute right-0 top-full mt-1 w-44 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-20">
+                  <div className="absolute right-0 top-full mt-1 w-44 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-20">
                     <button
                       onClick={() => handleToggleFavorite(folder.id, true)}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
@@ -425,7 +425,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                     <MoreVertical size={15} />
                   </button>
                   {openMenuId === file.id && (
-                    <div className="absolute right-0 top-full mt-1 w-44 bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-20">
+                    <div className="absolute right-0 top-full mt-1 w-44 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-20">
                       <button
                         onClick={() => handleToggleFavorite(file.id, false)}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
