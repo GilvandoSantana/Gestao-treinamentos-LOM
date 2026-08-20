@@ -5,9 +5,10 @@
  */
 
 import { useMemo, useState } from 'react';
-import { UserCheck, PackageCheck, PackageOpen, Search, Plus, Loader } from 'lucide-react';
+import { UserCheck, PackageCheck, PackageOpen, Search, Plus, Loader, QrCode } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import QrCodeReader from '@/components/QrCodeReader';
 
 interface WarehouseDeliveryPanelProps {
   canManage: boolean;
@@ -43,6 +44,8 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
   const returnMutation = trpc.warehouse.returnItem.useMutation();
   const [returnObsById, setReturnObsById] = useState<Record<string, string>>({});
 
+  const [qrReaderFor, setQrReaderFor] = useState<'employee' | 'item' | null>(null);
+
   const employees = employeesQuery.data ?? [];
   const items = (itemsQuery.data ?? []).filter((i) =>
     ['ferramenta', 'epi', 'equipamento'].includes(i.type)
@@ -66,6 +69,30 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
   }, [items, itemSearch]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+
+  const handleQrScan = (value: string) => {
+    if (qrReaderFor === 'employee') {
+      const code = value.replace(/^FUNC:/, '');
+      const found = employees.find((e) => e.registration === code || e.name.toUpperCase().replace(/\s+/g, '_') === code);
+      if (found) {
+        selectEmployee(found.id, found.name);
+        toast.success(`Colaborador identificado: ${found.name}`);
+      } else {
+        toast.error('Colaborador não encontrado para esse QR code.');
+      }
+    } else if (qrReaderFor === 'item') {
+      const code = value.replace(/^MAT:/, '');
+      const found = items.find((i) => i.code === code);
+      if (found) {
+        setSelectedItemId(found.id);
+        setItemSearch(`${found.code} — ${found.name}`);
+        toast.success(`Item identificado: ${found.name}`);
+      } else {
+        toast.error('Item não encontrado para esse QR code.');
+      }
+    }
+    setQrReaderFor(null);
+  };
 
   const selectEmployee = (id: string, name: string) => {
     setSelectedEmployeeId(id);
@@ -160,17 +187,27 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
           <UserCheck size={13} />
           Colaborador
         </label>
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={employeeSearch}
-            onChange={(e) => {
-              setEmployeeSearch(e.target.value);
-              setSelectedEmployeeId('');
-            }}
-            placeholder="Buscar por nome ou matrícula"
-            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
-          />
+        <div className="flex gap-1.5">
+          <div className="relative flex-1 min-w-0">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={employeeSearch}
+              onChange={(e) => {
+                setEmployeeSearch(e.target.value);
+                setSelectedEmployeeId('');
+              }}
+              placeholder="Buscar por nome ou matrícula"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setQrReaderFor('employee')}
+            title="Ler QR code do colaborador"
+            className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+          >
+            <QrCode size={16} />
+          </button>
         </div>
         {employeeSearch && !selectedEmployeeId && (
           <div className="mt-1.5 max-h-48 overflow-y-auto border border-border rounded-lg divide-y divide-border">
@@ -195,17 +232,27 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
         <div className="p-4 rounded-xl border border-border bg-muted/30 space-y-3">
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1">Ferramenta ou EPI</label>
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={itemSearch}
-                onChange={(e) => {
-                  setItemSearch(e.target.value);
-                  setSelectedItemId('');
-                }}
-                placeholder="Buscar por nome ou código"
-                className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
-              />
+            <div className="flex gap-1.5">
+              <div className="relative flex-1 min-w-0">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={itemSearch}
+                  onChange={(e) => {
+                    setItemSearch(e.target.value);
+                    setSelectedItemId('');
+                  }}
+                  placeholder="Buscar por nome ou código"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrReaderFor('item')}
+                title="Ler QR code do item"
+                className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+              >
+                <QrCode size={16} />
+              </button>
             </div>
             {itemSearch && !selectedItemId && (
               <div className="mt-1.5 max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border">
@@ -311,6 +358,8 @@ export default function WarehouseDeliveryPanel({ canManage, fixedMode }: Warehou
           </div>
         </div>
       )}
+
+      {qrReaderFor && <QrCodeReader onScan={handleQrScan} onClose={() => setQrReaderFor(null)} />}
     </div>
   );
 }

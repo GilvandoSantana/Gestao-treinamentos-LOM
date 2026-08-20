@@ -5,9 +5,10 @@
  */
 
 import { useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Loader } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Loader, QrCode } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import QrCodeReader from '@/components/QrCodeReader';
 import type { WarehouseMovementType } from '@shared/warehouse';
 
 interface WarehouseMovementsPanelProps {
@@ -33,6 +34,19 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseOrder, setPurchaseOrder] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
+  const [showQrReader, setShowQrReader] = useState(false);
+
+  const handleQrScan = (value: string) => {
+    const code = value.replace(/^MAT:/, '');
+    const found = items.find((i) => i.code === code);
+    if (found) {
+      setItemId(found.id);
+      toast.success(`Item identificado: ${found.name}`);
+    } else {
+      toast.error('Item não encontrado para esse QR code.');
+    }
+    setShowQrReader(false);
+  };
 
   const reset = () => {
     setItemId('');
@@ -109,18 +123,28 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
 
           <div>
             <label className="block text-xs font-semibold text-foreground mb-1">Item</label>
-            <select
-              value={itemId}
-              onChange={(e) => setItemId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
-            >
-              <option value="">Selecione um item</option>
-              {items.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.code} — {i.name} (estoque: {i.quantity} {i.unit})
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-1.5">
+              <select
+                value={itemId}
+                onChange={(e) => setItemId(e.target.value)}
+                className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              >
+                <option value="">Selecione um item</option>
+                {items.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.code} — {i.name} (estoque: {i.quantity} {i.unit})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowQrReader(true)}
+                title="Ler QR code do item"
+                className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+              >
+                <QrCode size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -253,6 +277,8 @@ export default function WarehouseMovementsPanel({ canManage, fixedType }: Wareho
           </>
         );
       })()}
+
+      {showQrReader && <QrCodeReader onScan={handleQrScan} onClose={() => setShowQrReader(false)} />}
     </div>
   );
 }
