@@ -216,20 +216,27 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+    // Converte pra array ANTES de limpar o input — em vários navegadores,
+    // resetar o valor do input esvazia a FileList original, já que ela é
+    // uma referência viva ao estado atual do campo.
+    const items = files ? Array.from(files).map((file) => ({ file, relativePath: file.name })) : [];
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (!files || files.length === 0) return;
-    await uploadMultiple(Array.from(files).map((file) => ({ file, relativePath: file.name })));
+    if (items.length === 0) return;
+    await uploadMultiple(items);
   };
 
   const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
+    const items = files
+      ? Array.from(files).map((file) => ({
+          file,
+          relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+        }))
+      : [];
     if (folderInputRef.current) folderInputRef.current.value = '';
-    if (!files || files.length === 0) return;
+    if (items.length === 0) return;
     await uploadMultiple(
-      Array.from(files).map((file) => ({
-        file,
-        relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
-      }))
+      items
     );
   };
 
