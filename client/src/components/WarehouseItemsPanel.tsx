@@ -4,12 +4,18 @@
  * almoxarifado — migrado de um sistema separado (Vercel + Supabase).
  */
 
-import { useMemo, useState } from 'react';
-import { Plus, Trash2, Pencil, X, Search, AlertTriangle } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Plus, Trash2, Pencil, X, Search, AlertTriangle, FileText, Download, FileSpreadsheet, Upload, Loader } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import DateInputBR from '@/components/DateInputBR';
 import WarehouseMigrationPanel from '@/components/WarehouseMigrationPanel';
+import {
+  exportItemsToExcel,
+  downloadItemsTemplate,
+  parseItemsExcelFile,
+  generateMonthlyReportPDF,
+} from '@/lib/warehouse-report';
 import {
   WAREHOUSE_ITEM_TYPES,
   WAREHOUSE_ITEM_TYPE_LABELS,
@@ -43,6 +49,72 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
   const itemsQuery = trpc.warehouse.listItems.useQuery();
   const upsertMutation = trpc.warehouse.upsertItem.useMutation();
   const deleteMutation = trpc.warehouse.deleteItem.useMutation();
+
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGenerateReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const movements = await utils.client.warehouse.listMovements.query();
+      generateMonthlyReportPDF(itemsQuery.data ?? [], movements, 'Administrador');
+      toast.success('Relatório gerado.');
+    } catch (error) {
+      toast.error('Erro ao gerar relatório.');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (!itemsQuery.data || itemsQuery.data.length === 0) {
+      toast.error('Nenhum item para exportar.');
+      return;
+    }
+    exportItemsToExcel(itemsQuery.data);
+    toast.success('Planilha exportada.');
+  };
+
+  const handleDownloadTemplate = () => {
+    downloadItemsTemplate();
+    toast.success('Modelo baixado.');
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (importInputRef.current) importInputRef.current.value = '';
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const parsedItems = await parseItemsExcelFile(file);
+      let created = 0;
+      let failed = 0;
+      for (const item of parsedItems) {
+        try {
+          await upsertMutation.mutateAsync({
+            code: item.code,
+            name: item.name,
+            type: item.type as WarehouseItemType,
+            unit: item.unit,
+            quantity: item.quantity,
+            estoqueMinimo: 10,
+            precoUnitario: 0,
+          });
+          created++;
+        } catch {
+          failed++;
+        }
+      }
+      await utils.warehouse.listItems.invalidate();
+      toast.success(`${created} item(ns) importado(s)${failed > 0 ? `, ${failed} falharam` : ''}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao importar planilha.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -139,6 +211,45 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
 
   return (
     <div>
+      {/* Relatório / Exportar / Modelo / Importar */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button
+          onClick={handleGenerateReport}
+          disabled={isGeneratingReport}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-danger text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {isGeneratingReport ? <Loader size={13} className="animate-spin" /> : <FileText size={13} />}
+          Relatório PDF
+        </button>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-navy text-white hover:opacity-90"
+        >
+          <Download size={13} />
+          Exportar
+        </button>
+        <button
+          onClick={handleDownloadTemplate}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-muted text-foreground hover:bg-muted/70"
+        >
+          <FileSpreadsheet size={13} />
+          Modelo
+        </button>
+        {canManage && (
+          <>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              disabled={isImporting}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-orange text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {isImporting ? <Loader size={13} className="animate-spin" /> : <Upload size={13} />}
+              {isImporting ? 'Importando...' : 'Importar'}
+            </button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls" onChange={handleImportFile} className="hidden" />
+          </>
+        )}
+      </div>
+
       {/* Busca e filtro */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1 min-w-0">
