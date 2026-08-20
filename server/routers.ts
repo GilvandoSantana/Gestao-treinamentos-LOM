@@ -37,6 +37,8 @@ import {
 } from "./db-contract-fields";
 import {
   listFolderContents,
+  canAccessFolder,
+  canAccessFile,
   getFolderPath,
   createFolder,
   renameFolder,
@@ -527,8 +529,20 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         if (!ctx.siteContract) return { folders: [], files: [], path: [] };
         const folderId = input?.folderId ?? null;
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+
+        if (folderId) {
+          const allowed = await canAccessFolder(ctx.siteContract, folderId, accessCtx);
+          if (!allowed) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Você não tem permissão para acessar esta pasta.",
+            });
+          }
+        }
+
         const [contents, path] = await Promise.all([
-          listFolderContents(ctx.siteContract, folderId),
+          listFolderContents(ctx.siteContract, folderId, accessCtx),
           folderId ? getFolderPath(folderId) : Promise.resolve([]),
         ]);
         return { ...contents, path };
@@ -562,7 +576,13 @@ export const appRouter = router({
     }),
 
     createFolder: requirePermission('manageCloud')
-      .input(z.object({ parentId: z.string().nullable(), name: z.string().trim().min(1).max(255) }))
+      .input(
+        z.object({
+          parentId: z.string().nullable(),
+          name: z.string().trim().min(1).max(255),
+          restrictedToGroupId: z.string().nullish(),
+        })
+      )
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({
@@ -570,12 +590,20 @@ export const appRouter = router({
             message: "Escolha um contrato no cabeçalho antes de criar uma pasta.",
           });
         }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (input.parentId) {
+          const allowed = await canAccessFolder(ctx.siteContract, input.parentId, accessCtx);
+          if (!allowed) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
+          }
+        }
         const folder = await createFolder({
           id: uuidv4(),
           contractSlug: ctx.siteContract,
           parentId: input.parentId,
           name: input.name,
           createdBy: ctx.siteAdminUsername,
+          restrictedToGroupId: input.restrictedToGroupId,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -593,6 +621,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFolder(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
         }
         await renameFolder(input.id, ctx.siteContract, input.name);
         void logActivity({
@@ -612,6 +644,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFolder(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
         }
         await deleteFolderRecursive(input.id, ctx.siteContract, ctx.siteAdminUsername, false);
         void logActivity({
@@ -657,6 +693,14 @@ export const appRouter = router({
             code: "BAD_REQUEST",
             message: "Escolha um contrato no cabeçalho antes de enviar um arquivo.",
           });
+        }
+
+        if (input.folderId) {
+          const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+          const allowed = await canAccessFolder(ctx.siteContract, input.folderId, accessCtx);
+          if (!allowed) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
+          }
         }
 
         const fileBuffer = Buffer.from(input.fileData, "base64");
@@ -723,6 +767,10 @@ export const appRouter = router({
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
+        }
         await renameFile(input.id, ctx.siteContract, input.name);
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -741,6 +789,13 @@ export const appRouter = router({
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
+        }
+        if (input.folderId && !(await canAccessFolder(ctx.siteContract, input.folderId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso à pasta de destino." });
+        }
         await moveFile(input.id, ctx.siteContract, input.folderId);
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -757,6 +812,16 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFolder(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
+        }
+        if (
+          input.targetFolderId &&
+          !(await canAccessFolder(ctx.siteContract, input.targetFolderId, accessCtx))
+        ) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso à pasta de destino." });
         }
         try {
           await moveFolder(input.id, ctx.siteContract, input.targetFolderId);
@@ -785,6 +850,10 @@ export const appRouter = router({
         const file = await getFileById(input.id);
         if (!file || file.contractSlug !== ctx.siteContract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract!, file.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
         }
         if (file.r2Key) {
           if (!isR2Configured) {
@@ -815,6 +884,10 @@ export const appRouter = router({
         if (!file || file.contractSlug !== ctx.siteContract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
         }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract!, file.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
+        }
         if (file.r2Key) {
           if (!isR2Configured) {
             throw new TRPCError({ code: "BAD_REQUEST", message: "Armazenamento não configurado." });
@@ -832,6 +905,10 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
         }
         const file = await getFileById(input.id);
         await softDeleteFile(input.id, ctx.siteContract, ctx.siteAdminUsername);

@@ -258,6 +258,11 @@ export const cloudFolders = mysqlTable("cloudFolders", {
   // até ser excluída definitivamente.
   deletedAt: timestamp("deletedAt"),
   deletedBy: varchar("deletedBy", { length: 100 }),
+  // Quando preenchido, só quem for membro deste grupo (ou o administrador
+  // principal) consegue ENTRAR na pasta — mas o nome dela continua
+  // aparecendo pra todo mundo na listagem de cima. Subpastas/arquivos
+  // criados aqui dentro herdam esta mesma restrição automaticamente.
+  restrictedToGroupId: varchar("restrictedToGroupId", { length: 64 }),
 });
 
 export const cloudFiles = mysqlTable("cloudFiles", {

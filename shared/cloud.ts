@@ -37,6 +37,9 @@ export interface CloudFolderInfo {
   createdBy: string | null;
   createdAt: string;
   deletedAt: string | null;
+  restrictedToGroupId: string | null;
+  restrictedToGroupName: string | null;
+  hasAccess: boolean;
 }
 
 export interface CloudFileInfo {

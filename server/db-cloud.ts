@@ -25,6 +25,11 @@ export interface CloudFolderInfo {
   createdBy: string | null;
   createdAt: string;
   deletedAt: string | null;
+  restrictedToGroupId: string | null;
+  restrictedToGroupName: string | null;
+  /** Se a pessoa que pediu a listagem pode ENTRAR nesta pasta (não impede
+   * o nome dela aparecer na lista — só controla se dá pra abrir). */
+  hasAccess: boolean;
 }
 
 export interface CloudFileInfo {
@@ -78,7 +83,11 @@ export interface CloudGroupMemberInfo {
   source: 'manual' | 'auto';
 }
 
-function toFolderInfo(row: typeof cloudFolders.$inferSelect): CloudFolderInfo {
+function toFolderInfo(
+  row: typeof cloudFolders.$inferSelect,
+  hasAccess = true,
+  restrictedToGroupName: string | null = null
+): CloudFolderInfo {
   return {
     id: row.id,
     contractSlug: row.contractSlug,
@@ -87,6 +96,9 @@ function toFolderInfo(row: typeof cloudFolders.$inferSelect): CloudFolderInfo {
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+    restrictedToGroupId: row.restrictedToGroupId,
+    restrictedToGroupName,
+    hasAccess,
   };
 }
 
@@ -129,9 +141,59 @@ function toShareInfo(row: typeof cloudShares.$inferSelect, groupName: string | n
 // ---------------------------------------------------------------------
 
 /** Conteúdo de uma pasta (ou da raiz, quando folderId é null). Nunca inclui itens na lixeira. */
+export interface CloudAccessContext {
+  username: string;
+  isMasterAdmin: boolean;
+}
+
+/** Verifica, pra quem está pedindo, se dá pra ENTRAR nesta pasta. Não
+ * restringe listar o NOME dela num nível acima — só abrir o conteúdo. */
+export async function canAccessFolder(
+  contractSlug: string,
+  folderId: string,
+  ctx: CloudAccessContext
+): Promise<boolean> {
+  if (ctx.isMasterAdmin) return true;
+  const db = await getDb();
+  if (!db) return false;
+
+  const rows = await db.select().from(cloudFolders).where(eq(cloudFolders.id, folderId));
+  const folder = rows[0];
+  if (!folder || !folder.restrictedToGroupId) return true;
+
+  const members = await listEffectiveGroupMembers(folder.restrictedToGroupId, contractSlug);
+  if (members.some((m) => m.username === ctx.username)) return true;
+
+  // Exceção: compartilhamento individual/de grupo continua valendo mesmo
+  // sem ser membro do grupo dono da pasta.
+  const shareRows = await db.select().from(cloudShares).where(eq(cloudShares.folderId, folderId));
+  if (shareRows.some((s) => s.sharedWith === ctx.username)) return true;
+  if (shareRows.some((s) => s.sharedWithGroupId)) {
+    const myGroupIds = await getGroupIdsForUsername(contractSlug, ctx.username);
+    if (shareRows.some((s) => s.sharedWithGroupId && myGroupIds.includes(s.sharedWithGroupId))) return true;
+  }
+
+  return false;
+}
+
+/** Mesma checagem, mas pra um arquivo — olha a restrição da pasta que o
+ * contém (arquivo na raiz nunca tem restrição). */
+export async function canAccessFile(
+  contractSlug: string,
+  fileId: string,
+  ctx: CloudAccessContext
+): Promise<boolean> {
+  if (ctx.isMasterAdmin) return true;
+  const file = await getFileById(fileId);
+  if (!file) return false;
+  if (!file.folderId) return true;
+  return canAccessFolder(contractSlug, file.folderId, ctx);
+}
+
 export async function listFolderContents(
   contractSlug: string,
-  folderId: string | null
+  folderId: string | null,
+  ctx?: CloudAccessContext
 ): Promise<{ folders: CloudFolderInfo[]; files: CloudFileInfo[] }> {
   const db = await getDb();
   if (!db) return { folders: [], files: [] };
@@ -147,13 +209,29 @@ export async function listFolderContents(
     isNull(cloudFiles.deletedAt)
   );
 
-  const [folders, files] = await Promise.all([
+  const [folderRows, files] = await Promise.all([
     db.select().from(cloudFolders).where(folderCondition),
     db.select().from(cloudFiles).where(fileCondition),
   ]);
 
+  const groupNameCache = new Map<string, string | null>();
+  const folders: CloudFolderInfo[] = [];
+  for (const row of folderRows) {
+    let hasAccess = true;
+    let groupName: string | null = null;
+    if (row.restrictedToGroupId) {
+      if (!groupNameCache.has(row.restrictedToGroupId)) {
+        const group = await getGroupById(row.restrictedToGroupId);
+        groupNameCache.set(row.restrictedToGroupId, group?.name ?? null);
+      }
+      groupName = groupNameCache.get(row.restrictedToGroupId) ?? null;
+      hasAccess = ctx ? await canAccessFolder(contractSlug, row.id, ctx) : true;
+    }
+    folders.push(toFolderInfo(row, hasAccess, groupName));
+  }
+
   return {
-    folders: folders.map(toFolderInfo).sort((a, b) => a.name.localeCompare(b.name)),
+    folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
     files: files.map(toFileInfo).sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
@@ -191,11 +269,37 @@ export async function createFolder(input: {
   parentId: string | null;
   name: string;
   createdBy: string | null;
+  /** undefined = herda do pai (se o pai tiver restrição); null = explicitamente sem restrição. */
+  restrictedToGroupId?: string | null;
 }): Promise<CloudFolderInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(cloudFolders).values(input);
-  return { ...input, createdAt: new Date().toISOString(), deletedAt: null };
+
+  let restrictedToGroupId = input.restrictedToGroupId;
+  if (restrictedToGroupId === undefined) {
+    restrictedToGroupId = null;
+    if (input.parentId) {
+      const parent = await getFolderById(input.parentId);
+      restrictedToGroupId = parent?.restrictedToGroupId ?? null;
+    }
+  }
+
+  await db.insert(cloudFolders).values({ ...input, restrictedToGroupId });
+
+  let restrictedToGroupName: string | null = null;
+  if (restrictedToGroupId) {
+    const group = await getGroupById(restrictedToGroupId);
+    restrictedToGroupName = group?.name ?? null;
+  }
+
+  return {
+    ...input,
+    restrictedToGroupId,
+    restrictedToGroupName,
+    hasAccess: true,
+    createdAt: new Date().toISOString(),
+    deletedAt: null,
+  };
 }
 
 export async function renameFolder(id: string, contractSlug: string, name: string): Promise<void> {
@@ -359,7 +463,7 @@ export async function listTrash(
       .orderBy(desc(cloudFiles.deletedAt)),
   ]);
 
-  return { folders: folders.map(toFolderInfo), files: files.map(toFileInfo) };
+  return { folders: folders.map((f) => toFolderInfo(f)), files: files.map(toFileInfo) };
 }
 
 /**

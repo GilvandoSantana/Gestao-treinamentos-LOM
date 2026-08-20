@@ -22,6 +22,8 @@ import {
   Pencil,
   FolderInput,
   Share2,
+  Lock,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
@@ -80,6 +82,7 @@ function readEntry(entry: FileSystemEntry, basePath: string, results: FileWithPa
 export default function CloudBrowser({ canManage, currentFolderId, onNavigate, isMasterAdmin }: CloudBrowserProps) {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderGroupId, setNewFolderGroupId] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; done: number; total: number } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -93,6 +96,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
 
   const utils = trpc.useUtils();
   const listQuery = trpc.cloud.list.useQuery({ folderId: currentFolderId });
+  const groupsQuery = trpc.cloud.listGroups.useQuery(undefined, { enabled: canManage });
   const favoritesQuery = trpc.cloud.listFavorites.useQuery();
   const createFolderMutation = trpc.cloud.createFolder.useMutation();
   const renameFolderMutation = trpc.cloud.renameFolder.useMutation();
@@ -116,8 +120,17 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await createFolderMutation.mutateAsync({ parentId: currentFolderId, name: newFolderName.trim() });
+      await createFolderMutation.mutateAsync({
+        parentId: currentFolderId,
+        name: newFolderName.trim(),
+        // '' = não escolheu nada, herda da pasta atual (undefined faz isso
+        // no servidor); '__none__' = escolheu explicitamente "sem restrição".
+        ...(newFolderGroupId === ''
+          ? {}
+          : { restrictedToGroupId: newFolderGroupId === '__none__' ? null : newFolderGroupId }),
+      });
       setNewFolderName('');
+      setNewFolderGroupId('');
       setShowNewFolder(false);
       await refresh();
       toast.success('Pasta criada.');
@@ -270,6 +283,18 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     }
   };
 
+  const handleFolderClick = (folder: (typeof folders)[number]) => {
+    if (!folder.hasAccess) {
+      toast.error(
+        folder.restrictedToGroupName
+          ? `Só quem é do grupo "${folder.restrictedToGroupName}" pode acessar esta pasta.`
+          : 'Você não tem acesso a esta pasta.'
+      );
+      return;
+    }
+    onNavigate(folder.id);
+  };
+
   const handleDownload = async (id: string, name: string) => {
     try {
       const { url } = await getDownloadUrlMutation.mutateAsync({ id });
@@ -416,22 +441,47 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
       )}
 
       {showNewFolder && (
-        <div className="flex gap-2 mb-3">
-          <input
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Nome da pasta"
-            autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
-            className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
-          />
-          <button
-            onClick={handleCreateFolder}
-            disabled={createFolderMutation.isPending || !newFolderName.trim()}
-            className="shrink-0 px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-          >
-            Criar
-          </button>
+        <div className="mb-3 p-3 rounded-lg border border-border bg-muted/20 space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Nome da pasta"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+              className="flex-1 min-w-0 px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+            />
+            <button
+              onClick={handleCreateFolder}
+              disabled={createFolderMutation.isPending || !newFolderName.trim()}
+              className="shrink-0 px-3 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+            >
+              Criar
+            </button>
+          </div>
+          {(groupsQuery.data?.length ?? 0) > 0 && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground mb-1">
+                <Lock size={11} />
+                Restringir a um grupo (opcional)
+              </label>
+              <select
+                value={newFolderGroupId}
+                onChange={(e) => setNewFolderGroupId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              >
+                <option value="">
+                  {currentFolderId ? 'Herdar restrição da pasta atual' : 'Sem restrição — todo mundo acessa'}
+                </option>
+                <option value="__none__">Sem restrição — todo mundo acessa</option>
+                {groupsQuery.data?.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    Só o grupo "{g.name}"
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -442,7 +492,20 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
         </p>
       )}
 
-      {!listQuery.isLoading && isEmpty && (
+      {listQuery.isError && (
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <Lock size={26} className="text-danger" />
+          <p className="text-sm text-foreground font-medium">Você não tem acesso a esta pasta.</p>
+          <button
+            onClick={() => onNavigate(null)}
+            className="text-xs font-semibold text-orange hover:opacity-80"
+          >
+            Voltar para Meus arquivos
+          </button>
+        </div>
+      )}
+
+      {!listQuery.isLoading && !listQuery.isError && isEmpty && (
         <p className="text-sm text-muted-foreground text-center py-10">
           Pasta vazia.
           {canManage ? ' Arraste um arquivo ou pasta aqui, ou use os botões acima.' : ''}
@@ -466,11 +529,27 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
               />
             ) : (
               <button
-                onClick={() => onNavigate(folder.id)}
-                className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                onClick={() => handleFolderClick(folder)}
+                className={`flex items-center gap-2.5 min-w-0 flex-1 text-left ${
+                  !folder.hasAccess ? 'opacity-60' : ''
+                }`}
               >
                 <Folder size={18} className="text-orange shrink-0" />
                 <span className="text-sm font-medium text-foreground truncate">{folder.name}</span>
+                {!folder.hasAccess && (
+                  <span title={`Restrita ao grupo "${folder.restrictedToGroupName ?? ''}"`}>
+                    <Lock size={13} className="text-danger shrink-0" />
+                  </span>
+                )}
+                {folder.hasAccess && folder.restrictedToGroupName && (
+                  <span
+                    title={`Restrita ao grupo "${folder.restrictedToGroupName}"`}
+                    className="flex items-center gap-0.5 text-[10px] text-teal bg-teal/10 px-1.5 py-0.5 rounded-full shrink-0"
+                  >
+                    <Users size={9} />
+                    {folder.restrictedToGroupName}
+                  </span>
+                )}
                 {favoriteFolderIds.has(folder.id) && <Star size={13} className="text-warning fill-warning shrink-0" />}
               </button>
             )}
