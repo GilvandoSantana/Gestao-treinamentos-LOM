@@ -13,10 +13,7 @@ import {
   Download,
   Upload,
   RefreshCw,
-  Cloud,
-  Receipt,
   UserCog,
-  Warehouse,
   Shield,
   FileText,
   LayoutGrid,
@@ -30,7 +27,6 @@ import {
   UserRoundX,
   Footprints,
   FolderOpen,
-  CreditCard,
   Building2,
   ChevronDown,
 } from 'lucide-react';
@@ -59,10 +55,7 @@ interface HeaderProps {
   canImportExport?: boolean;
   onImportExcel?: () => void;
   onRenewBulk?: () => void;
-  onShowCloud?: () => void;
-  onShowInvoices?: () => void;
   onShowRolesTrainingTypes?: () => void;
-  onShowWarehouse?: () => void;
   notificationItems?: TrainingAlertItem[];
   onNotificationSelect?: (item: TrainingAlertItem) => void;
   onSeeAllNotifications?: () => void;
@@ -76,7 +69,6 @@ interface HeaderProps {
   onShowDismissed?: () => void;
   onShowActivity?: () => void;
   onShowDocuments?: () => void;
-  onShowBadges?: () => void;
   dismissedCount?: number;
 }
 
@@ -96,10 +88,7 @@ export default function Header({
   canImportExport = false,
   onImportExcel,
   onRenewBulk,
-  onShowCloud,
-  onShowInvoices,
   onShowRolesTrainingTypes,
-  onShowWarehouse,
   notificationItems,
   onNotificationSelect,
   onSeeAllNotifications,
@@ -111,7 +100,6 @@ export default function Header({
   onShowDismissed,
   onShowActivity,
   onShowDocuments,
-  onShowBadges,
   dismissedCount = 0,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
@@ -418,33 +406,6 @@ export default function Header({
                     </div>
                   )}
 
-                  {onShowCloud && (
-                    <div className="py-1 border-b border-border">
-                      <button onClick={runAndClose(onShowCloud)} className={menuItemClass} role="menuitem">
-                        <Cloud size={16} className="text-muted-foreground" />
-                        Nuvem de Arquivos
-                      </button>
-                    </div>
-                  )}
-
-                  {onShowInvoices && (
-                    <div className="py-1 border-b border-border">
-                      <button onClick={runAndClose(onShowInvoices)} className={menuItemClass} role="menuitem">
-                        <Receipt size={16} className="text-muted-foreground" />
-                        Notas Fiscais
-                      </button>
-                    </div>
-                  )}
-
-                  {onShowWarehouse && (
-                    <div className="py-1 border-b border-border">
-                      <button onClick={runAndClose(onShowWarehouse)} className={menuItemClass} role="menuitem">
-                        <Warehouse size={16} className="text-muted-foreground" />
-                        Almoxarifado
-                      </button>
-                    </div>
-                  )}
-
                   {onShowRolesTrainingTypes && (
                     <div className="py-1 border-b border-border">
                       <button onClick={runAndClose(onShowRolesTrainingTypes)} className={menuItemClass} role="menuitem">
@@ -464,12 +425,6 @@ export default function Header({
                             {dismissedCount}
                           </span>
                         )}
-                      </button>
-                    )}
-                    {onShowBadges && (
-                      <button onClick={runAndClose(onShowBadges)} className={menuItemClass} role="menuitem">
-                        <CreditCard size={16} className="text-muted-foreground" />
-                        Crachás
                       </button>
                     )}
                     {onShowDocuments && (

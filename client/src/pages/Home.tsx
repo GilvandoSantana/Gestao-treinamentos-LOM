@@ -45,6 +45,7 @@ import AuditHistory from '@/components/AuditHistory';
 import RoleFilter from '@/components/RoleFilter';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
+import ModuleQuickAccess from '@/components/ModuleQuickAccess';
 import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { setActiveContract } from '@/lib/active-contract';
@@ -635,10 +636,7 @@ export default function Home() {
           canImportExport={session.can('importExport')}
           onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}
           onRenewBulk={session.can('editEmployees') ? () => setShowRenewBulk(true) : undefined}
-          onShowCloud={session.can('viewCloud') ? () => setShowCloud(true) : undefined}
-          onShowInvoices={session.can('viewInvoices') ? () => setShowInvoices(true) : undefined}
           onShowRolesTrainingTypes={session.isMasterAdmin ? () => setShowRolesTrainingTypes(true) : undefined}
-          onShowWarehouse={session.can('viewWarehouse') ? () => setShowWarehouse(true) : undefined}
           notificationItems={trainingAlerts.items}
           onNotificationSelect={(item) => {
             setSearchQuery(item.employeeName);
@@ -671,10 +669,15 @@ export default function Home() {
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           onShowContracts={session.isMasterAdmin ? () => setShowContracts(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
-          onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
           dismissedCount={dismissedEmployees.length}
         />
 
+        <ModuleQuickAccess
+          onShowCloud={session.can('viewCloud') ? () => setShowCloud(true) : undefined}
+          onShowWarehouse={session.can('viewWarehouse') ? () => setShowWarehouse(true) : undefined}
+          onShowInvoices={session.can('viewInvoices') ? () => setShowInvoices(true) : undefined}
+          onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
+        />
         {showAdminManagement && (
           <AdminManagementModal
             isOpen={showAdminManagement}
