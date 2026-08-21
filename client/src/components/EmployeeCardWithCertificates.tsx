@@ -3,7 +3,7 @@
  * Extended EmployeeCard with certificate listing and badge generation functionality
  */
 
-import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical, Copy, History, FileDown } from 'lucide-react';
+import { Edit2, Trash2, Calendar, Shield, User, ChevronDown, FileText, UserRoundX, MoreVertical, Copy, History, FileDown, Eye } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
@@ -13,6 +13,7 @@ interface EmployeeCardWithCertificatesProps {
   employee: Employee;
   index: number;
   onEdit: (employee: Employee) => void;
+  onView: (employee: Employee) => void;
   onDuplicate?: (employee: Employee) => void;
   onExportData?: (employee: Employee) => void;
   onDelete: (id: string) => void;
@@ -55,6 +56,7 @@ export default function EmployeeCardWithCertificates({
   employee,
   index,
   onEdit,
+  onView,
   onDuplicate,
   onExportData,
   onDelete,
@@ -175,6 +177,16 @@ export default function EmployeeCardWithCertificates({
                 })()}
               </div>
             </div>
+
+            {/* Visualizar — sempre visível, mesmo pra quem não pode editar */}
+            <button
+              onClick={() => onView(employee)}
+              aria-label="Visualizar colaborador"
+              title="Visualizar"
+              className="shrink-0 p-2 rounded-lg border bg-white/10 hover:bg-white/20 text-white border-white/20 transition-all"
+            >
+              <Eye size={17} />
+            </button>
 
             {/* Ações reunidas num menu, para o cabeçalho não virar uma fileira
                 de botões coloridos */}

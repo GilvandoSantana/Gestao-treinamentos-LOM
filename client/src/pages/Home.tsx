@@ -754,6 +754,7 @@ export default function Home() {
                 employee={employee}
                 index={index}
                 onEdit={(emp) => openModal(emp)}
+                onView={(emp) => setViewingEmployee(emp)}
                 onDuplicate={session.can('editEmployees') ? (emp) => openDuplicateModal(emp) : undefined}
                 onExportData={session.can('viewCertificates') ? (emp) => handleExportEmployeeData(emp) : undefined}
                 onDelete={(id) => {
