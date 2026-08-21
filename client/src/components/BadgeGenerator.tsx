@@ -81,7 +81,6 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     const grayBg = '#f2f2f2';
     const grayBorder = '#cccccc';
     const red = '#ff0000';
-    const siteUrl = "https://gestao-treinamentos-lom.up.railway.app";
 
     // ================================================================
     // --- FRENTE (face esquerda: x=0..55, y=0..85) ---
@@ -129,9 +128,12 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
       doc.text('FOTO', 15, 30, { align: 'center' });
     }
 
-    // QR Code (escala: x: 10*0.55=5.5, y: 80*0.567=45.3, w: 35*0.55=19.25, h: 35*0.567=19.8)
+    // QR Code do colaborador — mesmo formato usado no leitor do Almoxarifado
+    // (FUNC:<matrícula ou nome>), pra dar pra escanear o crachá com a câmera
+    // e identificar o colaborador na Entrega/Saída de material.
     try {
-      const qrCodeDataUrl = await generateQRCode(siteUrl);
+      const qrCode = `FUNC:${employee.registration || employee.name.replace(/\s+/g, '_').toUpperCase()}`;
+      const qrCodeDataUrl = await generateQRCode(qrCode);
       if (qrCodeDataUrl) {
         doc.addImage(qrCodeDataUrl, 'PNG', 5.5, 45.5, 19, 19);
       }
