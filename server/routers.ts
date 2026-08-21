@@ -48,6 +48,10 @@ import {
   renameFile,
   moveFile,
   moveFolder,
+  uploadNewVersion,
+  listFileVersions,
+  getVersionContentInfo,
+  restoreFileVersion,
   getFileById,
   softDeleteFile,
   restoreFile,
@@ -761,6 +765,132 @@ export const appRouter = router({
         return file;
       }),
 
+    // Enviar uma nova versao de um arquivo ja existente - a versao anterior
+    // vai pro historico, nao e apagada. Mesmas regras de tamanho/espaco do
+    // upload normal.
+    uploadNewVersion: requirePermission('manageCloud')
+      .input(
+        z.object({
+          fileId: z.string(),
+          fileName: z.string(),
+          fileData: z.string(),
+          mimeType: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const existing = await getFileById(input.fileId);
+        if (!existing || existing.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo nao encontrado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
+        }
+
+        const fileBuffer = Buffer.from(input.fileData, "base64");
+        const MAX_CLOUD_BYTES = 200 * 1024 * 1024;
+        if (fileBuffer.length > MAX_CLOUD_BYTES) {
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 200MB." });
+        }
+
+        const storage = await getStorageInfo(ctx.siteContract);
+        if (storage.usedBytes + fileBuffer.length > storage.limitBytes) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Espaco de armazenamento insuficiente." });
+        }
+        if (!isR2Configured) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Armazenamento nao configurado." });
+        }
+
+        const folderChain = existing.folderId ? await getFolderPath(existing.folderId) : [];
+        const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+        const newVersionKey = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${uuidv4()}-${input.fileName}`;
+        await uploadToR2(newVersionKey, fileBuffer, input.mimeType);
+
+        const updated = await uploadNewVersion(uuidv4(), input.fileId, ctx.siteContract, {
+          r2Key: newVersionKey,
+          fileSize: fileBuffer.length,
+          mimeType: input.mimeType,
+          uploadedBy: ctx.siteAdminUsername,
+        });
+
+        // O conteudo antigo continua no R2 (agora como versao) - soma o
+        // tamanho novo, sem descontar o antigo.
+        await adjustStorageUsed(ctx.siteContract, fileBuffer.length);
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileNewVersion",
+          targetType: "cloudFile",
+          targetId: updated.id,
+          targetName: updated.name,
+        });
+
+        return updated;
+      }),
+
+    listFileVersions: requirePermission('viewCloud')
+      .input(z.object({ fileId: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const file = await getFileById(input.fileId);
+        if (!file || file.contractSlug !== ctx.siteContract) return [];
+        return listFileVersions(input.fileId);
+      }),
+
+    getVersionDownloadUrl: requirePermission('viewCloud')
+      .input(z.object({ fileId: z.string(), versionId: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const file = await getFileById(input.fileId);
+        if (!file || file.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo nao encontrado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract!, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
+        }
+        const content = await getVersionContentInfo(input.fileId, input.versionId);
+        if (!content) throw new TRPCError({ code: "NOT_FOUND", message: "Versao nao encontrada." });
+        if (content.r2Key) {
+          if (!isR2Configured) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Armazenamento nao configurado." });
+          }
+          return { url: await getR2DownloadUrl(content.r2Key, content.name) };
+        }
+        if (content.fileUrl) return { url: content.fileUrl };
+        throw new TRPCError({ code: "NOT_FOUND", message: "Versao sem conteudo associado." });
+      }),
+
+    restoreFileVersion: requirePermission('manageCloud')
+      .input(z.object({ fileId: z.string(), versionId: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
+        }
+        try {
+          await restoreFileVersion(input.fileId, ctx.siteContract, input.versionId);
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Erro ao restaurar versao.",
+          });
+        }
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.fileRestoreVersion",
+          targetType: "cloudFile",
+          targetId: input.fileId,
+        });
+        return { success: true } as const;
+      }),
+
     renameFile: requirePermission('manageCloud')
       .input(z.object({ id: z.string(), name: z.string().trim().min(1).max(255) }))
       .mutation(async ({ input, ctx }) => {
@@ -953,11 +1083,18 @@ export const appRouter = router({
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
-        const file = await permanentlyDeleteFile(input.id, ctx.siteContract);
-        if (file) {
+        const result = await permanentlyDeleteFile(input.id, ctx.siteContract);
+        if (result) {
+          const { file, versions } = result;
+          let freedBytes = file.fileSize ?? 0;
           if (file.r2Key) await deleteFromR2(file.r2Key);
           else if (file.fileUrl) await deleteCloudFileFromSupabase(file.fileUrl);
-          await adjustStorageUsed(ctx.siteContract, -(file.fileSize ?? 0));
+          for (const v of versions) {
+            freedBytes += v.fileSize ?? 0;
+            if (v.r2Key) await deleteFromR2(v.r2Key);
+            else if (v.fileUrl) await deleteCloudFileFromSupabase(v.fileUrl);
+          }
+          await adjustStorageUsed(ctx.siteContract, -freedBytes);
         }
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -965,7 +1102,7 @@ export const appRouter = router({
           action: "cloud.filePermanentDelete",
           targetType: "cloudFile",
           targetId: input.id,
-          targetName: file?.name,
+          targetName: result?.file.name,
         });
         return { success: true } as const;
       }),

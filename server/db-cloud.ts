@@ -8,6 +8,7 @@ import { eq, and, inArray, isNull, isNotNull, desc, sql } from "drizzle-orm";
 import {
   cloudFolders,
   cloudFiles,
+  cloudFileVersions,
   cloudFavorites,
   cloudShares,
   cloudStorageConfig,
@@ -358,6 +359,152 @@ export async function moveFile(id: string, contractSlug: string, folderId: strin
     .where(and(eq(cloudFiles.id, id), eq(cloudFiles.contractSlug, contractSlug)));
 }
 
+// ---------------------------------------------------------------------
+// Histórico de versões — enviar de novo não substitui na hora: guarda a
+// versão anterior, e o "atual" (cloudFiles) passa a apontar pro conteúdo
+// novo. Nada é apagado do R2 até a exclusão definitiva do arquivo.
+// ---------------------------------------------------------------------
+
+export interface CloudFileVersionInfo {
+  id: string;
+  fileId: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedBy: string | null;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
+export async function uploadNewVersion(
+  versionId: string,
+  fileId: string,
+  contractSlug: string,
+  input: { r2Key?: string | null; fileUrl?: string | null; fileSize: number; mimeType: string; uploadedBy: string | null }
+): Promise<CloudFileInfo> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const current = await getFileById(fileId);
+  if (!current || current.contractSlug !== contractSlug) throw new Error("Arquivo não encontrado.");
+
+  // Guarda o estado atual como uma versão antiga antes de sobrescrever.
+  await db.insert(cloudFileVersions).values({
+    id: versionId,
+    fileId,
+    r2Key: current.r2Key,
+    fileUrl: current.fileUrl,
+    fileSize: current.fileSize,
+    mimeType: current.mimeType,
+    uploadedBy: current.uploadedBy,
+    createdAt: current.updatedAt ? new Date(current.updatedAt) : new Date(),
+  });
+
+  await db
+    .update(cloudFiles)
+    .set({
+      r2Key: input.r2Key ?? null,
+      fileUrl: input.fileUrl ?? null,
+      fileSize: input.fileSize,
+      mimeType: input.mimeType,
+      uploadedBy: input.uploadedBy,
+    })
+    .where(eq(cloudFiles.id, fileId));
+
+  const updated = await getFileById(fileId);
+  if (!updated) throw new Error("Failed to read back updated file");
+  return updated;
+}
+
+export async function listFileVersions(fileId: string): Promise<CloudFileVersionInfo[]> {
+  const current = await getFileById(fileId);
+  if (!current) return [];
+
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(cloudFileVersions)
+    .where(eq(cloudFileVersions.fileId, fileId))
+    .orderBy(desc(cloudFileVersions.createdAt));
+
+  const history: CloudFileVersionInfo[] = rows.map((r) => ({
+    id: r.id,
+    fileId: r.fileId,
+    fileSize: r.fileSize,
+    mimeType: r.mimeType,
+    uploadedBy: r.uploadedBy,
+    createdAt: r.createdAt.toISOString(),
+    isCurrent: false,
+  }));
+
+  return [
+    {
+      id: "current",
+      fileId,
+      fileSize: current.fileSize,
+      mimeType: current.mimeType,
+      uploadedBy: current.uploadedBy,
+      createdAt: current.updatedAt,
+      isCurrent: true,
+    },
+    ...history,
+  ];
+}
+
+/** URL pra baixar/pré-visualizar uma versão específica (ou a atual). */
+export async function getVersionContentInfo(
+  fileId: string,
+  versionId: string
+): Promise<{ r2Key: string | null; fileUrl: string | null; name: string } | undefined> {
+  const current = await getFileById(fileId);
+  if (!current) return undefined;
+  if (versionId === "current") {
+    return { r2Key: current.r2Key, fileUrl: current.fileUrl, name: current.name };
+  }
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(cloudFileVersions).where(eq(cloudFileVersions.id, versionId));
+  const version = rows[0];
+  if (!version || version.fileId !== fileId) return undefined;
+  return { r2Key: version.r2Key, fileUrl: version.fileUrl, name: current.name };
+}
+
+/** Restaura uma versão antiga: o que era "atual" vira mais uma versão no
+ * histórico, e a versão escolhida passa a ser a atual. Nada se perde. */
+export async function restoreFileVersion(fileId: string, contractSlug: string, versionId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const current = await getFileById(fileId);
+  if (!current || current.contractSlug !== contractSlug) throw new Error("Arquivo não encontrado.");
+
+  const rows = await db.select().from(cloudFileVersions).where(eq(cloudFileVersions.id, versionId));
+  const version = rows[0];
+  if (!version || version.fileId !== fileId) throw new Error("Versão não encontrada.");
+
+  // Arquiva o estado atual antes de restaurar.
+  await db.insert(cloudFileVersions).values({
+    id: `${versionId}-restore-${Date.now()}`,
+    fileId,
+    r2Key: current.r2Key,
+    fileUrl: current.fileUrl,
+    fileSize: current.fileSize,
+    mimeType: current.mimeType,
+    uploadedBy: current.uploadedBy,
+  });
+
+  await db
+    .update(cloudFiles)
+    .set({
+      r2Key: version.r2Key,
+      fileUrl: version.fileUrl,
+      fileSize: version.fileSize,
+      mimeType: version.mimeType,
+      uploadedBy: version.uploadedBy,
+    })
+    .where(eq(cloudFiles.id, fileId));
+}
+
 /** Move uma pasta pra dentro de outra (ou pra raiz, se destino for null).
  * Bloqueia mover a pasta pra dentro dela mesma ou de uma de suas próprias
  * subpastas — isso criaria um ciclo impossível de navegar. */
@@ -414,15 +561,20 @@ export async function restoreFile(id: string, contractSlug: string): Promise<voi
 }
 
 /** Exclui de vez: some do banco. Quem chama é responsável por apagar do R2 antes. */
-export async function permanentlyDeleteFile(id: string, contractSlug: string): Promise<CloudFileInfo | undefined> {
+export async function permanentlyDeleteFile(
+  id: string,
+  contractSlug: string
+): Promise<{ file: CloudFileInfo; versions: (typeof cloudFileVersions.$inferSelect)[] } | undefined> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const file = await getFileById(id);
   if (!file || file.contractSlug !== contractSlug) return undefined;
+  const versions = await db.select().from(cloudFileVersions).where(eq(cloudFileVersions.fileId, id));
   await db.delete(cloudFiles).where(eq(cloudFiles.id, id));
   await db.delete(cloudFavorites).where(eq(cloudFavorites.fileId, id));
   await db.delete(cloudShares).where(eq(cloudShares.fileId, id));
-  return file;
+  await db.delete(cloudFileVersions).where(eq(cloudFileVersions.fileId, id));
+  return { file, versions };
 }
 
 export async function softDeleteFolder(id: string, contractSlug: string, username: string | null): Promise<void> {
@@ -502,6 +654,13 @@ export async function deleteFolderRecursive(
     for (const f of files) {
       if (f.r2Key) removed.r2Keys.push(f.r2Key);
       else if (f.fileUrl) removed.fileUrls.push(f.fileUrl);
+
+      const versions = await db.select().from(cloudFileVersions).where(eq(cloudFileVersions.fileId, f.id));
+      for (const v of versions) {
+        if (v.r2Key) removed.r2Keys.push(v.r2Key);
+        else if (v.fileUrl) removed.fileUrls.push(v.fileUrl);
+      }
+      await db.delete(cloudFileVersions).where(eq(cloudFileVersions.fileId, f.id));
     }
     if (files.length > 0) {
       await db.delete(cloudFiles).where(and(eq(cloudFiles.folderId, id), eq(cloudFiles.contractSlug, contractSlug)));

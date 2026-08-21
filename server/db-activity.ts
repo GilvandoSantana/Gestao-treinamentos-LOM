@@ -49,6 +49,8 @@ export type ActivityAction =
   | "cloud.fileRename"
   | "cloud.fileMove"
   | "cloud.folderMove"
+  | "cloud.fileNewVersion"
+  | "cloud.fileRestoreVersion"
   | "cloud.fileDownload"
   | "cloud.fileRestore"
   | "cloud.filePermanentDelete"

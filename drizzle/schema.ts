@@ -288,6 +288,24 @@ export const cloudFiles = mysqlTable("cloudFiles", {
 });
 
 export type CloudFolderRow = typeof cloudFolders.$inferSelect;
+
+/**
+ * Versões antigas de um arquivo — guardadas sempre que uma nova versão é
+ * enviada, antes do arquivo "atual" (em cloudFiles) ser substituído. Nunca
+ * apaga o conteúdo antigo do R2 automaticamente; só na exclusão definitiva
+ * do arquivo é que as versões somem de vez.
+ */
+export const cloudFileVersions = mysqlTable("cloudFileVersions", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  fileId: varchar("fileId", { length: 64 }).notNull(),
+  r2Key: text("r2Key"),
+  fileUrl: text("fileUrl"),
+  fileSize: int("fileSize"),
+  mimeType: varchar("mimeType", { length: 100 }),
+  uploadedBy: varchar("uploadedBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export type CloudFileRow = typeof cloudFiles.$inferSelect;
 
 /** Favoritos — um arquivo ou uma pasta, nunca os dois ao mesmo tempo. */
