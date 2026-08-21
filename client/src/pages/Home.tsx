@@ -30,6 +30,7 @@ import AdvancedSearch from '@/components/AdvancedSearch';
 import SyncStatus from '@/components/SyncStatus';
 import EmployeeCard from '@/components/EmployeeCardWithCertificates';
 import EmployeeTable from '@/components/EmployeeTable';
+import EmployeeViewModal from '@/components/EmployeeViewModal';
 import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
@@ -86,6 +87,7 @@ export default function Home() {
   const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [compactTable, setCompactTable] = useState(() => localStorage.getItem('compactTable') === '1');
@@ -773,6 +775,7 @@ export default function Home() {
           <EmployeeTable
             employees={paginatedEmployees}
             onEdit={(emp) => openModal(emp)}
+            onView={(emp) => setViewingEmployee(emp)}
             onDelete={(id) => {
               setDeleteConfirmId(id);
               setShowDeleteConfirm(true);
@@ -866,6 +869,12 @@ export default function Home() {
       <RolesTrainingTypesModal
         isOpen={showRolesTrainingTypes}
         onClose={() => setShowRolesTrainingTypes(false)}
+      />
+
+      <EmployeeViewModal
+        isOpen={!!viewingEmployee}
+        employee={viewingEmployee}
+        onClose={() => setViewingEmployee(null)}
       />
 
       <WarehouseModal

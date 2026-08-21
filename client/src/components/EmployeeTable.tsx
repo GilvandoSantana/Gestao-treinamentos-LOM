@@ -3,7 +3,7 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets, IdCard } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets, IdCard, Eye } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +24,7 @@ interface EmployeeTableProps {
   employees: Employee[];
   onEdit: (employee: Employee) => void;
   onDelete: (id: string) => void;
+  onView: (employee: Employee) => void;
   onViewAudit?: (employee: Employee) => void;
   isAdmin?: boolean;
   /** Linhas mais finas, para caber mais gente na tela sem rolar tanto. */
@@ -46,7 +47,7 @@ const statusDotMap: Record<string, string> = {
   none: 'bg-muted-foreground',
 };
 
-export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit, isAdmin = false, compact = false }: EmployeeTableProps) {
+export default function EmployeeTable({ employees, onEdit, onDelete, onView, onViewAudit, isAdmin = false, compact = false }: EmployeeTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedTrainingId, setExpandedTrainingId] = useState<string | null>(null);
   const cellPad = compact ? 'p-2' : 'p-4';
@@ -132,6 +133,14 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onViewAudit
                     </td>
                     <td className={`${cellPad} text-right`}>
                       <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => onView(employee)}
+                          className="p-2 text-muted-foreground hover:bg-muted rounded-lg transition-all animate-in fade-in zoom-in duration-300"
+                          title="Visualizar"
+                        >
+                          <Eye size={16} />
+                        </button>
+
                         {isAdmin && (
                           <button
                             onClick={() => onEdit(employee)}
