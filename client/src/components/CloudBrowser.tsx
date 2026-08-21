@@ -25,6 +25,7 @@ import {
   History,
   Lock,
   Users,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
@@ -94,6 +95,9 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const [previewTarget, setPreviewTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string; isFolder: boolean } | null>(null);
   const [versionsTarget, setVersionsTarget] = useState<{ id: string; name: string } | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [showBulkMove, setShowBulkMove] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -296,6 +300,70 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
       return;
     }
     onNavigate(folder.id);
+  };
+
+  // --- Seleção múltipla / ações em lote ---
+  const toggleFileSelection = (id: string) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFolderSelection = (id: string) => {
+    setSelectedFolderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedFileIds(new Set());
+    setSelectedFolderIds(new Set());
+  };
+
+  const selectedCount = selectedFileIds.size + selectedFolderIds.size;
+
+  const getSelectedItems = () => [
+    ...files.filter((f) => selectedFileIds.has(f.id)).map((f) => ({ id: f.id, name: f.name, isFolder: false })),
+    ...folders.filter((f) => selectedFolderIds.has(f.id)).map((f) => ({ id: f.id, name: f.name, isFolder: true })),
+  ];
+
+  const handleBulkFavorite = async () => {
+    const items = getSelectedItems();
+    let failed = 0;
+    for (const item of items) {
+      try {
+        await toggleFavoriteMutation.mutateAsync(item.isFolder ? { folderId: item.id } : { fileId: item.id });
+      } catch {
+        failed++;
+      }
+    }
+    await utils.cloud.listFavorites.invalidate();
+    toast.success(failed === 0 ? 'Adicionados aos favoritos.' : `${items.length - failed} favoritado(s), ${failed} falharam.`);
+    clearSelection();
+  };
+
+  const handleBulkDelete = async () => {
+    const items = getSelectedItems();
+    if (!window.confirm(`Mover ${items.length} ${items.length === 1 ? 'item' : 'itens'} para a lixeira?`)) return;
+
+    let failed = 0;
+    for (const item of items) {
+      try {
+        if (item.isFolder) await deleteFolderMutation.mutateAsync({ id: item.id });
+        else await deleteFileMutation.mutateAsync({ id: item.id });
+      } catch {
+        failed++;
+      }
+    }
+    await refresh();
+    toast.success(failed === 0 ? 'Movidos para a lixeira.' : `${items.length - failed} movido(s), ${failed} falharam.`);
+    clearSelection();
   };
 
   const handleDownload = async (id: string, name: string) => {
@@ -531,16 +599,26 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                 className="flex-1 px-2 py-1 text-sm border border-orange rounded-lg bg-background text-foreground"
               />
             ) : (
-              <button
-                onClick={() => handleFolderClick(folder)}
-                className={`flex items-center gap-2.5 min-w-0 flex-1 text-left ${
-                  !folder.hasAccess ? 'opacity-60' : ''
-                }`}
-              >
-                <Folder size={18} className="text-orange shrink-0" />
-                <span className="text-sm font-medium text-foreground truncate">{folder.name}</span>
-                {!folder.hasAccess && (
-                  <span title={`Restrita ao grupo "${folder.restrictedToGroupName ?? ''}"`}>
+              <>
+                {canManage && (
+                  <input
+                    type="checkbox"
+                    checked={selectedFolderIds.has(folder.id)}
+                    onChange={() => toggleFolderSelection(folder.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mr-2 shrink-0 accent-orange"
+                  />
+                )}
+                <button
+                  onClick={() => handleFolderClick(folder)}
+                  className={`flex items-center gap-2.5 min-w-0 flex-1 text-left ${
+                    !folder.hasAccess ? 'opacity-60' : ''
+                  }`}
+                >
+                  <Folder size={18} className="text-orange shrink-0" />
+                  <span className="text-sm font-medium text-foreground truncate">{folder.name}</span>
+                  {!folder.hasAccess && (
+                    <span title={`Restrita ao grupo "${folder.restrictedToGroupName ?? ''}"`}>
                     <Lock size={13} className="text-danger shrink-0" />
                   </span>
                 )}
@@ -555,6 +633,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                 )}
                 {favoriteFolderIds.has(folder.id) && <Star size={13} className="text-warning fill-warning shrink-0" />}
               </button>
+              </>
             )}
             {canManage && renamingId !== folder.id && (
               <div className="relative shrink-0">
@@ -622,19 +701,30 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                 className="flex-1 px-2 py-1 text-sm border border-orange rounded-lg bg-background text-foreground"
               />
             ) : (
-              <button
-                onClick={() => setPreviewTarget({ id: file.id, name: file.name })}
-                className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
-              >
-                <FileIcon size={18} className="text-muted-foreground shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
-                    {file.name}
-                    {favoriteFileIds.has(file.id) && <Star size={12} className="text-warning fill-warning shrink-0" />}
-                  </p>
-                  <p className="text-xs text-muted-foreground font-technical">{formatBytes(file.fileSize ?? 0)}</p>
-                </div>
-              </button>
+              <>
+                {canManage && (
+                  <input
+                    type="checkbox"
+                    checked={selectedFileIds.has(file.id)}
+                    onChange={() => toggleFileSelection(file.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mr-2 shrink-0 accent-orange"
+                  />
+                )}
+                <button
+                  onClick={() => setPreviewTarget({ id: file.id, name: file.name })}
+                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                >
+                  <FileIcon size={18} className="text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
+                      {file.name}
+                      {favoriteFileIds.has(file.id) && <Star size={12} className="text-warning fill-warning shrink-0" />}
+                    </p>
+                    <p className="text-xs text-muted-foreground font-technical">{formatBytes(file.fileSize ?? 0)}</p>
+                  </div>
+                </button>
+              </>
             )}
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -736,9 +826,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
 
       {moveTarget && (
         <CloudMoveDialog
-          itemId={moveTarget.id}
-          itemName={moveTarget.name}
-          isFolder={moveTarget.isFolder}
+          items={[moveTarget]}
           onClose={() => setMoveTarget(null)}
           onMoved={refresh}
         />
@@ -752,6 +840,54 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           onClose={() => setVersionsTarget(null)}
           onChanged={refresh}
         />
+      )}
+
+      {showBulkMove && (
+        <CloudMoveDialog
+          items={getSelectedItems()}
+          onClose={() => setShowBulkMove(false)}
+          onMoved={() => {
+            clearSelection();
+            refresh();
+          }}
+        />
+      )}
+
+      {/* Barra de ações em lote — aparece quando há algo selecionado */}
+      {selectedCount > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-navy text-white px-4 py-2.5 rounded-xl shadow-2xl">
+          <span className="text-sm font-semibold whitespace-nowrap">
+            {selectedCount} {selectedCount === 1 ? 'selecionado' : 'selecionados'}
+          </span>
+          <button
+            onClick={() => setShowBulkMove(true)}
+            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition"
+          >
+            <FolderInput size={13} />
+            Mover
+          </button>
+          <button
+            onClick={handleBulkFavorite}
+            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition"
+          >
+            <Star size={13} />
+            Favoritar
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-danger hover:opacity-90 transition"
+          >
+            <Trash2 size={13} />
+            Excluir
+          </button>
+          <button
+            onClick={clearSelection}
+            className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition"
+            title="Cancelar seleção"
+          >
+            <X size={15} />
+          </button>
+        </div>
       )}
     </div>
   );
