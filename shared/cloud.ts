@@ -85,3 +85,13 @@ export interface CloudGroupMemberInfo {
   username: string;
   source: 'manual' | 'auto';
 }
+
+export interface CloudFileVersionInfo {
+  id: string;
+  fileId: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  uploadedBy: string | null;
+  createdAt: string;
+  isCurrent: boolean;
+}

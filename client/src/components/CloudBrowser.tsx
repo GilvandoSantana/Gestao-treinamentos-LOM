@@ -22,6 +22,7 @@ import {
   Pencil,
   FolderInput,
   Share2,
+  History,
   Lock,
   Users,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ import CloudShareDialog from '@/components/CloudShareDialog';
 import CloudPreviewModal from '@/components/CloudPreviewModal';
 import CloudMigrationPanel from '@/components/CloudMigrationPanel';
 import CloudMoveDialog from '@/components/CloudMoveDialog';
+import CloudVersionHistoryModal from '@/components/CloudVersionHistoryModal';
 
 interface CloudBrowserProps {
   canManage: boolean;
@@ -91,6 +93,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string; isFolder: boolean } | null>(null);
+  const [versionsTarget, setVersionsTarget] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -678,6 +681,16 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                       <button
                         onClick={() => {
                           setOpenMenuId(null);
+                          setVersionsTarget({ id: file.id, name: file.name });
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
+                      >
+                        <History size={13} />
+                        Ver versões
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOpenMenuId(null);
                           setShareTarget({ id: file.id, name: file.name });
                         }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
@@ -728,6 +741,16 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           isFolder={moveTarget.isFolder}
           onClose={() => setMoveTarget(null)}
           onMoved={refresh}
+        />
+      )}
+
+      {versionsTarget && (
+        <CloudVersionHistoryModal
+          fileId={versionsTarget.id}
+          fileName={versionsTarget.name}
+          canManage={canManage}
+          onClose={() => setVersionsTarget(null)}
+          onChanged={refresh}
         />
       )}
     </div>
