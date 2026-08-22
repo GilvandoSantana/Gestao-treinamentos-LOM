@@ -17,6 +17,8 @@ export interface ContractInfo {
   alertEmail: string | null;
   /** Telefone (com DDD e DDI) que recebe os alertas por WhatsApp deste contrato. */
   alertWhatsapp: string | null;
+  /** Nome de quem gerencia este contrato — usado no crachá padrão. */
+  managerName: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

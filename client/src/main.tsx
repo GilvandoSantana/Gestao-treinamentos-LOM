@@ -1,13 +1,10 @@
-import { trpc } from "@/lib/trpc";
+import { trpc, trpcClient } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
-import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
-import { getSessionMarker } from "@/lib/session-marker";
-import { getActiveContract, ACTIVE_CONTRACT_HEADER } from "@/lib/active-contract";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -37,32 +34,6 @@ queryClient.getMutationCache().subscribe(event => {
     redirectToLoginIfUnauthorized(error);
     console.error("[API Mutation Error]", error);
   }
-});
-
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-      // Marcador da sessão do navegador: sem ele o servidor não aceita o
-      // cookie de login (ver client/src/lib/session-marker.ts).
-      headers() {
-        const headers: Record<string, string> = {};
-        const marker = getSessionMarker();
-        if (marker) headers["x-session-marker"] = marker;
-        // Contrato escolhido pelo administrador no cabeçalho (só ele usa).
-        const contract = getActiveContract();
-        if (contract) headers[ACTIVE_CONTRACT_HEADER] = contract;
-        return headers;
-      },
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
-    }),
-  ],
 });
 
 createRoot(document.getElementById("root")!).render(

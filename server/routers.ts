@@ -1753,6 +1753,16 @@ export const appRouter = router({
 
   // Contratos — SOMENTE o administrador principal gerencia.
   contracts: router({
+    // Nome do gestor de um contrato - usado no cracha padrao, liberado pra
+    // qualquer usuario logado (nao so administrador principal), ja que e
+    // so um nome de exibicao, nao um dado sensivel de gestao do contrato.
+    getManagerName: siteAdminProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const contract = await getContractBySlug(input.slug);
+        return { managerName: contract?.managerName ?? null };
+      }),
+
     list: masterAdminProcedure
       .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
       .query(async ({ input }) => {
@@ -1766,6 +1776,7 @@ export const appRouter = router({
           preposition: z.enum(["do", "da"]),
           alertEmail: z.string().email().optional().or(z.literal("")),
           alertWhatsapp: z.string().optional().or(z.literal("")),
+          managerName: z.string().trim().max(120).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1775,6 +1786,7 @@ export const appRouter = router({
           preposition: input.preposition,
           alertEmail: input.alertEmail || null,
           alertWhatsapp: input.alertWhatsapp || null,
+          managerName: input.managerName,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -1795,6 +1807,7 @@ export const appRouter = router({
           preposition: z.enum(["do", "da"]),
           alertEmail: z.string().email().optional().or(z.literal("")),
           alertWhatsapp: z.string().optional().or(z.literal("")),
+          managerName: z.string().trim().max(120).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1807,6 +1820,7 @@ export const appRouter = router({
           preposition: input.preposition,
           alertEmail: input.alertEmail || null,
           alertWhatsapp: input.alertWhatsapp || null,
+          managerName: input.managerName,
         });
         void logActivity({
           username: ctx.siteAdminUsername,

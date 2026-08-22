@@ -16,6 +16,7 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     preposition: row.preposition === "da" ? "da" : "do",
     alertEmail: row.alertEmail || null,
     alertWhatsapp: row.alertWhatsapp || null,
+    managerName: row.managerName || null,
     deleted: row.deleted,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -53,6 +54,7 @@ export async function createContract(input: {
   preposition: ContractPreposition;
   alertEmail?: string | null;
   alertWhatsapp?: string | null;
+  managerName?: string | null;
 }): Promise<ContractInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -73,6 +75,7 @@ export async function createContract(input: {
     preposition: input.preposition,
     alertEmail: input.alertEmail?.trim() || null,
     alertWhatsapp: input.alertWhatsapp?.trim() || null,
+    managerName: input.managerName?.trim() || null,
   });
 
   return {
@@ -82,6 +85,7 @@ export async function createContract(input: {
     preposition: input.preposition,
     alertEmail: input.alertEmail?.trim() || null,
     alertWhatsapp: input.alertWhatsapp?.trim() || null,
+    managerName: input.managerName?.trim() || null,
     deleted: false,
     deletedAt: null,
     createdAt: new Date().toISOString(),
@@ -95,6 +99,7 @@ export async function updateContract(
     preposition: ContractPreposition;
     alertEmail?: string | null;
     alertWhatsapp?: string | null;
+    managerName?: string | null;
   }
 ): Promise<void> {
   const db = await getDb();
@@ -108,6 +113,7 @@ export async function updateContract(
       preposition: input.preposition,
       alertEmail: input.alertEmail?.trim() || null,
       alertWhatsapp: input.alertWhatsapp?.trim() || null,
+      managerName: input.managerName?.trim() || null,
     })
     .where(eq(contracts.id, id));
 }

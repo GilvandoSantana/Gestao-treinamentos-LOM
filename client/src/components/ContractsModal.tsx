@@ -51,6 +51,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [preposition, setPreposition] = useState<ContractPreposition>('do');
   const [alertEmail, setAlertEmail] = useState('');
   const [alertWhatsapp, setAlertWhatsapp] = useState('');
+  const [managerName, setManagerName] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -134,6 +135,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setPreposition('do');
     setAlertEmail('');
     setAlertWhatsapp('');
+    setManagerName('');
   };
 
   const startEdit = (contract: ContractInfo) => {
@@ -143,6 +145,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setPreposition(contract.preposition);
     setAlertEmail(contract.alertEmail ?? '');
     setAlertWhatsapp(contract.alertWhatsapp ?? '');
+    setManagerName(contract.managerName ?? '');
     setShowForm(true);
   };
 
@@ -150,10 +153,10 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     e.preventDefault();
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp });
+        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName });
         toast.success('Contrato atualizado.');
       } else {
-        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp });
+        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName });
         toast.success('Contrato cadastrado.');
       }
       resetForm();
@@ -271,6 +274,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       <p className="font-medium text-foreground truncate">{contract.name}</p>
                       <p className="text-xs text-muted-foreground font-technical">
                         {contract.preposition} · {contract.slug}
+                        {contract.managerName && <> · Gestor: {contract.managerName}</>}
                         {contract.alertEmail && <> · {contract.alertEmail}</>}
                         {contract.alertWhatsapp && <> · WhatsApp {contract.alertWhatsapp}</>}
                       </p>
@@ -342,6 +346,23 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                         da (ex: da Geomecânica)
                       </button>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                      Nome do gestor (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={managerName}
+                      onChange={(e) => setManagerName(e.target.value)}
+                      placeholder="Nome de quem gerencia este contrato"
+                      disabled={isSubmitting}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aparece no crachá padrão dos colaboradores deste contrato, no campo
+                      "Superior/Gestor do contrato".
+                    </p>
                   </div>
                   <div>
                     <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">

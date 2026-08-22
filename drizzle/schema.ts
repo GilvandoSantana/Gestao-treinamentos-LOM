@@ -214,6 +214,9 @@ export const contracts = mysqlTable("contracts", {
   // Telefone (com DDD e código do país, ex: 5511999999999) que recebe os
   // alertas por WhatsApp deste contrato; vazio = não envia por WhatsApp.
   alertWhatsapp: varchar("alertWhatsapp", { length: 20 }),
+  // Nome de quem gerencia este contrato — usado no crachá padrão, no campo
+  // "Superior/Gestor do contrato" (antes era um nome fixo no código).
+  managerName: varchar("managerName", { length: 120 }),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

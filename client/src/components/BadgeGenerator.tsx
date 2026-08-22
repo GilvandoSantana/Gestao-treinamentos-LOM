@@ -18,6 +18,7 @@ import type { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
 import { getTrainingStatus } from '@/lib/training-utils';
+import { trpcClient } from '@/lib/trpc';
 import { toast } from 'sonner';
 
 // Helper to load image from URL and convert to base64
@@ -66,7 +67,20 @@ const generateQRCode = async (text: string): Promise<string> => {
 
 export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá para ${employee.name}...`);
-  
+
+  // Nome do gestor deste contrato — cadastrado em Gerenciar Contratos.
+  // Se não conseguir buscar (ou não estiver preenchido), mostra "—" em vez
+  // de travar a geração do crachá.
+  let managerName: string | null = null;
+  try {
+    if (employee.contract) {
+      const result = await trpcClient.contracts.getManagerName.query({ slug: employee.contract });
+      managerName = result.managerName;
+    }
+  } catch {
+    managerName = null;
+  }
+
   try {
     // ------------------------------------------------------------------
     // Novo formato: landscape 170x85mm  →  cada face = 55x85mm (5,5x8,5cm)
@@ -190,7 +204,7 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     doc.setFont('helvetica', 'bold');
     doc.text('Superior/Gestor do contrato', 5.5, 76.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('AGILDO SENA DA SILVA JUNIOR', 5.5, 79.5);
+    doc.text(managerName || '—', 5.5, 79.5);
 
     // ================================================================
     // --- VERSO (face direita: x=55..110, y=0..85) ---
