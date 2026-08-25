@@ -123,9 +123,9 @@ export function generateMonthlyReportPDF(
   firstDay.setDate(1);
   firstDay.setHours(0, 0, 0, 0);
 
-  const threeDaysAgo = new Date();
-  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-  threeDaysAgo.setHours(0, 0, 0, 0);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
 
   // Preço de referência por item — usado quando a própria movimentação não
   // tem valor unitário registrado (comum em saída, que hoje não pede isso).
@@ -146,19 +146,21 @@ export function generateMonthlyReportPDF(
 
   const formatBRL = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-  // Item que mais saiu nos últimos 3 dias — considera todo o histórico
-  // (não só o mês), pra valer mesmo no início do mês.
-  const last3DaysSaidas = movements.filter(
-    (m) => m.movementType === 'saida' && new Date(m.date) >= threeDaysAgo
+  // Ranking dos materiais mais retirados nos últimos 30 dias — considera
+  // todo o histórico de movimentações (não só o mês do relatório), pra
+  // valer mesmo no início do mês.
+  const last30DaysSaidas = movements.filter(
+    (m) => m.movementType === 'saida' && new Date(m.date) >= thirtyDaysAgo
   );
-  const saidasByItem = new Map<string, { name: string; quantity: number }>();
-  for (const m of last3DaysSaidas) {
+  const saidasByItem = new Map<string, { code: string; name: string; quantity: number }>();
+  for (const m of last30DaysSaidas) {
     const key = m.itemId ?? m.itemName;
-    const current = saidasByItem.get(key) ?? { name: m.itemName, quantity: 0 };
+    const item = m.itemId ? items.find((i) => i.id === m.itemId) : undefined;
+    const current = saidasByItem.get(key) ?? { code: item?.code ?? '—', name: m.itemName, quantity: 0 };
     current.quantity += m.quantity;
     saidasByItem.set(key, current);
   }
-  const topSaidaItem = Array.from(saidasByItem.values()).sort((a, b) => b.quantity - a.quantity)[0] ?? null;
+  const saidaRanking = Array.from(saidasByItem.values()).sort((a, b) => b.quantity - a.quantity);
 
   // Entradas e saídas por item, dentro do mês.
   const movementsByItem = new Map<
@@ -236,29 +238,26 @@ export function generateMonthlyReportPDF(
   );
   finalY += 10;
 
-  // 2. Item que mais saiu nos últimos 3 dias
+  // 2. Ranking dos materiais mais retirados (últimos 30 dias)
   doc.setFontSize(14);
   doc.setTextColor(26, 58, 107);
-  doc.text('2. ITEM MAIS RETIRADO NOS ÚLTIMOS 3 DIAS', 15, finalY);
-  finalY += 8;
+  doc.text('2. RANKING DOS MATERIAIS MAIS RETIRADOS (ÚLTIMOS 30 DIAS)', 15, finalY);
 
-  if (topSaidaItem) {
-    doc.setFillColor(255, 243, 224);
-    doc.roundedRect(15, finalY, 180, 16, 2, 2, 'F');
-    doc.setFontSize(12);
-    doc.setTextColor(26, 58, 107);
-    doc.setFont('helvetica', 'bold');
-    doc.text(topSaidaItem.name, 20, finalY + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`${topSaidaItem.quantity} unidade(s) retirada(s) desde ${threeDaysAgo.toLocaleDateString('pt-BR')}`, 20, finalY + 13);
-    finalY += 24;
+  if (saidaRanking.length > 0) {
+    autoTable(doc, {
+      startY: finalY + 5,
+      head: [['#', 'Código', 'Item', 'Quantidade Retirada']],
+      body: saidaRanking.map((r, index) => [String(index + 1), r.code, r.name, String(r.quantity)]),
+      theme: 'striped',
+      headStyles: { fillColor: [230, 126, 34], textColor: 255 },
+      styles: { fontSize: 8.5 },
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 15;
   } else {
     doc.setFontSize(10);
     doc.setTextColor(128, 128, 128);
-    doc.text('Nenhuma saída registrada nos últimos 3 dias.', 15, finalY + 6);
-    finalY += 16;
+    doc.text('Nenhuma saída registrada nos últimos 30 dias.', 15, finalY + 10);
+    finalY += 20;
   }
 
   // 3. Entradas e Saídas por Item (mês)
