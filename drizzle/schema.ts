@@ -37,6 +37,14 @@ export const employees = mysqlTable("employees", {
   birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
+  // Gerência/setor do colaborador (ex: "Engª Manutenção") — usado no crachá
+  // padrão. Diferente do "Gestor do contrato" (1 nome só, por contrato).
+  gerencia: varchar("gerencia", { length: 150 }),
+  // Dados de CNH — usados no crachá padrão, quando o colaborador precisar
+  // dirigir. Ficam em branco pra quem não tem/não se aplica.
+  cnhNumero: varchar("cnhNumero", { length: 30 }),
+  cnhValidade: varchar("cnhValidade", { length: 10 }),
+  cnhCategoria: varchar("cnhCategoria", { length: 10 }),
   // JSON com os valores dos campos personalizados do contrato (ver
   // contractCustomFields) — {fieldKey: valor}.
   customFields: text("customFields"),

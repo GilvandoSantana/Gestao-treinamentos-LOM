@@ -14,6 +14,12 @@ export interface Employee {
   birthDate?: string;
   role: string;
   phone?: string;
+  /** Gerência/setor do colaborador (ex: "Engª Manutenção") — mostrado no crachá padrão. */
+  gerencia?: string;
+  /** Dados de CNH — mostrados no crachá padrão, quando preenchidos. */
+  cnhNumero?: string;
+  cnhValidade?: string;
+  cnhCategoria?: string;
   /** Contrato ao qual o colaborador pertence (ver shared/contracts.ts) */
   contract?: string;
   photoUrl?: string | null;

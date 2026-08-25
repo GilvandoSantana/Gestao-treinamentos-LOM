@@ -2496,6 +2496,10 @@ export const appRouter = router({
           birthDate: z.string().nullish(),
           role: z.string(),
           phone: z.string().nullish(),
+          gerencia: z.string().nullish(),
+          cnhNumero: z.string().nullish(),
+          cnhValidade: z.string().nullish(),
+          cnhCategoria: z.string().nullish(),
           customFields: z.record(z.string(), z.string()).optional(),
           trainings: z.array(
             z.object({
@@ -2530,6 +2534,10 @@ export const appRouter = router({
               birthDate: input.birthDate,
               role: input.role,
               phone: input.phone,
+              gerencia: input.gerencia,
+              cnhNumero: input.cnhNumero,
+              cnhValidade: input.cnhValidade,
+              cnhCategoria: input.cnhCategoria,
               customFields: input.customFields ? JSON.stringify(input.customFields) : undefined,
               // O contrato vem sempre da conta que está cadastrando — não é
               // escolhido no formulário, para não haver como errar nem burlar.
