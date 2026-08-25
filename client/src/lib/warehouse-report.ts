@@ -123,14 +123,62 @@ export function generateMonthlyReportPDF(
   firstDay.setDate(1);
   firstDay.setHours(0, 0, 0, 0);
 
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  threeDaysAgo.setHours(0, 0, 0, 0);
+
+  // Preço de referência por item — usado quando a própria movimentação não
+  // tem valor unitário registrado (comum em saída, que hoje não pede isso).
+  const priceByItemId = new Map(items.map((i) => [i.id, i.precoUnitario]));
+  const valueOf = (m: WarehouseMovementInfo) =>
+    (m.unitPrice ?? (m.itemId ? priceByItemId.get(m.itemId) : undefined) ?? 0) * m.quantity;
+
   const monthMovements = movements.filter((m) => new Date(m.date) >= firstDay);
   const entradas = monthMovements.filter((m) => m.movementType === 'entrada');
   const saidas = monthMovements.filter((m) => m.movementType === 'saida');
   const totalEntradas = entradas.reduce((sum, m) => sum + m.quantity, 0);
   const totalSaidas = saidas.reduce((sum, m) => sum + m.quantity, 0);
+  const valorTotalEntradas = entradas.reduce((sum, m) => sum + valueOf(m), 0);
+  const valorTotalSaidas = saidas.reduce((sum, m) => sum + valueOf(m), 0);
   const totalItens = items.length;
   const itensEmEstoque = items.filter((i) => i.quantity > 0).length;
   const itensCriticos = items.filter((i) => i.quantity > 0 && i.quantity <= 5);
+
+  const formatBRL = (value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+  // Item que mais saiu nos últimos 3 dias — considera todo o histórico
+  // (não só o mês), pra valer mesmo no início do mês.
+  const last3DaysSaidas = movements.filter(
+    (m) => m.movementType === 'saida' && new Date(m.date) >= threeDaysAgo
+  );
+  const saidasByItem = new Map<string, { name: string; quantity: number }>();
+  for (const m of last3DaysSaidas) {
+    const key = m.itemId ?? m.itemName;
+    const current = saidasByItem.get(key) ?? { name: m.itemName, quantity: 0 };
+    current.quantity += m.quantity;
+    saidasByItem.set(key, current);
+  }
+  const topSaidaItem = Array.from(saidasByItem.values()).sort((a, b) => b.quantity - a.quantity)[0] ?? null;
+
+  // Entradas e saídas por item, dentro do mês.
+  const movementsByItem = new Map<
+    string,
+    { code: string; name: string; entradas: number; saidas: number }
+  >();
+  for (const m of monthMovements) {
+    const key = m.itemId ?? m.itemName;
+    const item = m.itemId ? items.find((i) => i.id === m.itemId) : undefined;
+    const current = movementsByItem.get(key) ?? {
+      code: item?.code ?? '—',
+      name: m.itemName,
+      entradas: 0,
+      saidas: 0,
+    };
+    if (m.movementType === 'entrada') current.entradas += m.quantity;
+    else current.saidas += m.quantity;
+    movementsByItem.set(key, current);
+  }
+  const itemMovementRows = Array.from(movementsByItem.values()).sort((a, b) => a.name.localeCompare(b.name));
 
   // Cabeçalho
   doc.setFillColor(26, 58, 107);
@@ -163,9 +211,9 @@ export function generateMonthlyReportPDF(
     ['Itens em Nível Crítico', String(itensCriticos.length)],
     ['Total de Entradas (unidades)', String(totalEntradas)],
     ['Total de Saídas (unidades)', String(totalSaidas)],
-    ['Número de Movimentações de Entrada', String(entradas.length)],
-    ['Número de Movimentações de Saída', String(saidas.length)],
-    ['Saldo do Mês (Entradas − Saídas)', String(totalEntradas - totalSaidas)],
+    ['Saldo do Mês (Entradas − Saídas, unidades)', String(totalEntradas - totalSaidas)],
+    ['Valor Total Entrado no Almoxarifado', formatBRL(valorTotalEntradas)],
+    ['Valor Total Saído do Almoxarifado', formatBRL(valorTotalSaidas)],
   ];
 
   autoTable(doc, {
@@ -176,23 +224,58 @@ export function generateMonthlyReportPDF(
     headStyles: { fillColor: [26, 58, 107], textColor: 255 },
     styles: { fontSize: 9 },
   });
+  // Valores em R$ são estimados pelo preço unitário atual do item quando a
+  // própria movimentação de saída não registrou um valor (caso comum).
+  let finalY = (doc as any).lastAutoTable.finalY + 4;
+  doc.setFontSize(7.5);
+  doc.setTextColor(128, 128, 128);
+  doc.text(
+    'Valores em R$ usam o preço unitário registrado na movimentação, ou o preço atual do item quando não informado.',
+    15,
+    finalY
+  );
+  finalY += 10;
 
-  // 2. Movimentações do Mês
-  let finalY = (doc as any).lastAutoTable.finalY + 15;
+  // 2. Item que mais saiu nos últimos 3 dias
   doc.setFontSize(14);
   doc.setTextColor(26, 58, 107);
-  doc.text('2. MOVIMENTAÇÕES DO MÊS', 15, finalY);
+  doc.text('2. ITEM MAIS RETIRADO NOS ÚLTIMOS 3 DIAS', 15, finalY);
+  finalY += 8;
 
-  if (monthMovements.length > 0) {
+  if (topSaidaItem) {
+    doc.setFillColor(255, 243, 224);
+    doc.roundedRect(15, finalY, 180, 16, 2, 2, 'F');
+    doc.setFontSize(12);
+    doc.setTextColor(26, 58, 107);
+    doc.setFont('helvetica', 'bold');
+    doc.text(topSaidaItem.name, 20, finalY + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`${topSaidaItem.quantity} unidade(s) retirada(s) desde ${threeDaysAgo.toLocaleDateString('pt-BR')}`, 20, finalY + 13);
+    finalY += 24;
+  } else {
+    doc.setFontSize(10);
+    doc.setTextColor(128, 128, 128);
+    doc.text('Nenhuma saída registrada nos últimos 3 dias.', 15, finalY + 6);
+    finalY += 16;
+  }
+
+  // 3. Entradas e Saídas por Item (mês)
+  doc.setFontSize(14);
+  doc.setTextColor(26, 58, 107);
+  doc.text('3. ENTRADAS E SAÍDAS POR ITEM (MÊS)', 15, finalY);
+
+  if (itemMovementRows.length > 0) {
     autoTable(doc, {
       startY: finalY + 5,
-      head: [['Data', 'Tipo', 'Item', 'Qtd', 'Detalhe']],
-      body: monthMovements.slice(0, 50).map((m) => [
-        new Date(m.date).toLocaleDateString('pt-BR'),
-        m.movementType === 'entrada' ? 'ENTRADA' : 'SAÍDA',
-        m.itemName,
-        String(m.quantity),
-        m.destination || m.responsible || m.supplier || 'N/A',
+      head: [['Código', 'Item', 'Entradas', 'Saídas', 'Saldo']],
+      body: itemMovementRows.map((r) => [
+        r.code,
+        r.name,
+        String(r.entradas),
+        String(r.saidas),
+        String(r.entradas - r.saidas),
       ]),
       theme: 'striped',
       headStyles: { fillColor: [26, 58, 107], textColor: 255 },
@@ -206,10 +289,34 @@ export function generateMonthlyReportPDF(
     finalY += 20;
   }
 
-  // 3. Itens em Nível Crítico
+  // 4. Todos os Itens em Estoque
   doc.setFontSize(14);
   doc.setTextColor(26, 58, 107);
-  doc.text('3. ITENS EM NÍVEL CRÍTICO', 15, finalY);
+  doc.text('4. TODOS OS ITENS EM ESTOQUE', 15, finalY);
+
+  if (items.length > 0) {
+    autoTable(doc, {
+      startY: finalY + 5,
+      head: [['Código', 'Nome', 'Tipo', 'Quantidade', 'Preço Unit.']],
+      body: [...items]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((i) => [i.code, i.name, i.type, `${i.quantity} ${i.unit}`, formatBRL(i.precoUnitario)]),
+      theme: 'striped',
+      headStyles: { fillColor: [26, 58, 107], textColor: 255 },
+      styles: { fontSize: 7.5 },
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 15;
+  } else {
+    doc.setFontSize(10);
+    doc.setTextColor(128, 128, 128);
+    doc.text('Nenhum item cadastrado.', 15, finalY + 10);
+    finalY += 20;
+  }
+
+  // 5. Itens em Nível Crítico
+  doc.setFontSize(14);
+  doc.setTextColor(26, 58, 107);
+  doc.text('5. ITENS EM NÍVEL CRÍTICO', 15, finalY);
 
   if (itensCriticos.length > 0) {
     autoTable(doc, {
