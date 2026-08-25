@@ -54,6 +54,10 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const [birthDate, setBirthDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
+  const [gerencia, setGerencia] = useState('');
+  const [cnhNumero, setCnhNumero] = useState('');
+  const [cnhValidade, setCnhValidade] = useState('');
+  const [cnhCategoria, setCnhCategoria] = useState('');
   const [reassignContract, setReassignContract] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   // Evita marcar o formulário como "alterado" logo depois de abrir/popular
@@ -109,6 +113,10 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setAge(birthDateValue ? calculateAge(birthDateValue) : undefined);
       setRole(employee.role);
       setPhone(employee.phone || '');
+      setGerencia(employee.gerencia || '');
+      setCnhNumero(employee.cnhNumero || '');
+      setCnhValidade(employee.cnhValidade || '');
+      setCnhCategoria(employee.cnhCategoria || '');
       setReassignContract(employee.contract || '');
       setCustomFieldValues(employee.customFields || {});
       setPhotoPreview(employee.photoUrl || null);
@@ -125,6 +133,12 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setBirthDate('');
       setRole(duplicateFrom?.role || '');
       setPhone('');
+      // Gerência costuma se repetir entre quem faz a mesma função — vem
+      // junto. CNH é dado pessoal, nunca duplica.
+      setGerencia(duplicateFrom?.gerencia || '');
+      setCnhNumero('');
+      setCnhValidade('');
+      setCnhCategoria('');
       setPhotoPreview(null);
       setShowCustomRole(duplicateFrom ? !allRoles.includes(duplicateFrom.role as any) : false);
       setTrainings(
@@ -152,7 +166,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, role, phone, trainings, photoPreview, reassignContract, customFieldValues]);
+  }, [name, registration, educationLevel, age, birthDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -418,6 +432,10 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         birthDate: birthDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
+        gerencia: gerencia.trim() || undefined,
+        cnhNumero: cnhNumero.trim() || undefined,
+        cnhValidade: cnhValidade.trim() || undefined,
+        cnhCategoria: cnhCategoria.trim() || undefined,
         trainings,
         customFields: Object.keys(customFieldValues).length > 0 ? customFieldValues : undefined,
       });
@@ -638,6 +656,51 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 placeholder="(XX) XXXXX-XXXX"
               />
+            </div>
+          </div>
+
+          {/* Gerência — mostrada no crachá padrão */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Gerência</label>
+              <input
+                type="text"
+                value={gerencia}
+                onChange={(e) => setGerencia(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                placeholder="Ex: Engª Manutenção"
+              />
+            </div>
+          </div>
+
+          {/* Dados de CNH — opcional, mostrados no crachá padrão quando preenchidos */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2">Dados de CNH (opcional)</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-foreground font-medium mb-2 text-xs">Número</label>
+                <input
+                  type="text"
+                  value={cnhNumero}
+                  onChange={(e) => setCnhNumero(e.target.value)}
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-foreground font-medium mb-2 text-xs">Validade</label>
+                <DateInputBR value={cnhValidade} onChange={setCnhValidade} />
+              </div>
+              <div>
+                <label className="block text-foreground font-medium mb-2 text-xs">Categoria</label>
+                <input
+                  type="text"
+                  value={cnhCategoria}
+                  onChange={(e) => setCnhCategoria(e.target.value.toUpperCase())}
+                  placeholder="Ex: AB"
+                  maxLength={4}
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                />
+              </div>
             </div>
           </div>
 

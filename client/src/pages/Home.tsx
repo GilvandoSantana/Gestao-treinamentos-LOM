@@ -268,6 +268,10 @@ export default function Home() {
           birthDate: employeeData.birthDate,
           role: employeeData.role,
           phone: employeeData.phone,
+          gerencia: employeeData.gerencia,
+          cnhNumero: employeeData.cnhNumero,
+          cnhValidade: employeeData.cnhValidade,
+          cnhCategoria: employeeData.cnhCategoria,
           customFields: employeeData.customFields,
           trainings: employeeData.trainings,
         });
