@@ -155,6 +155,14 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
       console.error('Error adding QR Code to PDF:', error);
     }
 
+    // Selo "EMPREGADO AUTORIZADO" — no espaço vazio ao lado do logo,
+    // acima da coluna de informações (não sobrepõe nada)
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(black);
+    doc.text('EMPREGADO', 38.5, 8, { align: 'center' });
+    doc.text('AUTORIZADO', 38.5, 12, { align: 'center' });
+
     // Informações do colaborador (coluna direita da frente)
     // x original = 50 → 50*0.55 = 27.5
     // yInfo original começa em 35 → 35*0.567 = 19.8
@@ -180,18 +188,34 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     doc.setFont('helvetica', 'normal');
     doc.text('Support Mining', 27.5, yInfo + 3);
 
+    // Gerência do colaborador — dado próprio de cada um (antes era um texto
+    // fixo igual pra todo mundo; agora vem do cadastro).
     yInfo += 8.5;
     doc.setFont('helvetica', 'bold');
-    doc.text('Gerência/Coord.', 27.5, yInfo);
+    doc.text('Gerência', 27.5, yInfo);
     doc.setFont('helvetica', 'normal');
-    doc.text('Ger. Engenharia', 27.5, yInfo + 3);
+    const splitGerencia = doc.splitTextToSize(employee.gerencia || '—', 25);
+    doc.text(splitGerencia, 27.5, yInfo + 3);
 
-    yInfo += 8.5;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Área', 27.5, yInfo);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Gerência de Engenharia de', 27.5, yInfo + 3);
-    doc.text('Manutenção', 27.5, yInfo + 5.5);
+    // Dados de CNH — só aparecem quando o colaborador tiver algum
+    // preenchido; ficam em branco (não desenha nada) caso não se aplique.
+    if (employee.cnhNumero || employee.cnhValidade || employee.cnhCategoria) {
+      yInfo += 8.5 + (splitGerencia.length - 1) * 2.8;
+      doc.setFont('helvetica', 'bold');
+      doc.text('CNH', 27.5, yInfo);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(5);
+      let cnhValidadeFormatted = '—';
+      if (employee.cnhValidade) {
+        try {
+          cnhValidadeFormatted = new Date(`${employee.cnhValidade}T00:00:00`).toLocaleDateString('pt-BR');
+        } catch {
+          cnhValidadeFormatted = employee.cnhValidade;
+        }
+      }
+      doc.text(`Nº ${employee.cnhNumero || '—'}  Cat. ${employee.cnhCategoria || '—'}`, 27.5, yInfo + 3);
+      doc.text(`Val. ${cnhValidadeFormatted}`, 27.5, yInfo + 6);
+    }
 
     // Rodapé frente
     // y=122 → 122*0.567=69.2 | y=127→72.0 | y=135→76.5 | y=140→79.4
