@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+
+# Variáveis de ambiente (nunca versionar segredos)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / SO
+.DS_Store
+.vscode/
+.idea/
+
+# Cache
+.vite/
+*.tsbuildinfo
