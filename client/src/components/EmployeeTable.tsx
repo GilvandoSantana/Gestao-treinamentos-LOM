@@ -3,7 +3,7 @@
  * EmployeeTable: Compact table view for employees and their training status.
  */
 
-import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets, IdCard, Eye } from 'lucide-react';
+import { Edit2, Trash2, Shield, ChevronDown, ChevronUp, FileText, CreditCard, Lock, Droplets, IdCard, Eye, QrCode } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,7 @@ import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
 import { generateBadgeSupportPDF } from './BadgeSupportGenerator';
+import { generateBadgeWarehousePDF } from './BadgeWarehouseGenerator';
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -71,6 +72,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onView, onV
 
   const handleGenerateSupportBadge = (employee: Employee) => {
     generateBadgeSupportPDF(employee);
+  };
+
+  const handleGenerateWarehouseBadge = (employee: Employee) => {
+    generateBadgeWarehousePDF(employee);
   };
 
   return (
@@ -203,6 +208,10 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onView, onV
 			                                    <IdCard className="mr-2 h-4 w-4" />
 			                                    <span>Crachá Support</span>
 			                                  </DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleGenerateWarehouseBadge(employee)}>
+		                                    <QrCode className="mr-2 h-4 w-4" />
+		                                    <span>Crachá Almoxarifado</span>
+		                                  </DropdownMenuItem>
 		                                </DropdownMenuContent>
 		                              </DropdownMenu>
 		                            )}

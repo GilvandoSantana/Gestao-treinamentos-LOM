@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, CreditCard, Lock, Droplets, IdCard, Search, Loader, Download } from 'lucide-react';
+import { X, CreditCard, Lock, Droplets, IdCard, QrCode, Search, Loader, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 import type { jsPDF } from 'jspdf';
@@ -16,6 +16,7 @@ import { generateBadgePDF } from './BadgeGenerator';
 import { generateBadgeLockPDF } from './BadgeLockGenerator';
 import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
 import { generateBadgeSupportPDF } from './BadgeSupportGenerator';
+import { generateBadgeWarehousePDF } from './BadgeWarehouseGenerator';
 
 interface BadgesModalProps {
   isOpen: boolean;
@@ -23,13 +24,14 @@ interface BadgesModalProps {
   employees: Employee[];
 }
 
-type BadgeType = 'padrao' | 'bloqueio' | 'agua' | 'support';
+type BadgeType = 'padrao' | 'bloqueio' | 'agua' | 'support' | 'almoxarifado';
 
 const BADGE_TYPES: { key: BadgeType; label: string; Icon: typeof CreditCard }[] = [
   { key: 'padrao', label: 'Padrão', Icon: CreditCard },
   { key: 'bloqueio', label: 'Bloqueio', Icon: Lock },
   { key: 'agua', label: 'Água', Icon: Droplets },
   { key: 'support', label: 'Support', Icon: IdCard },
+  { key: 'almoxarifado', label: 'Almoxarifado', Icon: QrCode },
 ];
 
 const GENERATORS: Record<BadgeType, (employee: Employee, sharedDoc?: jsPDF) => Promise<jsPDF>> = {
@@ -37,6 +39,7 @@ const GENERATORS: Record<BadgeType, (employee: Employee, sharedDoc?: jsPDF) => P
   bloqueio: generateBadgeLockPDF,
   agua: generateBadgeWaterPDF,
   support: generateBadgeSupportPDF,
+  almoxarifado: generateBadgeWarehousePDF,
 };
 
 const BADGE_TYPE_FILE_PREFIX: Record<BadgeType, string> = {
@@ -44,6 +47,7 @@ const BADGE_TYPE_FILE_PREFIX: Record<BadgeType, string> = {
   bloqueio: 'crachas-bloqueio',
   agua: 'crachas-agua',
   support: 'crachas-support',
+  almoxarifado: 'crachas-almoxarifado',
 };
 
 export default function BadgesModal({ isOpen, onClose, employees }: BadgesModalProps) {
