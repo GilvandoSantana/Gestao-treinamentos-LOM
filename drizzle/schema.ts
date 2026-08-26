@@ -504,14 +504,25 @@ export const warehouseItems = mysqlTable("warehouseItems", {
     .notNull(),
   unit: varchar("unit", { length: 20 }).default("un").notNull(),
   quantity: decimal("quantity", { precision: 12, scale: 2 }).default("0").notNull(),
+  // Comuns a qualquer tipo de item
+  marca: varchar("marca", { length: 150 }),
+  modelo: varchar("modelo", { length: 150 }),
+  categoria: varchar("categoria", { length: 100 }),
+  observacoes: text("observacoes"),
   // Obrigatório para EPI
   ca: varchar("ca", { length: 50 }),
   dataValidadeCa: varchar("dataValidadeCa", { length: 10 }),
+  tamanho: varchar("tamanho", { length: 30 }),
+  periodicidadeTrocaMeses: int("periodicidadeTrocaMeses"),
   // Obrigatório para Ferramenta
   patrimonio: varchar("patrimonio", { length: 100 }),
+  numeroSerie: varchar("numeroSerie", { length: 100 }),
+  dataAquisicao: varchar("dataAquisicao", { length: 10 }),
+  estadoConservacao: mysqlEnum("estadoConservacao", ["novo", "bom", "regular", "ruim"]),
   estoqueMinimo: decimal("estoqueMinimo", { precision: 12, scale: 2 }).default("10").notNull(),
   // Sempre estoqueMinimo × 1,2 — recalculado a cada gravação, não editável direto.
   estoqueSeguranca: decimal("estoqueSeguranca", { precision: 12, scale: 2 }).default("12").notNull(),
+  estoqueMaximo: decimal("estoqueMaximo", { precision: 12, scale: 2 }),
   localizacao: varchar("localizacao", { length: 150 }),
   fornecedor: varchar("fornecedor", { length: 150 }),
   precoUnitario: decimal("precoUnitario", { precision: 12, scale: 2 }).default("0").notNull(),
