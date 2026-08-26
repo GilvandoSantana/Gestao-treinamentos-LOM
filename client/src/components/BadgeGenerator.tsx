@@ -197,25 +197,24 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     const splitGerencia = doc.splitTextToSize(employee.gerencia || '—', 25);
     doc.text(splitGerencia, 27.5, yInfo + 3);
 
-    // Dados de CNH — só aparecem quando o colaborador tiver algum
-    // preenchido; ficam em branco (não desenha nada) caso não se aplique.
-    if (employee.cnhNumero || employee.cnhValidade || employee.cnhCategoria) {
-      yInfo += 8.5 + (splitGerencia.length - 1) * 2.8;
-      doc.setFont('helvetica', 'bold');
-      doc.text('CNH', 27.5, yInfo);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(5);
-      let cnhValidadeFormatted = '—';
-      if (employee.cnhValidade) {
-        try {
-          cnhValidadeFormatted = new Date(`${employee.cnhValidade}T00:00:00`).toLocaleDateString('pt-BR');
-        } catch {
-          cnhValidadeFormatted = employee.cnhValidade;
-        }
+    // Dados de CNH — sempre aparecem no layout novo, pra todo mundo, com
+    // travessão nos campos que o colaborador não tiver preenchido. Não ter
+    // CNH não deve mudar a estrutura do crachá.
+    yInfo += 8.5 + (splitGerencia.length - 1) * 2.8;
+    doc.setFont('helvetica', 'bold');
+    doc.text('CNH', 27.5, yInfo);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5);
+    let cnhValidadeFormatted = '—';
+    if (employee.cnhValidade) {
+      try {
+        cnhValidadeFormatted = new Date(`${employee.cnhValidade}T00:00:00`).toLocaleDateString('pt-BR');
+      } catch {
+        cnhValidadeFormatted = employee.cnhValidade;
       }
-      doc.text(`Nº ${employee.cnhNumero || '—'}  Cat. ${employee.cnhCategoria || '—'}`, 27.5, yInfo + 3);
-      doc.text(`Val. ${cnhValidadeFormatted}`, 27.5, yInfo + 6);
     }
+    doc.text(`Nº ${employee.cnhNumero || '—'}  Cat. ${employee.cnhCategoria || '—'}`, 27.5, yInfo + 3);
+    doc.text(`Val. ${cnhValidadeFormatted}`, 27.5, yInfo + 6);
 
     // Rodapé frente
     // y=122 → 122*0.567=69.2 | y=127→72.0 | y=135→76.5 | y=140→79.4
