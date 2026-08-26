@@ -19,7 +19,10 @@ import {
 import {
   WAREHOUSE_ITEM_TYPES,
   WAREHOUSE_ITEM_TYPE_LABELS,
+  WAREHOUSE_ITEM_CONDITIONS,
+  WAREHOUSE_ITEM_CONDITION_LABELS,
   type WarehouseItemType,
+  type WarehouseItemCondition,
   type WarehouseItemInfo,
 } from '@shared/warehouse';
 
@@ -34,10 +37,20 @@ const emptyForm = {
   type: 'material_consumo' as WarehouseItemType,
   unit: 'un',
   quantity: '0',
+  marca: '',
+  modelo: '',
+  categoria: '',
+  observacoes: '',
   ca: '',
   dataValidadeCa: '',
+  tamanho: '',
+  periodicidadeTrocaMeses: '',
   patrimonio: '',
+  numeroSerie: '',
+  dataAquisicao: '',
+  estadoConservacao: '' as WarehouseItemCondition | '',
   estoqueMinimo: '10',
+  estoqueMaximo: '',
   localizacao: '',
   fornecedor: '',
   precoUnitario: '0',
@@ -146,10 +159,20 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
       type: item.type,
       unit: item.unit,
       quantity: String(item.quantity),
+      marca: item.marca ?? '',
+      modelo: item.modelo ?? '',
+      categoria: item.categoria ?? '',
+      observacoes: item.observacoes ?? '',
       ca: item.ca ?? '',
       dataValidadeCa: item.dataValidadeCa ?? '',
+      tamanho: item.tamanho ?? '',
+      periodicidadeTrocaMeses: item.periodicidadeTrocaMeses != null ? String(item.periodicidadeTrocaMeses) : '',
       patrimonio: item.patrimonio ?? '',
+      numeroSerie: item.numeroSerie ?? '',
+      dataAquisicao: item.dataAquisicao ?? '',
+      estadoConservacao: item.estadoConservacao ?? '',
       estoqueMinimo: String(item.estoqueMinimo),
+      estoqueMaximo: item.estoqueMaximo != null ? String(item.estoqueMaximo) : '',
       localizacao: item.localizacao ?? '',
       fornecedor: item.fornecedor ?? '',
       precoUnitario: String(item.precoUnitario),
@@ -172,6 +195,10 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
       toast.error('Para Ferramenta é obrigatório informar o Patrimônio.');
       return;
     }
+    if (form.estoqueMaximo && parseFloat(form.estoqueMaximo) < (parseFloat(form.estoqueMinimo) || 0)) {
+      toast.error('O estoque máximo não pode ser menor que o estoque mínimo.');
+      return;
+    }
 
     try {
       await upsertMutation.mutateAsync({
@@ -181,10 +208,20 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
         type: form.type,
         unit: form.unit,
         quantity: parseFloat(form.quantity) || 0,
+        marca: form.marca || null,
+        modelo: form.modelo || null,
+        categoria: form.categoria || null,
+        observacoes: form.observacoes || null,
         ca: form.ca || null,
         dataValidadeCa: form.dataValidadeCa || null,
+        tamanho: form.tamanho || null,
+        periodicidadeTrocaMeses: form.periodicidadeTrocaMeses ? parseInt(form.periodicidadeTrocaMeses, 10) : null,
         patrimonio: form.patrimonio || null,
+        numeroSerie: form.numeroSerie || null,
+        dataAquisicao: form.dataAquisicao || null,
+        estadoConservacao: form.estadoConservacao || null,
         estoqueMinimo: parseFloat(form.estoqueMinimo) || 0,
+        estoqueMaximo: form.estoqueMaximo ? parseFloat(form.estoqueMaximo) : null,
         localizacao: form.localizacao || null,
         fornecedor: form.fornecedor || null,
         precoUnitario: parseFloat(form.precoUnitario) || 0,
@@ -356,6 +393,38 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
               />
             </div>
             <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-semibold text-foreground mb-1">Categoria</label>
+              <input
+                value={form.categoria}
+                onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                placeholder="Ex: Solda, Corte, Elétrica..."
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Marca/modelo — aplicável a qualquer tipo (ferramenta, EPI, equipamento, material) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Marca / fabricante</label>
+              <input
+                value={form.marca}
+                onChange={(e) => setForm({ ...form, marca: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Modelo</label>
+              <input
+                value={form.modelo}
+                onChange={(e) => setForm({ ...form, modelo: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="block text-xs font-semibold text-foreground mb-1">Estoque mínimo</label>
               <input
                 type="number"
@@ -365,38 +434,113 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
               />
             </div>
-          </div>
-
-          {form.type === 'epi' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">CA *</label>
-                <input
-                  value={form.ca}
-                  onChange={(e) => setForm({ ...form, ca: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1">Validade do CA</label>
-                <DateInputBR
-                  value={form.dataValidadeCa}
-                  onChange={(v) => setForm({ ...form, dataValidadeCa: v })}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
-                />
-              </div>
-            </div>
-          )}
-
-          {form.type === 'ferramenta' && (
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">Patrimônio *</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">Estoque máximo</label>
               <input
-                value={form.patrimonio}
-                onChange={(e) => setForm({ ...form, patrimonio: e.target.value })}
+                type="number"
+                step="0.01"
+                value={form.estoqueMaximo}
+                onChange={(e) => setForm({ ...form, estoqueMaximo: e.target.value })}
+                placeholder="Opcional"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
               />
             </div>
+          </div>
+
+          {form.type === 'epi' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">CA *</label>
+                  <input
+                    value={form.ca}
+                    onChange={(e) => setForm({ ...form, ca: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Validade do CA</label>
+                  <DateInputBR
+                    value={form.dataValidadeCa}
+                    onChange={(v) => setForm({ ...form, dataValidadeCa: v })}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Tamanho / numeração</label>
+                  <input
+                    value={form.tamanho}
+                    onChange={(e) => setForm({ ...form, tamanho: e.target.value })}
+                    placeholder="Ex: M, 42, único..."
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Troca a cada (meses)</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={form.periodicidadeTrocaMeses}
+                    onChange={(e) => setForm({ ...form, periodicidadeTrocaMeses: e.target.value })}
+                    placeholder="Opcional"
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {form.type === 'ferramenta' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Patrimônio *</label>
+                  <input
+                    value={form.patrimonio}
+                    onChange={(e) => setForm({ ...form, patrimonio: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Número de série</label>
+                  <input
+                    value={form.numeroSerie}
+                    onChange={(e) => setForm({ ...form, numeroSerie: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Data de aquisição</label>
+                  <DateInputBR
+                    value={form.dataAquisicao}
+                    onChange={(v) => setForm({ ...form, dataAquisicao: v })}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Estado de conservação</label>
+                  <select
+                    value={form.estadoConservacao}
+                    onChange={(e) =>
+                      setForm({ ...form, estadoConservacao: e.target.value as WarehouseItemCondition | '' })
+                    }
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
+                  >
+                    <option value="">Não informado</option>
+                    {WAREHOUSE_ITEM_CONDITIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {WAREHOUSE_ITEM_CONDITION_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </>
           )}
 
           <div className="grid grid-cols-2 gap-3">
@@ -437,6 +581,17 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1">Observações</label>
+            <textarea
+              value={form.observacoes}
+              onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+              rows={2}
+              placeholder="Qualquer detalhe adicional sobre o item..."
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground resize-none"
+            />
           </div>
 
           <button

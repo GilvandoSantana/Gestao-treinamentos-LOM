@@ -23,6 +23,16 @@ export const WAREHOUSE_ITEM_TYPE_LABELS: Record<WarehouseItemType, string> = {
   material: 'Material',
 };
 
+export const WAREHOUSE_ITEM_CONDITIONS = ['novo', 'bom', 'regular', 'ruim'] as const;
+export type WarehouseItemCondition = (typeof WAREHOUSE_ITEM_CONDITIONS)[number];
+
+export const WAREHOUSE_ITEM_CONDITION_LABELS: Record<WarehouseItemCondition, string> = {
+  novo: 'Novo',
+  bom: 'Bom',
+  regular: 'Regular',
+  ruim: 'Ruim',
+};
+
 export interface WarehouseItemInfo {
   id: string;
   contract: string;
@@ -31,11 +41,24 @@ export interface WarehouseItemInfo {
   type: WarehouseItemType;
   unit: string;
   quantity: number;
+  // Comuns a qualquer tipo de item
+  marca: string | null;
+  modelo: string | null;
+  categoria: string | null;
+  observacoes: string | null;
+  // Específicos de EPI
   ca: string | null;
   dataValidadeCa: string | null;
+  tamanho: string | null;
+  periodicidadeTrocaMeses: number | null;
+  // Específicos de Ferramenta
   patrimonio: string | null;
+  numeroSerie: string | null;
+  dataAquisicao: string | null;
+  estadoConservacao: WarehouseItemCondition | null;
   estoqueMinimo: number;
   estoqueSeguranca: number;
+  estoqueMaximo: number | null;
   localizacao: string | null;
   fornecedor: string | null;
   precoUnitario: number;

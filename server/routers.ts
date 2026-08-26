@@ -100,7 +100,7 @@ import {
   createWarehouseMovement,
   getPriceHistory,
 } from "./db-warehouse";
-import { WAREHOUSE_ITEM_TYPES, WAREHOUSE_MOVEMENT_TYPES } from "@shared/warehouse";
+import { WAREHOUSE_ITEM_TYPES, WAREHOUSE_MOVEMENT_TYPES, WAREHOUSE_ITEM_CONDITIONS } from "@shared/warehouse";
 import {
   listToolDeliveries,
   listActiveDeliveriesForEmployee,
@@ -2100,10 +2100,20 @@ export const appRouter = router({
           type: z.enum(WAREHOUSE_ITEM_TYPES),
           unit: z.string().trim().min(1).default("un"),
           quantity: z.number().min(0),
+          marca: z.string().nullish(),
+          modelo: z.string().nullish(),
+          categoria: z.string().nullish(),
+          observacoes: z.string().nullish(),
           ca: z.string().nullish(),
           dataValidadeCa: z.string().nullish(),
+          tamanho: z.string().nullish(),
+          periodicidadeTrocaMeses: z.number().min(0).nullish(),
           patrimonio: z.string().nullish(),
+          numeroSerie: z.string().nullish(),
+          dataAquisicao: z.string().nullish(),
+          estadoConservacao: z.enum(WAREHOUSE_ITEM_CONDITIONS).nullish(),
           estoqueMinimo: z.number().min(0),
+          estoqueMaximo: z.number().min(0).nullish(),
           localizacao: z.string().nullish(),
           fornecedor: z.string().nullish(),
           precoUnitario: z.number().min(0),
@@ -2124,6 +2134,12 @@ export const appRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Para Ferramenta é obrigatório informar o Patrimônio.",
+          });
+        }
+        if (input.estoqueMaximo != null && input.estoqueMaximo < input.estoqueMinimo) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O estoque máximo não pode ser menor que o estoque mínimo.",
           });
         }
 

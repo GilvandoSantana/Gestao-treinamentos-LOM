@@ -16,11 +16,21 @@ function toItemInfo(row: typeof warehouseItems.$inferSelect): WarehouseItemInfo 
     type: row.type as WarehouseItemType,
     unit: row.unit,
     quantity: Number(row.quantity),
+    marca: row.marca,
+    modelo: row.modelo,
+    categoria: row.categoria,
+    observacoes: row.observacoes,
     ca: row.ca,
     dataValidadeCa: row.dataValidadeCa,
+    tamanho: row.tamanho,
+    periodicidadeTrocaMeses: row.periodicidadeTrocaMeses,
     patrimonio: row.patrimonio,
+    numeroSerie: row.numeroSerie,
+    dataAquisicao: row.dataAquisicao,
+    estadoConservacao: row.estadoConservacao as WarehouseItemInfo['estadoConservacao'],
     estoqueMinimo: Number(row.estoqueMinimo),
     estoqueSeguranca: Number(row.estoqueSeguranca),
+    estoqueMaximo: row.estoqueMaximo != null ? Number(row.estoqueMaximo) : null,
     localizacao: row.localizacao,
     fornecedor: row.fornecedor,
     precoUnitario: Number(row.precoUnitario),
@@ -71,10 +81,20 @@ export interface WarehouseItemInput {
   type: WarehouseItemType;
   unit: string;
   quantity: number;
+  marca?: string | null;
+  modelo?: string | null;
+  categoria?: string | null;
+  observacoes?: string | null;
   ca?: string | null;
   dataValidadeCa?: string | null;
+  tamanho?: string | null;
+  periodicidadeTrocaMeses?: number | null;
   patrimonio?: string | null;
+  numeroSerie?: string | null;
+  dataAquisicao?: string | null;
+  estadoConservacao?: WarehouseItemInfo['estadoConservacao'];
   estoqueMinimo: number;
+  estoqueMaximo?: number | null;
   localizacao?: string | null;
   fornecedor?: string | null;
   precoUnitario: number;
@@ -101,11 +121,21 @@ export async function createWarehouseItem(
     type: input.type,
     unit: input.unit.trim() || "un",
     quantity: String(input.quantity),
+    marca: input.marca?.trim() || null,
+    modelo: input.modelo?.trim() || null,
+    categoria: input.categoria?.trim() || null,
+    observacoes: input.observacoes?.trim() || null,
     ca: input.ca?.trim() || null,
     dataValidadeCa: input.dataValidadeCa || null,
+    tamanho: input.tamanho?.trim() || null,
+    periodicidadeTrocaMeses: input.periodicidadeTrocaMeses ?? null,
     patrimonio: input.patrimonio?.trim() || null,
+    numeroSerie: input.numeroSerie?.trim() || null,
+    dataAquisicao: input.dataAquisicao || null,
+    estadoConservacao: input.estadoConservacao || null,
     estoqueMinimo: String(input.estoqueMinimo),
     estoqueSeguranca: String(estoqueSeguranca),
+    estoqueMaximo: input.estoqueMaximo != null ? String(input.estoqueMaximo) : null,
     localizacao: input.localizacao?.trim() || null,
     fornecedor: input.fornecedor?.trim() || null,
     precoUnitario: String(input.precoUnitario),
@@ -135,11 +165,21 @@ export async function updateWarehouseItem(
       type: input.type,
       unit: input.unit.trim() || "un",
       quantity: String(input.quantity),
+      marca: input.marca?.trim() || null,
+      modelo: input.modelo?.trim() || null,
+      categoria: input.categoria?.trim() || null,
+      observacoes: input.observacoes?.trim() || null,
       ca: input.ca?.trim() || null,
       dataValidadeCa: input.dataValidadeCa || null,
+      tamanho: input.tamanho?.trim() || null,
+      periodicidadeTrocaMeses: input.periodicidadeTrocaMeses ?? null,
       patrimonio: input.patrimonio?.trim() || null,
+      numeroSerie: input.numeroSerie?.trim() || null,
+      dataAquisicao: input.dataAquisicao || null,
+      estadoConservacao: input.estadoConservacao || null,
       estoqueMinimo: String(input.estoqueMinimo),
       estoqueSeguranca: String(estoqueSeguranca),
+      estoqueMaximo: input.estoqueMaximo != null ? String(input.estoqueMaximo) : null,
       localizacao: input.localizacao?.trim() || null,
       fornecedor: input.fornecedor?.trim() || null,
       precoUnitario: String(input.precoUnitario),
