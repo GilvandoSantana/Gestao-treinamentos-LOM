@@ -35,6 +35,7 @@ import CloudPreviewModal from '@/components/CloudPreviewModal';
 import CloudMigrationPanel from '@/components/CloudMigrationPanel';
 import CloudMoveDialog from '@/components/CloudMoveDialog';
 import CloudVersionHistoryModal from '@/components/CloudVersionHistoryModal';
+import CloudLocalSyncPanel from '@/components/CloudLocalSyncPanel';
 
 interface CloudBrowserProps {
   canManage: boolean;
@@ -459,6 +460,12 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           </span>
         ))}
       </div>
+
+      <CloudLocalSyncPanel
+        folderId={currentFolderId}
+        folderName={path[path.length - 1]?.name ?? 'Meus arquivos'}
+        canManage={canManage}
+      />
 
       {/* Ações */}
       {canManage && (
