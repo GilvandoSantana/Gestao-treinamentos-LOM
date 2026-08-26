@@ -9,7 +9,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { WarehouseItemInfo, WarehouseMovementInfo } from '@shared/warehouse';
 
-const COLS = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 }];
+const COLS = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
 
 export function exportItemsToExcel(items: WarehouseItemInfo[]): void {
   const data = items.map((item) => ({
@@ -18,6 +18,8 @@ export function exportItemsToExcel(items: WarehouseItemInfo[]): void {
     Tipo: item.type,
     Unidade: item.unit,
     Quantidade: item.quantity,
+    CA: item.ca ?? '',
+    Patrimônio: item.patrimonio ?? '',
   }));
   const worksheet = XLSX.utils.json_to_sheet(data);
   worksheet['!cols'] = COLS;
@@ -28,8 +30,9 @@ export function exportItemsToExcel(items: WarehouseItemInfo[]): void {
 
 export function downloadItemsTemplate(): void {
   const templateData = [
-    { Código: 'EX001', Nome: 'Exemplo de Item', Tipo: 'material', Unidade: 'un', Quantidade: 10 },
-    { Código: 'EX002', Nome: 'Outro Item', Tipo: 'ferramenta', Unidade: 'pç', Quantidade: 5 },
+    { Código: 'EX001', Nome: 'Exemplo de Item', Tipo: 'material', Unidade: 'un', Quantidade: 10, CA: '', Patrimônio: '' },
+    { Código: 'EX002', Nome: 'Furadeira de Impacto', Tipo: 'ferramenta', Unidade: 'pç', Quantidade: 5, CA: '', Patrimônio: 'PAT-0042' },
+    { Código: 'EX003', Nome: 'Capacete de Segurança', Tipo: 'epi', Unidade: 'un', Quantidade: 20, CA: '12345', Patrimônio: '' },
   ];
   const worksheet = XLSX.utils.json_to_sheet(templateData);
   worksheet['!cols'] = COLS;
@@ -45,7 +48,10 @@ export function downloadItemsTemplate(): void {
     ['4. Tipo: epi, ferramenta, equipamento, material_consumo, material_limpeza, gas ou material'],
     ['5. Unidade: un, kg, l, pç, etc.'],
     ['6. Quantidade: número inteiro'],
+    ['7. CA: obrigatório quando Tipo = epi (número do Certificado de Aprovação)'],
+    ['8. Patrimônio: obrigatório quando Tipo = ferramenta'],
     [''],
+    ['Linhas de EPI sem CA, ou de Ferramenta sem Patrimônio, serão rejeitadas na importação.'],
     ['Não altere os nomes das colunas!'],
   ];
   const instructionSheet = XLSX.utils.aoa_to_sheet(instructionData);
@@ -60,6 +66,8 @@ export interface ParsedImportItem {
   type: string;
   unit: string;
   quantity: number;
+  ca: string | null;
+  patrimonio: string | null;
 }
 
 const VALID_TYPES = ['epi', 'ferramenta', 'equipamento', 'material_consumo', 'material_limpeza', 'gas', 'material'];
@@ -88,17 +96,28 @@ export function parseItemsExcelFile(file: File): Promise<ParsedImportItem[]> {
           const rawType = String(row['Tipo'] ?? row['Type'] ?? 'material').trim().toLowerCase();
           const unit = String(row['Unidade'] ?? row['Unit'] ?? 'un').trim() || 'un';
           const quantity = parseInt(String(row['Quantidade'] ?? row['Quantity'] ?? '0'), 10);
+          const ca = String(row['CA'] ?? '').trim() || null;
+          const patrimonio = String(row['Patrimônio'] ?? row['Patrimonio'] ?? '').trim() || null;
 
           if (!code || !name) {
             throw new Error(`Linha ${index + 2}: Código e Nome são obrigatórios`);
+          }
+          const type = VALID_TYPES.includes(rawType) ? rawType : 'material';
+          if (type === 'epi' && !ca) {
+            throw new Error(`Linha ${index + 2}: item do tipo "epi" precisa da coluna CA preenchida`);
+          }
+          if (type === 'ferramenta' && !patrimonio) {
+            throw new Error(`Linha ${index + 2}: item do tipo "ferramenta" precisa da coluna Patrimônio preenchida`);
           }
 
           return {
             code,
             name,
-            type: VALID_TYPES.includes(rawType) ? rawType : 'material',
+            type,
             unit,
             quantity: Number.isNaN(quantity) ? 0 : quantity,
+            ca,
+            patrimonio,
           };
         });
 

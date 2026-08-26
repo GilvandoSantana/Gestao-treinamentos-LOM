@@ -112,6 +112,8 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
             type: item.type as WarehouseItemType,
             unit: item.unit,
             quantity: item.quantity,
+            ca: item.ca,
+            patrimonio: item.patrimonio,
             estoqueMinimo: 10,
             precoUnitario: 0,
           });
