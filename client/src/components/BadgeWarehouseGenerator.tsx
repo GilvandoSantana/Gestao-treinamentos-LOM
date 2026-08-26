@@ -58,8 +58,11 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
   const toastId = toast.loading(`Gerando crachá de Almoxarifado para ${employee.name}...`);
 
   try {
-    // Folha A4 retrato com o cartão em 55 x 85mm por face (frente + verso).
-    const doc = createBadgeDoc(55, 85, true, sharedDoc);
+    // Folha A4 retrato com o cartão em 110 x 85mm (frente + verso lado a
+    // lado) — mesmo tamanho físico final dos outros crachás (55x85mm por
+    // face). O valor aqui é a largura total das DUAS faces desenhadas
+    // lado a lado (a frente ocupa x:0-55, o verso x:55-110 via offset bx).
+    const doc = createBadgeDoc(110, 85, true, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -85,42 +88,45 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
       const qrCode = `FUNC:${employee.registration || employee.name.replace(/\s+/g, '_').toUpperCase()}`;
       const qrCodeDataUrl = await generateQRCode(qrCode);
       if (qrCodeDataUrl) {
-        // QR grande e centralizado, ocupando a maior parte da frente
-        doc.addImage(qrCodeDataUrl, 'PNG', 7.5, 13, 40, 40);
+        // QR grande e centralizado, ocupando a maior parte da frente —
+        // com folga suficiente pra caber nome/matrícula/função abaixo dele
+        // sem passar da borda inferior do cartão (y=84), mesmo quando o
+        // nome ou a função ocuparem duas linhas.
+        doc.addImage(qrCodeDataUrl, 'PNG', 9.5, 12, 36, 36);
       }
     } catch (error) {
       console.error('Error adding QR Code to PDF:', error);
     }
 
     doc.setDrawColor(grayBorder);
-    doc.line(6, 58, 49, 58);
+    doc.line(6, 51, 49, 51);
 
-    let y = 65;
+    let y = 55;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.5);
     doc.setTextColor(black);
     doc.text('Nome', 6, y);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     const splitName = doc.splitTextToSize(employee.name, 43);
-    doc.text(splitName, 6, y + 4);
-    y += 4 + splitName.length * 3.6;
+    doc.text(splitName, 6, y + 3.2);
+    y += 3.2 + splitName.length * 3 + 2;
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.5);
     doc.text('Matrícula', 6, y);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text(employee.registration || 'N/A', 6, y + 4);
-    y += 8;
+    doc.setFontSize(7);
+    doc.text(employee.registration || 'N/A', 6, y + 3.2);
+    y += 3.2 + 3 + 2;
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(5.5);
     doc.text('Função', 6, y);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     const splitRole = doc.splitTextToSize(employee.role, 43);
-    doc.text(splitRole, 6, y + 4);
+    doc.text(splitRole, 6, y + 3.2);
 
     // =====================================================================
     // VERSO — só a logo grande da Support Mining
