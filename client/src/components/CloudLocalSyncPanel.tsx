@@ -50,6 +50,8 @@ export default function CloudLocalSyncPanel({ folderId, folderName, canManage }:
   const uploadMutation = trpc.cloud.upload.useMutation();
   const uploadVersionMutation = trpc.cloud.uploadNewVersion.useMutation();
   const getDownloadUrlMutation = trpc.cloud.getDownloadUrl.useMutation();
+  const sessionQuery = trpc.auth.siteSession.useQuery();
+  const currentUsername = sessionQuery.data?.username ?? undefined;
 
   const supported = isFileSystemAccessSupported();
 
@@ -76,6 +78,8 @@ export default function CloudLocalSyncPanel({ folderId, folderName, canManage }:
             fileSize: f.fileSize,
             mimeType: f.mimeType,
             updatedAt: f.updatedAt,
+            lockedBy: f.lockedBy,
+            lockedAt: f.lockedAt,
           }));
         },
         downloadCloudFile: async (fileId) => {
@@ -105,7 +109,7 @@ export default function CloudLocalSyncPanel({ folderId, folderName, canManage }:
           });
           return { updatedAt: updated.updatedAt };
         },
-      });
+      }, currentUsername);
 
       knownFilesRef.current = result.knownFiles;
       if (result.log.length > 0) {

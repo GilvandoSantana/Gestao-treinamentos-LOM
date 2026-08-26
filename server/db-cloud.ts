@@ -46,6 +46,8 @@ export interface CloudFileInfo {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
 }
 
 export interface CloudFavoriteInfo {
@@ -117,7 +119,70 @@ function toFileInfo(row: typeof cloudFiles.$inferSelect): CloudFileInfo {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+    lockedBy: row.lockedBy,
+    lockedAt: row.lockedAt ? row.lockedAt.toISOString() : null,
   };
+}
+
+// Trava expira sozinha depois desse tempo, caso a pessoa esqueca de
+// liberar (fechar o navegador sem clicar em "Concluir edicao", etc.)
+const LOCK_DURATION_MS = 2 * 60 * 60 * 1000; // 2 horas
+
+export function isLockActive(lockedBy: string | null, lockedAt: string | null): boolean {
+  if (!lockedBy || !lockedAt) return false;
+  return Date.now() - new Date(lockedAt).getTime() < LOCK_DURATION_MS;
+}
+
+/**
+ * Marca um arquivo como "em edicao" por um usuario. Falha se ja estiver
+ * travado por outra pessoa (e a trava ainda nao tiver expirado).
+ */
+export async function lockFile(
+  fileId: string,
+  contractSlug: string,
+  username: string
+): Promise<{ ok: true; file: CloudFileInfo } | { ok: false; lockedBy: string; lockedAt: string }> {
+  const file = await getFileById(fileId);
+  if (!file || file.contractSlug !== contractSlug) {
+    throw new Error("Arquivo nao encontrado.");
+  }
+  if (file.lockedBy && file.lockedBy !== username && isLockActive(file.lockedBy, file.lockedAt)) {
+    return { ok: false, lockedBy: file.lockedBy, lockedAt: file.lockedAt! };
+  }
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponivel.");
+  await db
+    .update(cloudFiles)
+    .set({ lockedBy: username, lockedAt: new Date() })
+    .where(eq(cloudFiles.id, fileId));
+  const updated = await getFileById(fileId);
+  return { ok: true, file: updated! };
+}
+
+/**
+ * Libera a trava de um arquivo. Só quem travou (ou um admin) pode liberar.
+ */
+export async function unlockFile(
+  fileId: string,
+  contractSlug: string,
+  username: string,
+  isAdmin: boolean
+): Promise<CloudFileInfo> {
+  const file = await getFileById(fileId);
+  if (!file || file.contractSlug !== contractSlug) {
+    throw new Error("Arquivo nao encontrado.");
+  }
+  if (file.lockedBy && file.lockedBy !== username && !isAdmin) {
+    throw new Error("Apenas quem travou o arquivo (ou um administrador) pode liberar a edicao.");
+  }
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponivel.");
+  await db
+    .update(cloudFiles)
+    .set({ lockedBy: null, lockedAt: null })
+    .where(eq(cloudFiles.id, fileId));
+  const updated = await getFileById(fileId);
+  return updated!;
 }
 
 function toShareInfo(row: typeof cloudShares.$inferSelect, groupName: string | null = null): CloudShareInfo {

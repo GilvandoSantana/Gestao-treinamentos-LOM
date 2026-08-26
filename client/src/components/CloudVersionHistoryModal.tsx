@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { X, History, Upload, Download, RotateCcw, Loader, Clock } from 'lucide-react';
+import { X, History, Upload, Download, RotateCcw, Loader, Clock, Lock, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
@@ -14,6 +14,7 @@ interface CloudVersionHistoryModalProps {
   fileId: string;
   fileName: string;
   canManage: boolean;
+  isMasterAdmin?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -22,6 +23,7 @@ export default function CloudVersionHistoryModal({
   fileId,
   fileName,
   canManage,
+  isMasterAdmin,
   onClose,
   onChanged,
 }: CloudVersionHistoryModalProps) {
@@ -30,21 +32,57 @@ export default function CloudVersionHistoryModal({
 
   const utils = trpc.useUtils();
   const versionsQuery = trpc.cloud.listFileVersions.useQuery({ fileId });
+  const fileInfoQuery = trpc.cloud.getFileInfo.useQuery({ fileId });
+  const sessionQuery = trpc.auth.siteSession.useQuery();
   const uploadVersionMutation = trpc.cloud.uploadNewVersion.useMutation();
   const restoreMutation = trpc.cloud.restoreFileVersion.useMutation();
   const getVersionUrlMutation = trpc.cloud.getVersionDownloadUrl.useMutation();
+  const lockFileMutation = trpc.cloud.lockFile.useMutation();
+  const unlockFileMutation = trpc.cloud.unlockFile.useMutation();
+
+  const currentUsername = sessionQuery.data?.username ?? null;
+  const lockedBy = fileInfoQuery.data?.lockedBy ?? null;
+  const lockedAt = fileInfoQuery.data?.lockedAt ?? null;
+  const isLockActive = !!lockedBy && !!lockedAt && Date.now() - new Date(lockedAt).getTime() < 2 * 60 * 60 * 1000;
+  const lockedByOther = isLockActive && lockedBy !== currentUsername;
+  const lockedByMe = isLockActive && lockedBy === currentUsername;
 
   const refresh = () =>
     Promise.all([
       utils.cloud.listFileVersions.invalidate({ fileId }),
+      utils.cloud.getFileInfo.invalidate({ fileId }),
       utils.cloud.list.invalidate(),
       utils.cloud.storageInfo.invalidate(),
     ]);
+
+  const handleLock = async () => {
+    try {
+      await lockFileMutation.mutateAsync({ fileId });
+      await refresh();
+      toast.success('Arquivo marcado como "em edição".');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível travar o arquivo.');
+    }
+  };
+
+  const handleUnlock = async () => {
+    try {
+      await unlockFileMutation.mutateAsync({ fileId });
+      await refresh();
+      toast.success('Edição concluída — o arquivo está liberado de novo.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível liberar o arquivo.');
+    }
+  };
 
   const handleUploadNewVersion = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
+    if (lockedByOther) {
+      toast.error(`Este arquivo está sendo editado por ${lockedBy}. Aguarde a pessoa concluir.`);
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -111,10 +149,38 @@ export default function CloudVersionHistoryModal({
         </div>
 
         {canManage && (
-          <div className="p-4 pb-2 shrink-0">
+          <div className="p-4 pb-2 shrink-0 space-y-2">
+            {isLockActive && (
+              <div
+                className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${
+                  lockedByMe ? 'bg-teal/10 text-teal' : 'bg-warning/10 text-warning'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Lock size={13} />
+                  {lockedByMe ? 'Você está editando este arquivo' : `Em edição por ${lockedBy}`}
+                </span>
+                {(lockedByMe || isMasterAdmin) && (
+                  <button onClick={handleUnlock} className="flex items-center gap-1 hover:opacity-70 shrink-0">
+                    <Unlock size={13} />
+                    Concluir edição
+                  </button>
+                )}
+              </div>
+            )}
+            {!isLockActive && (
+              <button
+                onClick={handleLock}
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-border text-muted-foreground hover:text-warning hover:border-warning transition"
+              >
+                <Lock size={13} />
+                Marcar como "em edição" antes de mexer
+              </button>
+            )}
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
+              disabled={isUploading || lockedByOther}
+              title={lockedByOther ? `Aguarde ${lockedBy} concluir a edição` : undefined}
               className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2.5 rounded-lg bg-orange text-white hover:opacity-90 disabled:opacity-50"
             >
               {isUploading ? <Loader size={15} className="animate-spin" /> : <Upload size={15} />}

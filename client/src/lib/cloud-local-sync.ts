@@ -38,6 +38,17 @@ export interface CloudFileForSync {
   fileSize: number | null;
   mimeType: string | null;
   updatedAt: string;
+  lockedBy: string | null;
+  lockedAt: string | null;
+}
+
+// Mesma regra de expiração usada no servidor (server/db-cloud.ts) — mantida
+// em espelho aqui só pra decidir se vale a pena nem tentar enviar, o
+// servidor sempre valida de novo antes de aceitar.
+const LOCK_DURATION_MS = 2 * 60 * 60 * 1000;
+function isLockActiveClient(lockedBy: string | null, lockedAt: string | null): boolean {
+  if (!lockedBy || !lockedAt) return false;
+  return Date.now() - new Date(lockedAt).getTime() < LOCK_DURATION_MS;
 }
 
 export interface SyncCallbacks {
@@ -58,7 +69,8 @@ export interface SyncCallbacks {
 export async function runSyncTick(
   dirHandle: FileSystemDirectoryHandle,
   knownFiles: Map<string, SyncedFileState>,
-  callbacks: SyncCallbacks
+  callbacks: SyncCallbacks,
+  currentUsername?: string
 ): Promise<{ knownFiles: Map<string, SyncedFileState>; log: SyncLogEntry[] }> {
   const log: SyncLogEntry[] = [];
   const nextKnown = new Map(knownFiles);
@@ -157,7 +169,17 @@ export async function runSyncTick(
 
     if (!localChanged && !cloudChanged) continue;
 
+    const lockedByOther =
+      isLockActiveClient(cloudFile.lockedBy, cloudFile.lockedAt) && cloudFile.lockedBy !== currentUsername;
+
     if (localChanged && !cloudChanged) {
+      if (lockedByOther) {
+        addLog(
+          `"${name}" está sendo editado por ${cloudFile.lockedBy} — a edição local não foi enviada. Tente de novo depois que a pessoa concluir.`,
+          'conflict'
+        );
+        continue;
+      }
       try {
         const result = await callbacks.uploadNewVersion(cloudFile.id, localFile);
         nextKnown.set(name, {
@@ -188,6 +210,14 @@ export async function runSyncTick(
       } catch (error) {
         addLog(`Erro ao atualizar "${name}": ${error instanceof Error ? error.message : 'erro'}`, 'error');
       }
+      continue;
+    }
+
+    if (lockedByOther) {
+      addLog(
+        `"${name}" mudou nos dois lados e está sendo editado por ${cloudFile.lockedBy} — nada foi enviado por segurança.`,
+        'conflict'
+      );
       continue;
     }
 

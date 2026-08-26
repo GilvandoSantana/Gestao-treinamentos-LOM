@@ -24,6 +24,7 @@ import {
   Share2,
   History,
   Lock,
+  Unlock,
   Users,
   X,
 } from 'lucide-react';
@@ -114,6 +115,10 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const deleteFileMutation = trpc.cloud.deleteFile.useMutation();
   const getDownloadUrlMutation = trpc.cloud.getDownloadUrl.useMutation();
   const toggleFavoriteMutation = trpc.cloud.toggleFavorite.useMutation();
+  const lockFileMutation = trpc.cloud.lockFile.useMutation();
+  const unlockFileMutation = trpc.cloud.unlockFile.useMutation();
+  const sessionQuery = trpc.auth.siteSession.useQuery();
+  const currentUsername = sessionQuery.data?.username ?? null;
 
   const refresh = () =>
     Promise.all([
@@ -424,6 +429,31 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     }
   };
 
+  const isLockActive = (lockedBy: string | null, lockedAt: string | null) => {
+    if (!lockedBy || !lockedAt) return false;
+    return Date.now() - new Date(lockedAt).getTime() < 2 * 60 * 60 * 1000;
+  };
+
+  const handleLockFile = async (id: string) => {
+    try {
+      await lockFileMutation.mutateAsync({ fileId: id });
+      await utils.cloud.list.invalidate();
+      toast.success('Arquivo marcado como "em edição" — os outros vão ver que você está editando.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível travar o arquivo.');
+    }
+  };
+
+  const handleUnlockFile = async (id: string) => {
+    try {
+      await unlockFileMutation.mutateAsync({ fileId: id });
+      await utils.cloud.list.invalidate();
+      toast.success('Edição concluída — o arquivo está liberado de novo.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível liberar o arquivo.');
+    }
+  };
+
   const path = listQuery.data?.path ?? [];
   const folders = listQuery.data?.folders ?? [];
   const files = listQuery.data?.files ?? [];
@@ -728,7 +758,15 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                       {file.name}
                       {favoriteFileIds.has(file.id) && <Star size={12} className="text-warning fill-warning shrink-0" />}
                     </p>
-                    <p className="text-xs text-muted-foreground font-technical">{formatBytes(file.fileSize ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground font-technical flex items-center gap-1.5">
+                      {formatBytes(file.fileSize ?? 0)}
+                      {isLockActive(file.lockedBy, file.lockedAt) && (
+                        <span className="inline-flex items-center gap-1 text-warning font-semibold">
+                          <Lock size={11} />
+                          {file.lockedBy === currentUsername ? 'Em edição por você' : `Em edição por ${file.lockedBy}`}
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </button>
               </>
@@ -765,6 +803,31 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
                         <Pencil size={13} />
                         Renomear
                       </button>
+                      {isLockActive(file.lockedBy, file.lockedAt) ? (
+                        (file.lockedBy === currentUsername || isMasterAdmin) && (
+                          <button
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleUnlockFile(file.id);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
+                          >
+                            <Unlock size={13} />
+                            Concluir edição
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            handleLockFile(file.id);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted transition-colors"
+                        >
+                          <Lock size={13} />
+                          Marcar como "em edição"
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setOpenMenuId(null);
@@ -844,6 +907,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           fileId={versionsTarget.id}
           fileName={versionsTarget.name}
           canManage={canManage}
+          isMasterAdmin={isMasterAdmin}
           onClose={() => setVersionsTarget(null)}
           onChanged={refresh}
         />

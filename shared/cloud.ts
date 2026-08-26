@@ -55,6 +55,8 @@ export interface CloudFileInfo {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
 }
 
 export interface CloudShareInfo {

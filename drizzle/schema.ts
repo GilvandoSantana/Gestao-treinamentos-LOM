@@ -296,6 +296,11 @@ export const cloudFiles = mysqlTable("cloudFiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   deletedAt: timestamp("deletedAt"),
   deletedBy: varchar("deletedBy", { length: 100 }),
+  // Trava de edicao: enquanto preenchido, so quem travou (ou um admin) pode
+  // enviar uma nova versao. Expira sozinha depois de um tempo (ver
+  // isLockActive em db-cloud.ts) caso a pessoa esqueca de liberar.
+  lockedBy: varchar("lockedBy", { length: 100 }),
+  lockedAt: timestamp("lockedAt"),
 });
 
 export type CloudFolderRow = typeof cloudFolders.$inferSelect;

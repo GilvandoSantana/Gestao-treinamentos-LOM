@@ -53,6 +53,9 @@ import {
   getVersionContentInfo,
   restoreFileVersion,
   getFileById,
+  lockFile,
+  unlockFile,
+  isLockActive,
   softDeleteFile,
   restoreFile,
   permanentlyDeleteFile,
@@ -789,6 +792,16 @@ export const appRouter = router({
         if (!(await canAccessFile(ctx.siteContract, input.fileId, accessCtx))) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
         }
+        if (
+          existing.lockedBy &&
+          existing.lockedBy !== ctx.siteAdminUsername &&
+          isLockActive(existing.lockedBy, existing.lockedAt)
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Este arquivo esta sendo editado por ${existing.lockedBy}. Aguarde a pessoa concluir a edicao antes de enviar uma nova versao.`,
+          });
+        }
 
         const fileBuffer = Buffer.from(input.fileData, "base64");
         const MAX_CLOUD_BYTES = 200 * 1024 * 1024;
@@ -830,6 +843,65 @@ export const appRouter = router({
         });
 
         return updated;
+      }),
+
+    // Marca um arquivo como "em edicao" pra evitar que duas pessoas
+    // enviem versoes conflitantes ao mesmo tempo. Expira sozinha depois de
+    // 2 horas caso a pessoa esqueca de liberar.
+    lockFile: requirePermission('manageCloud')
+      .input(z.object({ fileId: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
+        }
+        const username = ctx.siteAdminUsername ?? '';
+        const result = await lockFile(input.fileId, ctx.siteContract, username);
+        if (!result.ok) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Este arquivo ja esta sendo editado por ${result.lockedBy}.`,
+          });
+        }
+        return result.file;
+      }),
+
+    // Libera a trava de edicao de um arquivo.
+    unlockFile: requirePermission('manageCloud')
+      .input(z.object({ fileId: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const username = ctx.siteAdminUsername ?? '';
+        const isAdmin = ctx.siteRole === 'admin';
+        try {
+          return await unlockFile(input.fileId, ctx.siteContract, username, isAdmin);
+        } catch (error) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: error instanceof Error ? error.message : "Nao foi possivel liberar o arquivo.",
+          });
+        }
+      }),
+
+    // Detalhe de um único arquivo (usado no modal de versões/edição pra
+    // saber o estado de trava atual).
+    getFileInfo: requirePermission('viewCloud')
+      .input(z.object({ fileId: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const file = await getFileById(input.fileId);
+        if (!file || file.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo nao encontrado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract!, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
+        }
+        return file;
       }),
 
     listFileVersions: requirePermission('viewCloud')
