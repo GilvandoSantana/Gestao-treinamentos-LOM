@@ -14,7 +14,6 @@ import {
   Boxes,
   ArrowUpCircle,
   ArrowDownCircle,
-  Wrench,
   Users,
   RotateCcw,
   ShoppingCart,
@@ -30,6 +29,7 @@ import {
 } from 'lucide-react';
 import WarehouseItemsPanel from '@/components/WarehouseItemsPanel';
 import WarehouseMovementsPanel from '@/components/WarehouseMovementsPanel';
+import WarehouseOutboundPanel from '@/components/WarehouseOutboundPanel';
 import WarehouseDeliveryPanel from '@/components/WarehouseDeliveryPanel';
 import WarehouseToolsByEmployeePanel from '@/components/WarehouseToolsByEmployeePanel';
 import WarehousePurchaseRequestsPanel from '@/components/WarehousePurchaseRequestsPanel';
@@ -56,7 +56,6 @@ type Tab =
   | 'stockIn'
   | 'purchases'
   | 'alerts'
-  | 'deliver'
   | 'toolsByEmployee'
   | 'return'
   | 'dailyHistory'
@@ -81,7 +80,7 @@ const SECTIONS: { title: string; tabs: TabDef[] }[] = [
     title: 'Estoque',
     tabs: [
       { key: 'items', label: 'Controle de Estoque', Icon: Boxes },
-      { key: 'stockOut', label: 'Saída de Material', Icon: ArrowUpCircle },
+      { key: 'stockOut', label: 'Saída / Entrega de Ferramentas', Icon: ArrowUpCircle },
       { key: 'stockIn', label: 'Reposição de Estoque', Icon: ArrowDownCircle },
       { key: 'purchases', label: 'Solicitações de Compra', Icon: ShoppingCart },
       { key: 'alerts', label: 'Alertas', Icon: Bell },
@@ -90,7 +89,6 @@ const SECTIONS: { title: string; tabs: TabDef[] }[] = [
   {
     title: 'Ferramentas',
     tabs: [
-      { key: 'deliver', label: 'Entrega de Ferramentas', Icon: Wrench },
       { key: 'toolsByEmployee', label: 'Ferramentas por Funcionário', Icon: Users },
       { key: 'return', label: 'Devolução de Ferramentas', Icon: RotateCcw },
     ],
@@ -183,13 +181,12 @@ export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdm
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {tab === 'items' && <WarehouseItemsPanel canManage={canManage} isMasterAdmin={isMasterAdmin} />}
-            {tab === 'stockOut' && <WarehouseMovementsPanel canManage={canManage} fixedType="saida" />}
-            {tab === 'stockIn' && <WarehouseMovementsPanel canManage={canManage} fixedType="entrada" />}
+            {tab === 'stockOut' && <WarehouseOutboundPanel canManage={canManage} />}
+            {tab === 'stockIn' && <WarehouseMovementsPanel canManage={canManage} />}
             {tab === 'purchases' && <WarehousePurchaseRequestsPanel canManage={canManage} />}
             {tab === 'alerts' && <WarehouseAlertsPanel />}
-            {tab === 'deliver' && <WarehouseDeliveryPanel canManage={canManage} fixedMode="deliver" />}
             {tab === 'toolsByEmployee' && <WarehouseToolsByEmployeePanel />}
-            {tab === 'return' && <WarehouseDeliveryPanel canManage={canManage} fixedMode="return" />}
+            {tab === 'return' && <WarehouseDeliveryPanel canManage={canManage} />}
             {tab === 'dailyHistory' && <WarehouseDailyHistoryPanel />}
             {tab === 'monthlyReport' && <WarehouseMonthlyReportPanel />}
             {tab === 'statistics' && <WarehouseStatisticsPanel />}
