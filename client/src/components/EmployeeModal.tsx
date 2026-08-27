@@ -561,8 +561,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             </div>
           </div>
 
-          {/* Education Level & Birth Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Education Level, Birth Date & Admission Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Nível de Escolaridade</label>
               <select
@@ -598,6 +598,13 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                   <span>✓</span> Idade calculada automaticamente
                 </p>
               )}
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Data de Admissão</label>
+              <DateInputBR value={admissionDate} onChange={setAdmissionDate} />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Usada na Ficha de EPI e em outros documentos de admissão gerados automaticamente.
+              </p>
             </div>
           </div>
 
@@ -663,7 +670,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             </div>
           </div>
 
-          {/* Gerência — mostrada no crachá padrão. Admissão — usada na Ficha de EPI. */}
+          {/* Gerência — mostrada no crachá padrão */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Gerência</label>
@@ -674,10 +681,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 placeholder="Ex: Engª Manutenção"
               />
-            </div>
-            <div>
-              <label className="block text-foreground font-semibold mb-2 text-sm">Data de Admissão</label>
-              <DateInputBR value={admissionDate} onChange={setAdmissionDate} />
             </div>
           </div>
 
