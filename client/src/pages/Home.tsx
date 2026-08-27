@@ -18,6 +18,7 @@ import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
 import ContractsModal from '@/components/ContractsModal';
+import DocumentationModal from '@/components/DocumentationModal';
 import DocumentsModal from '@/components/DocumentsModal';
 import BadgesModal from '@/components/BadgesModal';
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
@@ -81,6 +82,7 @@ export default function Home() {
   const [showDismissed, setShowDismissed] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showContracts, setShowContracts] = useState(false);
+  const [showDocumentation, setShowDocumentation] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
@@ -674,6 +676,7 @@ export default function Home() {
           onShowDismissed={() => setShowDismissed(true)}
           onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
           onShowContracts={session.isMasterAdmin ? () => setShowContracts(true) : undefined}
+          onShowDocumentation={session.isMasterAdmin ? () => setShowDocumentation(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
           dismissedCount={dismissedEmployees.length}
         />
@@ -934,6 +937,8 @@ export default function Home() {
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />
 
       <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
+
+      <DocumentationModal isOpen={showDocumentation} onClose={() => setShowDocumentation(false)} />
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}

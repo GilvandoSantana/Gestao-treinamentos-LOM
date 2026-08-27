@@ -28,6 +28,7 @@ import {
   Footprints,
   FolderOpen,
   Building2,
+  FileStack,
   ChevronDown,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -61,6 +62,7 @@ interface HeaderProps {
   onSeeAllNotifications?: () => void;
   onManageAdmins?: () => void;
   onShowContracts?: () => void;
+  onShowDocumentation?: () => void;
   isMasterAdmin?: boolean;
   /** Chamado quando o administrador escolhe outro contrato (ou "todos" = null). */
   onActiveContractChange?: (slug: string | null) => void;
@@ -94,6 +96,7 @@ export default function Header({
   onSeeAllNotifications,
   onManageAdmins,
   onShowContracts,
+  onShowDocumentation,
   isMasterAdmin = false,
   onActiveContractChange,
   titleContract = null,
@@ -449,6 +452,12 @@ export default function Header({
                       <button onClick={runAndClose(onShowContracts)} className={menuItemClass} role="menuitem">
                         <Building2 size={16} className="text-muted-foreground" />
                         Contratos
+                      </button>
+                    )}
+                    {onShowDocumentation && (
+                      <button onClick={runAndClose(onShowDocumentation)} className={menuItemClass} role="menuitem">
+                        <FileStack size={16} className="text-muted-foreground" />
+                        Documentação
                       </button>
                     )}
                     {toggleTheme && (
