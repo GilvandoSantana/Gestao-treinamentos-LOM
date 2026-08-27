@@ -13,6 +13,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import QrCodeReader from '@/components/QrCodeReader';
 import WarehouseItemCombobox from '@/components/WarehouseItemCombobox';
+import { findWarehouseItemByQrCode } from '@/lib/warehouse-qr';
 
 interface WarehouseMovementsPanelProps {
   canManage: boolean;
@@ -36,8 +37,7 @@ export default function WarehouseMovementsPanel({ canManage }: WarehouseMovement
   const items = itemsQuery.data ?? [];
 
   const handleQrScan = (value: string) => {
-    const code = value.replace(/^MAT:/, '');
-    const found = items.find((i) => i.code === code);
+    const found = findWarehouseItemByQrCode(items, value);
     if (found) {
       setItemId(found.id);
       toast.success(`Item identificado: ${found.name}`);

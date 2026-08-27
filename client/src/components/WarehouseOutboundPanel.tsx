@@ -23,6 +23,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import QrCodeReader from '@/components/QrCodeReader';
 import WarehouseItemCombobox from '@/components/WarehouseItemCombobox';
+import { findWarehouseItemByQrCode } from '@/lib/warehouse-qr';
 import { printReceipt } from '@/lib/warehouse-print';
 
 interface WarehouseOutboundPanelProps {
@@ -94,8 +95,7 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
       return;
     }
 
-    const code = value.replace(/^MAT:/, '');
-    const found = items.find((i) => i.code === code);
+    const found = findWarehouseItemByQrCode(items, value);
     if (!found) {
       toast.error('Item não encontrado para esse QR code.');
       setQrReaderFor(null);

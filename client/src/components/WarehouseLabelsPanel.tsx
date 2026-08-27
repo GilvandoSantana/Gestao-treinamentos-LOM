@@ -78,22 +78,24 @@ export default function WarehouseLabelsPanel() {
       const source = kind === 'employee' ? filteredEmployees : filteredItems;
       const selected = source.filter((s) => selectedIds.has(s.id));
 
-      const generated: LabelData[] = await Promise.all(
-        selected.map(async (s) => {
+      const generated: LabelData[][] = await Promise.all(
+        selected.map(async (s): Promise<LabelData[]> => {
           if (kind === 'employee') {
             const emp = s as (typeof employees)[number];
             const code = emp.registration || emp.name.replace(/\s+/g, '_').toUpperCase();
-            return {
-              kind: 'employee' as const,
-              id: emp.id,
-              code,
-              title: emp.name,
-              subtitle: emp.registration ? `Matrícula: ${emp.registration}` : emp.role,
-              qrDataUrl: await generateQR(`FUNC:${code}`),
-            };
+            return [
+              {
+                kind: 'employee' as const,
+                id: emp.id,
+                code,
+                title: emp.name,
+                subtitle: emp.registration ? `Matrícula: ${emp.registration}` : emp.role,
+                qrDataUrl: await generateQR(`FUNC:${code}`),
+              },
+            ];
           }
           const item = s as (typeof items)[number];
-          return {
+          const itemLabel: LabelData = {
             kind: 'item' as const,
             id: item.id,
             code: item.code,
@@ -101,9 +103,23 @@ export default function WarehouseLabelsPanel() {
             subtitle: `Código: ${item.code}`,
             qrDataUrl: await generateQR(`MAT:${item.code}`),
           };
+          // Ferramenta com patrimônio cadastrado ganha uma segunda etiqueta,
+          // pra colar no próprio equipamento e escanear certinho depois.
+          if (item.type === 'ferramenta' && item.patrimonio) {
+            const patrimonioLabel: LabelData = {
+              kind: 'item' as const,
+              id: `${item.id}-patrimonio`,
+              code: item.patrimonio,
+              title: item.name,
+              subtitle: `Patrimônio: ${item.patrimonio}`,
+              qrDataUrl: await generateQR(`PAT:${item.patrimonio}`),
+            };
+            return [itemLabel, patrimonioLabel];
+          }
+          return [itemLabel];
         })
       );
-      setLabels(generated);
+      setLabels(generated.flat());
     } finally {
       setGenerating(false);
     }
