@@ -938,7 +938,11 @@ export default function Home() {
 
       <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
 
-      <DocumentationModal isOpen={showDocumentation} onClose={() => setShowDocumentation(false)} />
+      <DocumentationModal
+        isOpen={showDocumentation}
+        onClose={() => setShowDocumentation(false)}
+        employees={activeEmployees}
+      />
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}

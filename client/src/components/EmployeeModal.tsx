@@ -52,6 +52,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const [educationLevel, setEducationLevel] = useState('');
   const [age, setAge] = useState<number | undefined>(undefined);
   const [birthDate, setBirthDate] = useState('');
+  const [admissionDate, setAdmissionDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
   const [gerencia, setGerencia] = useState('');
@@ -111,6 +112,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       const birthDateValue = employee.birthDate || '';
       setBirthDate(birthDateValue);
       setAge(birthDateValue ? calculateAge(birthDateValue) : undefined);
+      setAdmissionDate(employee.admissionDate || '');
       setRole(employee.role);
       setPhone(employee.phone || '');
       setGerencia(employee.gerencia || '');
@@ -131,6 +133,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setEducationLevel(duplicateFrom?.educationLevel || '');
       setAge(undefined);
       setBirthDate('');
+      setAdmissionDate('');
       setRole(duplicateFrom?.role || '');
       setPhone('');
       // Gerência costuma se repetir entre quem faz a mesma função — vem
@@ -166,7 +169,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, trainings, photoPreview, reassignContract, customFieldValues]);
+  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -430,6 +433,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         educationLevel: educationLevel || undefined,
         age: age || undefined,
         birthDate: birthDate || undefined,
+        admissionDate: admissionDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
         gerencia: gerencia.trim() || undefined,
@@ -659,7 +663,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             </div>
           </div>
 
-          {/* Gerência — mostrada no crachá padrão */}
+          {/* Gerência — mostrada no crachá padrão. Admissão — usada na Ficha de EPI. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Gerência</label>
@@ -670,6 +674,10 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 placeholder="Ex: Engª Manutenção"
               />
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">Data de Admissão</label>
+              <DateInputBR value={admissionDate} onChange={setAdmissionDate} />
             </div>
           </div>
 

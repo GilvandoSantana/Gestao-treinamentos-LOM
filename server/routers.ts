@@ -1832,7 +1832,7 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
         const contract = await getContractBySlug(input.slug);
-        return { managerName: contract?.managerName ?? null };
+        return { managerName: contract?.managerName ?? null, contractName: contract?.name ?? null };
       }),
 
     list: masterAdminProcedure
@@ -2582,6 +2582,7 @@ export const appRouter = router({
           educationLevel: z.string().nullish(),
           age: z.number().nullish(),
           birthDate: z.string().nullish(),
+          admissionDate: z.string().nullish(),
           role: z.string(),
           phone: z.string().nullish(),
           gerencia: z.string().nullish(),
@@ -2620,6 +2621,7 @@ export const appRouter = router({
               educationLevel: input.educationLevel,
               age: input.age,
               birthDate: input.birthDate,
+              admissionDate: input.admissionDate,
               role: input.role,
               phone: input.phone,
               gerencia: input.gerencia,

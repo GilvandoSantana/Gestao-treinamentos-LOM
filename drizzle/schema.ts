@@ -37,6 +37,9 @@ export const employees = mysqlTable("employees", {
   birthDate: varchar("birthDate", { length: 10 }),
   role: varchar("role", { length: 255 }).default("").notNull(),
   phone: varchar("phone", { length: 20 }),
+  // Data de admissão (formato YYYY-MM-DD) — usada na Ficha de EPI e em
+  // outros documentos de admissão gerados automaticamente.
+  admissionDate: varchar("admissionDate", { length: 10 }),
   // Gerência/setor do colaborador (ex: "Engª Manutenção") — usado no crachá
   // padrão. Diferente do "Gestor do contrato" (1 nome só, por contrato).
   gerencia: varchar("gerencia", { length: 150 }),

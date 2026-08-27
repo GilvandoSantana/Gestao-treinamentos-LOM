@@ -41,6 +41,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
         educationLevel: employee.educationLevel,
         age: computedAge,
         birthDate: employee.birthDate,
+        admissionDate: employee.admissionDate,
         role: employee.role,
         phone: employee.phone,
         gerencia: employee.gerencia,

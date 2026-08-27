@@ -14,6 +14,9 @@ export interface Employee {
   birthDate?: string;
   role: string;
   phone?: string;
+  /** Data de admissão (YYYY-MM-DD) — usada na Ficha de EPI e em outros
+   * documentos de admissão gerados automaticamente. */
+  admissionDate?: string;
   /** Gerência/setor do colaborador (ex: "Engª Manutenção") — mostrado no crachá padrão. */
   gerencia?: string;
   /** Dados de CNH — mostrados no crachá padrão, quando preenchidos. */
