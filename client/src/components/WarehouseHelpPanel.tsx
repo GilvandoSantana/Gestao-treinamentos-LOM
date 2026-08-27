@@ -26,13 +26,18 @@ const TOPICS = [
   },
   {
     Icon: ArrowLeftRight,
-    title: 'Movimentações',
-    text: 'Registre entrada (chegou material novo) ou saída (consumo direto, sem passar por um colaborador específico) de qualquer item.',
+    title: 'Reposição de Estoque',
+    text: 'Registre entrada de material — chegou item novo do fornecedor, aumenta a quantidade em estoque.',
+  },
+  {
+    Icon: ArrowLeftRight,
+    title: 'Saída / Entrega de Ferramentas',
+    text: 'Uma única tela pra tirar qualquer coisa do estoque: material de consumo, EPI ou ferramenta, misturados no mesmo atendimento. Ferramenta vira empréstimo automaticamente (rastreado, com patrimônio, precisa devolver depois); o resto é baixa direta de estoque.',
   },
   {
     Icon: HandCoins,
-    title: 'Entrega/Devolução',
-    text: 'Entregue uma ferramenta ou EPI para um colaborador específico, e depois registre a devolução. O estoque é ajustado sozinho nos dois casos.',
+    title: 'Devolução de Ferramentas',
+    text: 'Feche o empréstimo de uma ferramenta ou EPI que foi entregue a um colaborador. O estoque volta sozinho.',
   },
   {
     Icon: Users,
