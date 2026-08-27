@@ -601,10 +601,11 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             </div>
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Data de Admissão</label>
-              <DateInputBR value={admissionDate} onChange={setAdmissionDate} />
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Usada na Ficha de EPI e em outros documentos de admissão gerados automaticamente.
-              </p>
+              <DateInputBR
+                value={admissionDate}
+                onChange={setAdmissionDate}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+              />
             </div>
           </div>
 
