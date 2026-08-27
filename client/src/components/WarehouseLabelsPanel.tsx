@@ -54,7 +54,9 @@ export default function WarehouseLabelsPanel() {
   const filteredItems = useMemo(() => {
     if (!search.trim()) return items;
     const q = search.trim().toLowerCase();
-    return items.filter((i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
+    return items.filter(
+      (i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q) || i.patrimonio?.toLowerCase().includes(q)
+    );
   }, [items, search]);
 
   // Troca de aba (colaborador/item) limpa a seleção — evita misturar tipos.
@@ -95,28 +97,32 @@ export default function WarehouseLabelsPanel() {
             ];
           }
           const item = s as (typeof items)[number];
-          const itemLabel: LabelData = {
-            kind: 'item' as const,
-            id: item.id,
-            code: item.code,
-            title: item.name,
-            subtitle: `Código: ${item.code}`,
-            qrDataUrl: await generateQR(`MAT:${item.code}`),
-          };
-          // Ferramenta com patrimônio cadastrado ganha uma segunda etiqueta,
-          // pra colar no próprio equipamento e escanear certinho depois.
+          // Ferramenta com patrimônio: uma etiqueta só, com nome + código +
+          // patrimônio juntos no mesmo QR (não duas etiquetas separadas) —
+          // assim qualquer leitor de QR já mostra os três de uma vez.
           if (item.type === 'ferramenta' && item.patrimonio) {
-            const patrimonioLabel: LabelData = {
-              kind: 'item' as const,
-              id: `${item.id}-patrimonio`,
-              code: item.patrimonio,
-              title: item.name,
-              subtitle: `Patrimônio: ${item.patrimonio}`,
-              qrDataUrl: await generateQR(`PAT:${item.patrimonio}`),
-            };
-            return [itemLabel, patrimonioLabel];
+            const safeName = item.name.replace(/\|/g, ' ');
+            return [
+              {
+                kind: 'item' as const,
+                id: item.id,
+                code: item.code,
+                title: item.name,
+                subtitle: `Código: ${item.code} · Patrimônio: ${item.patrimonio}`,
+                qrDataUrl: await generateQR(`MAT:${item.code}|PAT:${item.patrimonio}|NOME:${safeName}`),
+              },
+            ];
           }
-          return [itemLabel];
+          return [
+            {
+              kind: 'item' as const,
+              id: item.id,
+              code: item.code,
+              title: item.name,
+              subtitle: `Código: ${item.code}`,
+              qrDataUrl: await generateQR(`MAT:${item.code}`),
+            },
+          ];
         })
       );
       setLabels(generated.flat());
@@ -164,7 +170,7 @@ export default function WarehouseLabelsPanel() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={kind === 'employee' ? 'Buscar colaborador' : 'Buscar item'}
+          placeholder={kind === 'employee' ? 'Buscar colaborador' : 'Buscar item por nome, código ou patrimônio'}
           className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
         />
       </div>
@@ -184,6 +190,9 @@ export default function WarehouseLabelsPanel() {
             <span className="text-sm text-foreground truncate">
               {entry.name}
               {'code' in entry && <span className="text-muted-foreground"> · {entry.code}</span>}
+              {'patrimonio' in entry && entry.patrimonio && (
+                <span className="text-muted-foreground"> · Patrimônio: {entry.patrimonio}</span>
+              )}
             </span>
           </label>
         ))}
