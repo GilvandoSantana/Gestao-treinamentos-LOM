@@ -88,7 +88,7 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     // Folha A4 retrato com o cartão em 109 x 86 mm (frente + verso).
     // O desenho abaixo segue as coordenadas originais (170 x 85); o adaptador
     // converte tudo para o tamanho e a posição corretos na folha.
-    const doc = createBadgeDoc(170, 85, true, sharedDoc);
+    const doc = createBadgeDoc(110, 85, true, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
