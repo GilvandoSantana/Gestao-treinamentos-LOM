@@ -21,9 +21,9 @@ interface LabelData {
   qrDataUrl: string;
 }
 
-// Cada folha impressa leva no máximo 6 QR codes (2 colunas × 3 linhas) —
+// Cada folha impressa leva no máximo 12 QR codes (3 colunas × 4 linhas) —
 // evita etiquetas espremidas ou minúsculas demais pra escanear.
-const LABELS_PER_PAGE = 6;
+const LABELS_PER_PAGE = 12;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -263,15 +263,15 @@ export default function WarehouseLabelsPanel() {
             {pages.map((page, pageIndex) => (
               <div
                 key={pageIndex}
-                className="grid grid-cols-2 gap-6 p-8"
+                className="grid grid-cols-3 gap-3 p-6"
                 style={{ pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto' }}
               >
                 {page.map((label) => (
                   <div
                     key={`${label.kind}-${label.id}`}
-                    className="border border-black rounded-lg p-4 flex flex-col items-center text-center bg-white break-inside-avoid"
+                    className="border border-black rounded-lg p-3 flex flex-col items-center text-center bg-white break-inside-avoid"
                   >
-                    {label.qrDataUrl && <img src={label.qrDataUrl} alt="" className="w-28 h-28 mb-2" />}
+                    {label.qrDataUrl && <img src={label.qrDataUrl} alt="" className="w-24 h-24 mb-2" />}
                     <p className="text-sm font-semibold text-black leading-tight">{label.title}</p>
                     <p className="text-xs text-gray-700 leading-tight mt-0.5">{label.subtitle}</p>
                   </div>
