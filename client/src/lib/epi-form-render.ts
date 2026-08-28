@@ -173,24 +173,24 @@ function drawTerm(doc: jsPDF, illustrationBase64: string, y: number): number {
 }
 
 /** "DATA:" + barra "VISTO DA SEGURANÇA DO TRABALHO" | "ASSINATURA DO EMPREGADO". */
-function drawDataAndVistoBar(doc: jsPDF, y: number): number {
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text('DATA:', MARGIN, y + 2.8);
-
-  const barY = y + 4.5;
-  const barHeight = 4.5;
+/** Duas linhas de assinatura lado a lado — "VISTO DA SEGURANÇA DO
+ * TRABALHO" e "ASSINATURA DO EMPREGADO", cada uma com um traço em branco
+ * acima pra assinar, sem caixa/tabela ao redor. */
+function drawSignatureLines(doc: jsPDF, y: number): number {
   const halfWidth = TABLE_WIDTH / 2;
+  const lineY = y + 5;
+  const gap = 10;
+
   doc.setLineWidth(0.3);
-  doc.rect(MARGIN, barY, TABLE_WIDTH, barHeight);
-  doc.line(MARGIN + halfWidth, barY, MARGIN + halfWidth, barY + barHeight);
+  doc.line(MARGIN + gap, lineY, MARGIN + halfWidth - gap, lineY);
+  doc.line(MARGIN + halfWidth + gap, lineY, MARGIN + TABLE_WIDTH - gap, lineY);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
-  doc.text('VISTO DA SEGURANÇA DO TRABALHO', MARGIN + halfWidth / 2, barY + 3.2, { align: 'center' });
-  doc.text('ASSINATURA DO EMPREGADO', MARGIN + halfWidth + halfWidth / 2, barY + 3.2, { align: 'center' });
+  doc.text('VISTO DA SEGURANÇA DO TRABALHO', MARGIN + halfWidth / 2, lineY + 4, { align: 'center' });
+  doc.text('ASSINATURA DO EMPREGADO', MARGIN + halfWidth + halfWidth / 2, lineY + 4, { align: 'center' });
 
-  return barY + barHeight;
+  return lineY + 5;
 }
 
 /** Tabela de EPIs — recebe a lista de itens já preenchidos (o restante das
@@ -265,7 +265,7 @@ async function drawPage(
   if (!isBack) {
     y = drawInfoRow(doc, data.employee, data.contractName, y);
     y = drawTerm(doc, data.illustrationBase64, y + 2);
-    y = drawDataAndVistoBar(doc, y);
+    y = drawSignatureLines(doc, y);
     drawEpiTable(doc, y + 2, tableRows, tableItems);
   } else {
     drawEpiTable(doc, y + 4, tableRows, tableItems);
