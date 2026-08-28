@@ -59,6 +59,7 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
   const [areaUso, setAreaUso] = useState('');
   const [qrReaderFor, setQrReaderFor] = useState<QrTarget | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scanPrompt, setScanPrompt] = useState<{ itemName: string } | null>(null);
 
   const items = itemsQuery.data ?? [];
   const employees = employeesQuery.data ?? [];
@@ -101,9 +102,30 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
       setQrReaderFor(null);
       return;
     }
-    setRows((prev) => prev.map((r) => (r.localId === qrReaderFor.rowId ? { ...r, itemId: found.id } : r)));
-    toast.success(`Item identificado: ${found.name}`);
+    const targetRowId = qrReaderFor.rowId;
+    setRows((prev) =>
+      prev.map((r) => (r.localId === targetRowId ? { ...r, itemId: found.id, quantity: r.quantity || '1' } : r))
+    );
     setQrReaderFor(null);
+    // Pergunta se quer escanear mais um, ao invés de precisar clicar em
+    // "Adicionar outro item" + no ícone de QR de novo toda vez.
+    setScanPrompt({ itemName: found.name });
+  };
+
+  const handleScanAnother = () => {
+    setScanPrompt(null);
+    const existingEmpty = rows.find((r) => !r.itemId);
+    if (existingEmpty) {
+      setQrReaderFor({ kind: 'item', rowId: existingEmpty.localId });
+      return;
+    }
+    if (rows.length >= MAX_ROWS) {
+      toast.error(`Limite de ${MAX_ROWS} itens por atendimento atingido.`);
+      return;
+    }
+    const newRow = makeEmptyRow();
+    setRows((prev) => [...prev, newRow]);
+    setQrReaderFor({ kind: 'item', rowId: newRow.localId });
   };
 
   const reset = () => {
@@ -111,6 +133,7 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
     setEmployeeSearch('');
     setSelectedEmployeeId('');
     setAreaUso('');
+    setScanPrompt(null);
   };
 
   const lastMovementFor = (forItemId: string) => {
@@ -472,6 +495,36 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
       })()}
 
       {qrReaderFor && <QrCodeReader onScan={handleQrScan} onClose={() => setQrReaderFor(null)} />}
+
+      {scanPrompt && (
+        <div className="fixed inset-0 z-[71] flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-5 text-center">
+            <p className="flex items-center justify-center gap-1.5 font-display text-base font-bold text-foreground mb-1">
+              <QrCode size={18} className="text-teal" />
+              Item identificado
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">{scanPrompt.itemName}</p>
+            <p className="text-sm text-foreground mb-4">Quer escanear mais algum item?</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setScanPrompt(null)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition"
+              >
+                Não, já terminei
+              </button>
+              <button
+                type="button"
+                onClick={handleScanAnother}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold text-white bg-orange hover:opacity-90 transition"
+              >
+                <QrCode size={15} />
+                Sim, escanear outro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
