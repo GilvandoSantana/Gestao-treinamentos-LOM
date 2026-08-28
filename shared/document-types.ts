@@ -3,7 +3,7 @@
  * Ordem alfabética — é a mesma ordem usada nas abas da interface.
  */
 
-export const DOCUMENT_TYPES = ['ara', 'checklist', 'fds', 'ltcat', 'pgr', 'pos'] as const;
+export const DOCUMENT_TYPES = ['ara', 'checklist', 'fds', 'ltcat', 'os', 'pgr', 'pos'] as const;
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
@@ -23,6 +23,10 @@ export const DOCUMENT_LABELS: Record<DocumentType, { label: string; description:
   ltcat: {
     label: 'LTCAT',
     description: 'Laudo Técnico das Condições Ambientais do Trabalho',
+  },
+  os: {
+    label: 'Ordem de Serviço',
+    description: 'Ordem de Serviço por função — exige PGR anexado no cadastro do contrato',
   },
   pgr: {
     label: 'PGR',

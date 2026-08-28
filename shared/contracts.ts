@@ -19,6 +19,10 @@ export interface ContractInfo {
   alertWhatsapp: string | null;
   /** Nome de quem gerencia este contrato — usado no crachá padrão. */
   managerName: string | null;
+  /** PGR anexado no cadastro do contrato — pré-requisito para gerar uma Ordem de Serviço. */
+  pgrFileUrl: string | null;
+  pgrFileName: string | null;
+  pgrUploadedAt: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

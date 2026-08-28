@@ -17,6 +17,9 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     alertEmail: row.alertEmail || null,
     alertWhatsapp: row.alertWhatsapp || null,
     managerName: row.managerName || null,
+    pgrFileUrl: row.pgrFileUrl || null,
+    pgrFileName: row.pgrFileName || null,
+    pgrUploadedAt: row.pgrUploadedAt ? row.pgrUploadedAt.toISOString() : null,
     deleted: row.deleted,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -128,6 +131,29 @@ export async function restoreContract(id: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(contracts).set({ deleted: false, deletedAt: null }).where(eq(contracts.id, id));
+}
+
+/** Anexa (ou substitui) o PGR do contrato — pré-requisito para gerar Ordem de Serviço. */
+export async function setContractPgr(
+  id: string,
+  input: { fileUrl: string; fileName: string }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(contracts)
+    .set({ pgrFileUrl: input.fileUrl, pgrFileName: input.fileName, pgrUploadedAt: new Date() })
+    .where(eq(contracts.id, id));
+}
+
+/** Remove o PGR anexado do contrato (o admin pode reanexar depois). */
+export async function removeContractPgr(id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(contracts)
+    .set({ pgrFileUrl: null, pgrFileName: null, pgrUploadedAt: null })
+    .where(eq(contracts.id, id));
 }
 
 /** Quantos registros (colaboradores, contas e documentos) ainda usam este contrato. */

@@ -17,6 +17,10 @@ import {
   Loader,
   Trash,
   BarChart3,
+  Upload,
+  Download,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   BarChart,
@@ -79,6 +83,59 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const deleteMutation = trpc.contracts.delete.useMutation();
   const restoreMutation = trpc.contracts.restore.useMutation();
   const permanentDeleteMutation = trpc.contracts.permanentDelete.useMutation();
+  const uploadPgrMutation = trpc.contracts.uploadPgr.useMutation();
+  const removePgrMutation = trpc.contracts.removePgr.useMutation();
+  const [pgrFile, setPgrFile] = useState<File | null>(null);
+  const [isUploadingPgr, setIsUploadingPgr] = useState(false);
+
+  const editingContract = activeQuery.data?.find((c) => c.id === editingId) ?? null;
+
+  const handlePgrFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    if (selected.type !== 'application/pdf') {
+      toast.error('O PGR deve ser um arquivo PDF.');
+      return;
+    }
+    if (selected.size > 10 * 1024 * 1024) {
+      toast.error('O arquivo excede o limite de 10MB.');
+      return;
+    }
+    setPgrFile(selected);
+  };
+
+  const handleUploadPgr = async () => {
+    if (!editingId || !pgrFile) return;
+    setIsUploadingPgr(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+        reader.readAsDataURL(pgrFile);
+      });
+      await uploadPgrMutation.mutateAsync({ id: editingId, fileName: pgrFile.name, fileData: base64 });
+      toast.success('PGR anexado com sucesso!');
+      setPgrFile(null);
+      await utils.contracts.list.invalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao anexar o PGR.');
+    } finally {
+      setIsUploadingPgr(false);
+    }
+  };
+
+  const handleRemovePgr = async () => {
+    if (!editingId) return;
+    if (!window.confirm('Remover o PGR deste contrato? Não será possível gerar novas Ordens de Serviço até anexar outro.')) return;
+    try {
+      await removePgrMutation.mutateAsync({ id: editingId });
+      toast.success('PGR removido.');
+      await utils.contracts.list.invalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao remover o PGR.');
+    }
+  };
 
   // Campos personalizados do contrato em edição.
   const [newFieldLabel, setNewFieldLabel] = useState('');
@@ -136,6 +193,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setAlertEmail('');
     setAlertWhatsapp('');
     setManagerName('');
+    setPgrFile(null);
   };
 
   const startEdit = (contract: ContractInfo) => {
@@ -398,6 +456,75 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       branco para não enviar alerta por WhatsApp deste contrato.
                     </p>
                   </div>
+
+                  {editingId && (
+                    <div className="border-t border-border pt-3">
+                      <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
+                        PGR do contrato
+                      </p>
+
+                      {editingContract?.pgrFileUrl ? (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg border border-border bg-muted/30 mb-2">
+                          <ShieldCheck size={16} className="text-teal shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-foreground truncate">{editingContract.pgrFileName}</p>
+                            {editingContract.pgrUploadedAt && (
+                              <p className="text-xs text-muted-foreground font-technical">
+                                anexado em {new Date(editingContract.pgrUploadedAt).toLocaleDateString('pt-BR')}
+                              </p>
+                            )}
+                          </div>
+                          <a
+                            href={editingContract.pgrFileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 p-1.5 text-muted-foreground hover:text-orange transition-colors"
+                            title="Baixar PGR"
+                          >
+                            <Download size={16} />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={handleRemovePgr}
+                            disabled={removePgrMutation.isPending}
+                            className="shrink-0 p-1.5 text-danger hover:opacity-70 disabled:opacity-40"
+                            title="Remover PGR"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg border border-warning/40 bg-warning/10 mb-2">
+                          <ShieldAlert size={16} className="text-warning shrink-0" />
+                          <p className="text-xs text-muted-foreground">
+                            Sem PGR anexado — não será possível gerar Ordem de Serviço para este contrato.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          onChange={handlePgrFileSelect}
+                          disabled={isUploadingPgr}
+                          className="flex-1 min-w-0 text-xs text-muted-foreground file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-muted file:text-foreground hover:file:bg-border"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleUploadPgr}
+                          disabled={isUploadingPgr || !pgrFile}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                        >
+                          <Upload size={13} />
+                          {isUploadingPgr ? 'Enviando...' : editingContract?.pgrFileUrl ? 'Substituir' : 'Anexar'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        PDF, até 10MB. Sem data de validade — reanexe quando precisar atualizar.
+                      </p>
+                    </div>
+                  )}
 
                   {editingId && editingSlug && (
                     <div className="border-t border-border pt-3">

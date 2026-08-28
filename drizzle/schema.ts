@@ -228,6 +228,12 @@ export const contracts = mysqlTable("contracts", {
   // Nome de quem gerencia este contrato — usado no crachá padrão, no campo
   // "Superior/Gestor do contrato" (antes era um nome fixo no código).
   managerName: varchar("managerName", { length: 120 }),
+  // PGR anexado no cadastro do contrato — pré-requisito para gerar uma
+  // Ordem de Serviço (ver shared/document-types.ts, tipo "os"). Sem data de
+  // validade: cabe ao administrador reanexar quando precisar atualizar.
+  pgrFileUrl: text("pgrFileUrl"),
+  pgrFileName: varchar("pgrFileName", { length: 255 }),
+  pgrUploadedAt: timestamp("pgrUploadedAt"),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

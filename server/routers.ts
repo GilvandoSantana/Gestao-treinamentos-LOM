@@ -29,6 +29,8 @@ import {
   permanentlyDeleteContract,
   countContractUsage,
   getContractsOverview,
+  setContractPgr,
+  removeContractPgr,
 } from "./db-contracts";
 import {
   listCustomFields,
@@ -1748,6 +1750,19 @@ export const appRouter = router({
           });
         }
 
+        // Ordem de Serviço depende do PGR anexado no cadastro do contrato.
+        if (input.type === "os") {
+          const contractSlug = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
+          const contract = await getContractBySlug(contractSlug);
+          if (!contract?.pgrFileUrl) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message:
+                "Não é possível gerar a Ordem de Serviço: este contrato ainda não possui o PGR anexado. Anexe o PGR no cadastro do contrato antes de continuar.",
+            });
+          }
+        }
+
         const fileBuffer = Buffer.from(input.fileData, "base64");
 
         const MAX_FDS_BYTES = 10 * 1024 * 1024;
@@ -1938,6 +1953,76 @@ export const appRouter = router({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
           action: "contract.restore",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: existing.name,
+        });
+        return { success: true } as const;
+      }),
+
+    // Anexa (ou substitui) o PGR do contrato — pré-requisito para a geração
+    // de Ordem de Serviço (ver fds.upload, tipo "os").
+    uploadPgr: masterAdminProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          fileName: z.string(),
+          fileData: z.string(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+
+        const fileBuffer = Buffer.from(input.fileData, "base64");
+        const MAX_PGR_BYTES = 10 * 1024 * 1024;
+        if (fileBuffer.length > MAX_PGR_BYTES) {
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 10MB." });
+        }
+
+        // Se já havia um PGR anexado, remove o arquivo antigo do Storage.
+        if (existing.pgrFileUrl) {
+          await deleteFdsFromSupabase(existing.pgrFileUrl);
+        }
+
+        const upload = await uploadFdsToSupabase(
+          fileBuffer,
+          input.fileName,
+          "application/pdf",
+          existing.slug,
+          "contract-pgr"
+        );
+
+        await setContractPgr(input.id, { fileUrl: upload.url, fileName: input.fileName });
+
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.uploadPgr",
+          targetType: "contract",
+          targetId: input.id,
+          targetName: existing.name,
+        });
+        return { success: true } as const;
+      }),
+
+    removePgr: masterAdminProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id);
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        if (existing.pgrFileUrl) {
+          await deleteFdsFromSupabase(existing.pgrFileUrl);
+        }
+        await removeContractPgr(input.id);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.removePgr",
           targetType: "contract",
           targetId: input.id,
           targetName: existing.name,
