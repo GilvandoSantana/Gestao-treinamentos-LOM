@@ -614,3 +614,25 @@ export const purchaseRequests = mysqlTable("purchaseRequests", {
 
 export type PurchaseRequestRow = typeof purchaseRequests.$inferSelect;
 export type InsertPurchaseRequestRow = typeof purchaseRequests.$inferInsert;
+
+/**
+ * Documentação — EPIs padrão por função, usados para pré-preencher a Ficha
+ * de EPI de cada colaborador. Cada contrato define sua própria lista por
+ * função (a mesma função pode ter EPIs diferentes em contratos diferentes).
+ */
+export const epiRoleItems = mysqlTable("epiRoleItems", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 40 }).notNull(),
+  role: varchar("role", { length: 255 }).notNull(),
+  // Ordem de exibição na tabela da ficha.
+  sortOrder: int("sortOrder").default(0).notNull(),
+  quantity: int("quantity").default(1).notNull(),
+  specification: varchar("specification", { length: 255 }).notNull(),
+  ca: varchar("ca", { length: 50 }),
+  responsibleName: varchar("responsibleName", { length: 150 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type EpiRoleItemRow = typeof epiRoleItems.$inferSelect;
+export type InsertEpiRoleItemRow = typeof epiRoleItems.$inferInsert;

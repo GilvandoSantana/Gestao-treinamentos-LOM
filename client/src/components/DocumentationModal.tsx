@@ -12,11 +12,12 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, FileStack, Search, Loader, Download, HardHat } from 'lucide-react';
+import { X, FileStack, Search, Loader, Download, HardHat, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 import type { jsPDF } from 'jspdf';
 import { generateEpiFormPDF } from '@/lib/epi-form';
+import EpiRoleConfigModal from '@/components/EpiRoleConfigModal';
 
 interface DocumentationModalProps {
   isOpen: boolean;
@@ -45,6 +46,7 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [singleFile, setSingleFile] = useState(false);
+  const [showEpiConfig, setShowEpiConfig] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -152,9 +154,18 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
 
         {/* Tipo de documento */}
         <div className="px-4 pt-3">
-          <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
-            Documento
-          </p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground">Documento</p>
+            {documentType === 'epi' && (
+              <button
+                onClick={() => setShowEpiConfig(true)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-orange hover:opacity-80"
+              >
+                <Settings2 size={12} />
+                Configurar EPIs por função
+              </button>
+            )}
+          </div>
           <div className="flex gap-2">
             {DOCUMENT_TYPES.map(({ key, label, Icon }) => (
               <button
@@ -270,6 +281,8 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
           )}
         </div>
       </div>
+
+      <EpiRoleConfigModal isOpen={showEpiConfig} onClose={() => setShowEpiConfig(false)} />
     </div>
   );
 }

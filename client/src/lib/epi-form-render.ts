@@ -12,20 +12,20 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Employee } from '@/lib/types';
 
-const STANDARD_EPI_ITEMS: { qty: number; name: string }[] = [
-  { qty: 2, name: 'CAMISA DE PASSEIO (AZUL)' },
-  { qty: 2, name: 'BOTA ANTI-TORÇÃO' },
-  { qty: 1, name: 'CAPACETE DE SEGURANÇA' },
-  { qty: 1, name: 'ÓCULOS DE SEGURANÇA' },
-  { qty: 1, name: 'LUVA ANTI-IMPACTO' },
-  { qty: 2, name: 'MACACÃO' },
-  { qty: 1, name: 'PROTETOR AURICULAR DO TIPO CONCHA' },
-];
+const MIN_FRONT_ROWS = 14;
+const BLANK_BUFFER = 7;
+// Máximo de linhas que cabem em uma página sem estourar (calibrado via
+// teste visual — ver comentário em renderEpiFormPages).
+const FRONT_MAX_ROWS = 15;
+const BACK_DEFAULT_ROWS = 24;
+const BACK_MAX_ROWS = 27;
 
-// Total de linhas de cada tabela, igual ao modelo original (7 preenchidas +
-// 7 em branco na frente; 24 em branco no verso).
-const FRONT_TABLE_ROWS = 14;
-const BACK_TABLE_ROWS = 24;
+export interface EpiTableItem {
+  quantity: number;
+  specification: string;
+  ca?: string | null;
+  responsibleName?: string | null;
+}
 
 const TERM_PARAGRAPH_LINES = [
   "Declaro para os devidos fins, que recebi os EPI's abaixo descritos e me comprometo a:",
@@ -70,6 +70,9 @@ export type PageData = {
   contractName: string;
   logoBase64: string;
   illustrationBase64: string;
+  /** EPIs configurados para a função do colaborador — vazio se a função
+   * ainda não tiver nenhum EPI cadastrado (tabela sai em branco). */
+  items: EpiTableItem[];
 };
 
 function drawTitle(doc: jsPDF, logoBase64: string) {
@@ -190,17 +193,17 @@ function drawDataAndVistoBar(doc: jsPDF, y: number): number {
   return barY + barHeight;
 }
 
-/** Tabela de EPIs — usada tanto na frente (com itens padrão) quanto no
- * verso (toda em branco). */
-function drawEpiTable(doc: jsPDF, y: number, totalRows: number, prefill: { qty: number; name: string }[]) {
+/** Tabela de EPIs — recebe a lista de itens já preenchidos (o restante das
+ * linhas até totalRows sai em branco, pra completar à mão). */
+function drawEpiTable(doc: jsPDF, y: number, totalRows: number, items: EpiTableItem[]) {
   const body: string[][] = [];
   for (let i = 0; i < totalRows; i++) {
-    const item = prefill[i];
+    const item = items[i];
     body.push([
-      '',
-      '',
-      item ? String(item.qty) : '',
-      item ? item.name : '',
+      item?.responsibleName ?? '',
+      item?.ca ?? '',
+      item ? String(item.quantity) : '',
+      item ? item.specification : '',
       '',
       '',
       '',
@@ -249,7 +252,13 @@ function drawEpiTable(doc: jsPDF, y: number, totalRows: number, prefill: { qty: 
   });
 }
 
-async function drawPage(doc: jsPDF, data: PageData, isBack: boolean) {
+async function drawPage(
+  doc: jsPDF,
+  data: PageData,
+  isBack: boolean,
+  tableRows: number,
+  tableItems: EpiTableItem[]
+) {
   drawTitle(doc, data.logoBase64);
   let y = drawCompanyNameBox(doc, data.employee, 26);
 
@@ -257,19 +266,53 @@ async function drawPage(doc: jsPDF, data: PageData, isBack: boolean) {
     y = drawInfoRow(doc, data.employee, data.contractName, y);
     y = drawTerm(doc, data.illustrationBase64, y + 2);
     y = drawDataAndVistoBar(doc, y);
-    drawEpiTable(doc, y + 2, FRONT_TABLE_ROWS, STANDARD_EPI_ITEMS);
+    drawEpiTable(doc, y + 2, tableRows, tableItems);
   } else {
-    drawEpiTable(doc, y + 4, BACK_TABLE_ROWS, []);
+    drawEpiTable(doc, y + 4, tableRows, tableItems);
   }
 }
 
 /**
+ * Decide quantas linhas cada página leva e quais itens vão em cada uma.
+ * Regras:
+ * - Sem nenhum item configurado: frente sai com o mínimo de linhas em
+ *   branco (mesmo tamanho visual de sempre), verso com a quantidade padrão.
+ * - Com itens: todos entram na frente, com um "colchão" de linhas em
+ *   branco pra completar à mão — até o limite que cabe numa página.
+ * - Se a lista for maior do que cabe na frente, o que sobra vai para o
+ *   verso (também preenchido), e só depois disso entram as linhas em
+ *   branco do verso.
+ */
+function planTableRows(items: EpiTableItem[]): {
+  frontRows: number;
+  frontItems: EpiTableItem[];
+  backRows: number;
+  backItems: EpiTableItem[];
+} {
+  if (items.length === 0) {
+    return { frontRows: MIN_FRONT_ROWS, frontItems: [], backRows: BACK_DEFAULT_ROWS, backItems: [] };
+  }
+
+  if (items.length >= FRONT_MAX_ROWS) {
+    const frontItems = items.slice(0, FRONT_MAX_ROWS);
+    const overflow = items.slice(FRONT_MAX_ROWS);
+    const backRows = Math.min(BACK_MAX_ROWS, Math.max(BACK_DEFAULT_ROWS, overflow.length + BLANK_BUFFER));
+    return { frontRows: FRONT_MAX_ROWS, frontItems, backRows, backItems: overflow };
+  }
+
+  const frontRows = Math.min(FRONT_MAX_ROWS, Math.max(MIN_FRONT_ROWS, items.length + BLANK_BUFFER));
+  return { frontRows, frontItems: items, backRows: BACK_DEFAULT_ROWS, backItems: [] };
+}
+
+/**
  * Desenha as duas páginas (frente + verso) num jsPDF já criado, a partir de
- * imagens já carregadas em base64. Separado de generateEpiFormPDF para
- * poder ser testado fora do navegador (sem depender de Image/canvas).
+ * imagens já carregadas em base64 e da lista de EPIs configurados para a
+ * função do colaborador. Separado de generateEpiFormPDF para poder ser
+ * testado fora do navegador (sem depender de Image/canvas).
  */
 export async function renderEpiFormPages(doc: jsPDF, pageData: PageData) {
-  await drawPage(doc, pageData, false);
+  const plan = planTableRows(pageData.items);
+  await drawPage(doc, pageData, false, plan.frontRows, plan.frontItems);
   doc.addPage('a4', 'landscape');
-  await drawPage(doc, pageData, true);
+  await drawPage(doc, pageData, true, plan.backRows, plan.backItems);
 }

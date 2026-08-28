@@ -16,7 +16,7 @@ import type { Employee } from '@/lib/types';
 import logoMining from '@/assets/logo-support-mining.png';
 import epiIllustration from '@/assets/epi-illustration.png';
 import { trpcClient } from '@/lib/trpc';
-import { renderEpiFormPages, type PageData } from '@/lib/epi-form-render';
+import { renderEpiFormPages, type PageData, type EpiTableItem } from '@/lib/epi-form-render';
 
 const loadImage = (url: string): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -55,16 +55,26 @@ export const generateEpiFormPDF = async (employee: Employee, sharedDoc?: jsPDF):
     doc.addPage('a4', 'landscape');
   }
 
-  const [logoBase64, illustrationBase64, contractInfo] = await Promise.all([
+  const [logoBase64, illustrationBase64, contractInfo, roleItems] = await Promise.all([
     loadImage(logoMining),
     loadImage(epiIllustration),
     employee.contract
       ? trpcClient.contracts.getManagerName.query({ slug: employee.contract }).catch(() => null)
       : Promise.resolve(null),
+    trpcClient.epiConfig.listByRole.query({ role: employee.role }).catch(() => []),
   ]);
 
   const contractName = contractInfo?.contractName ?? employee.contract ?? '';
-  const pageData: PageData = { employee, contractName, logoBase64, illustrationBase64 };
+  const items: EpiTableItem[] = roleItems
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item) => ({
+      quantity: item.quantity,
+      specification: item.specification,
+      ca: item.ca,
+      responsibleName: item.responsibleName,
+    }));
+  const pageData: PageData = { employee, contractName, logoBase64, illustrationBase64, items };
 
   await renderEpiFormPages(doc, pageData);
 
