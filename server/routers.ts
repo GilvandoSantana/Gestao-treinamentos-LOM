@@ -1750,19 +1750,6 @@ export const appRouter = router({
           });
         }
 
-        // Ordem de Serviço depende do PGR anexado no cadastro do contrato.
-        if (input.type === "os") {
-          const contractSlug = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
-          const contract = await getContractBySlug(contractSlug);
-          if (!contract?.pgrFileUrl) {
-            throw new TRPCError({
-              code: "PRECONDITION_FAILED",
-              message:
-                "Não é possível gerar a Ordem de Serviço: este contrato ainda não possui o PGR anexado. Anexe o PGR no cadastro do contrato antes de continuar.",
-            });
-          }
-        }
-
         const fileBuffer = Buffer.from(input.fileData, "base64");
 
         const MAX_FDS_BYTES = 10 * 1024 * 1024;
