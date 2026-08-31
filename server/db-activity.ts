@@ -39,6 +39,8 @@ export type ActivityAction =
   | "training.renewBulk"
   | "contract.fieldCreate"
   | "contract.fieldDelete"
+  | "contract.uploadPgr"
+  | "contract.removePgr"
   | "cloud.folderCreate"
   | "cloud.folderDelete"
   | "cloud.folderRename"
