@@ -3,24 +3,22 @@
  * Palette: navy (#1a2332), orange (#e8772e), teal (#2d9f7f), warm gray (#f4f1ed)
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { toast } from 'sonner';
 import { Eye } from 'lucide-react';
 import type { Employee, FilterType } from '@/lib/types';
 import { getFilteredEmployees, getStatistics, getWorstStatus } from '@/lib/training-utils';
-import { generateComprehensivePDF, generateFilteredPDF } from '@/lib/pdf-export';
-import * as XLSX from 'xlsx';
 import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
-import AdminManagementModal from '@/components/AdminManagementModal';
+const AdminManagementModal = lazy(() => import('@/components/AdminManagementModal'));
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
-import ContractsModal from '@/components/ContractsModal';
-import DocumentationModal from '@/components/DocumentationModal';
-import DocumentsModal from '@/components/DocumentsModal';
-import BadgesModal from '@/components/BadgesModal';
+const ContractsModal = lazy(() => import('@/components/ContractsModal'));
+const DocumentationModal = lazy(() => import('@/components/DocumentationModal'));
+const DocumentsModal = lazy(() => import('@/components/DocumentsModal'));
+const BadgesModal = lazy(() => import('@/components/BadgesModal'));
 import MobileNav, { type MobileTab } from '@/components/MobileNav';
 import LoginPage from '@/pages/LoginPage';
 import { useSiteSession } from '@/hooks/useSiteSession';
@@ -35,15 +33,15 @@ import EmployeeViewModal from '@/components/EmployeeViewModal';
 import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
-import ExcelImportModal from '@/components/ExcelImportModal';
+const ExcelImportModal = lazy(() => import('@/components/ExcelImportModal'));
 import RenewTrainingModal from '@/components/RenewTrainingModal';
-import CloudModal from '@/components/CloudModal';
-import InvoicesModal from '@/components/InvoicesModal';
-import RolesTrainingTypesModal from '@/components/RolesTrainingTypesModal';
-import WarehouseModal from '@/components/WarehouseModal';
+const CloudModal = lazy(() => import('@/components/CloudModal'));
+const InvoicesModal = lazy(() => import('@/components/InvoicesModal'));
+const RolesTrainingTypesModal = lazy(() => import('@/components/RolesTrainingTypesModal'));
+const WarehouseModal = lazy(() => import('@/components/WarehouseModal'));
 import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
-import ComplianceCharts from '@/components/ComplianceCharts';
-import AuditHistory from '@/components/AuditHistory';
+const ComplianceCharts = lazy(() => import('@/components/ComplianceCharts'));
+const AuditHistory = lazy(() => import('@/components/AuditHistory'));
 import RoleFilter from '@/components/RoleFilter';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
@@ -342,6 +340,9 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
+      // Import dinâmico: xlsx só é baixado quando a pessoa realmente
+      // exporta, em vez de sempre, pra todo mundo que abre o site.
+      const XLSX = await import('xlsx');
       const excelData: any[] = [];
 
       employees.forEach(emp => {
@@ -446,6 +447,7 @@ export default function Home() {
   const handleExportPDF = async () => {
     try {
       setIsSyncing(true);
+      const { generateComprehensivePDF } = await import('@/lib/pdf-export');
       await generateComprehensivePDF(employees);
       toast.success('Relatório PDF gerado com sucesso!');
     } catch (error) {
@@ -459,6 +461,7 @@ export default function Home() {
   const handlePrintFilter = async (filterType: FilterType) => {
     try {
       setIsSyncing(true);
+      const { generateFilteredPDF } = await import('@/lib/pdf-export');
       await generateFilteredPDF(employees, filterType);
       const labels: Record<FilterType, string> = {
         all: 'Todos', valid: 'Válidos', expiring: 'Próximos a Vencer', expired: 'Vencidos',
@@ -688,11 +691,13 @@ export default function Home() {
           onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
         />
         {showAdminManagement && (
-          <AdminManagementModal
-            isOpen={showAdminManagement}
-            onClose={() => setShowAdminManagement(false)}
-            currentUsername={session.username}
-          />
+          <Suspense fallback={null}>
+            <AdminManagementModal
+              isOpen={showAdminManagement}
+              onClose={() => setShowAdminManagement(false)}
+              currentUsername={session.username}
+            />
+          </Suspense>
         )}
 
         <WelcomeSummary
@@ -710,7 +715,9 @@ export default function Home() {
         </div>
 
         <StatCards stats={stats} />
-        <ComplianceCharts employees={activeEmployees} />
+        <Suspense fallback={null}>
+          <ComplianceCharts employees={activeEmployees} />
+        </Suspense>
 
         <AdvancedSearch
           searchTerm={searchQuery}
@@ -847,12 +854,14 @@ export default function Home() {
         }}
       />
 
-      <ExcelImportModal
-        isOpen={showExcelImport}
-        onClose={() => setShowExcelImport(false)}
-        onImport={handleExcelImport}
-        employees={activeEmployees}
-      />
+      <Suspense fallback={null}>
+        <ExcelImportModal
+          isOpen={showExcelImport}
+          onClose={() => setShowExcelImport(false)}
+          onImport={handleExcelImport}
+          employees={activeEmployees}
+        />
+      </Suspense>
 
       <RenewTrainingModal
         isOpen={showRenewBulk}
@@ -860,24 +869,30 @@ export default function Home() {
         employees={activeEmployees}
       />
 
-      <CloudModal
-        isOpen={showCloud}
-        onClose={() => setShowCloud(false)}
-        canManage={session.can('manageCloud')}
-        isMasterAdmin={session.isMasterAdmin}
-      />
+      <Suspense fallback={null}>
+        <CloudModal
+          isOpen={showCloud}
+          onClose={() => setShowCloud(false)}
+          canManage={session.can('manageCloud')}
+          isMasterAdmin={session.isMasterAdmin}
+        />
+      </Suspense>
 
-      <InvoicesModal
-        isOpen={showInvoices}
-        onClose={() => setShowInvoices(false)}
-        canManage={session.can('manageInvoices')}
-        isMasterAdmin={session.isMasterAdmin}
-      />
+      <Suspense fallback={null}>
+        <InvoicesModal
+          isOpen={showInvoices}
+          onClose={() => setShowInvoices(false)}
+          canManage={session.can('manageInvoices')}
+          isMasterAdmin={session.isMasterAdmin}
+        />
+      </Suspense>
 
-      <RolesTrainingTypesModal
-        isOpen={showRolesTrainingTypes}
-        onClose={() => setShowRolesTrainingTypes(false)}
-      />
+      <Suspense fallback={null}>
+        <RolesTrainingTypesModal
+          isOpen={showRolesTrainingTypes}
+          onClose={() => setShowRolesTrainingTypes(false)}
+        />
+      </Suspense>
 
       <EmployeeViewModal
         isOpen={!!viewingEmployee}
@@ -885,23 +900,27 @@ export default function Home() {
         onClose={() => setViewingEmployee(null)}
       />
 
-      <WarehouseModal
-        isOpen={showWarehouse}
-        onClose={() => setShowWarehouse(false)}
-        canManage={session.can('manageWarehouse')}
-        isMasterAdmin={session.isMasterAdmin}
-      />
+      <Suspense fallback={null}>
+        <WarehouseModal
+          isOpen={showWarehouse}
+          onClose={() => setShowWarehouse(false)}
+          canManage={session.can('manageWarehouse')}
+          isMasterAdmin={session.isMasterAdmin}
+        />
+      </Suspense>
 
       {selectedEmployeeForAudit && (
-        <AuditHistory
-          isOpen={showAuditHistory}
-          onClose={() => {
-            setShowAuditHistory(false);
-            setSelectedEmployeeForAudit(null);
-          }}
-          auditLogs={[]}
-          employeeName={selectedEmployeeForAudit.name}
-        />
+        <Suspense fallback={null}>
+          <AuditHistory
+            isOpen={showAuditHistory}
+            onClose={() => {
+              setShowAuditHistory(false);
+              setSelectedEmployeeForAudit(null);
+            }}
+            auditLogs={[]}
+            employeeName={selectedEmployeeForAudit.name}
+          />
+        </Suspense>
       )}
 
       <DismissedModal
@@ -921,28 +940,36 @@ export default function Home() {
         }
       />
 
-      <BadgesModal
-        isOpen={showBadges}
-        onClose={() => setShowBadges(false)}
-        employees={activeEmployees}
-      />
+      <Suspense fallback={null}>
+        <BadgesModal
+          isOpen={showBadges}
+          onClose={() => setShowBadges(false)}
+          employees={activeEmployees}
+        />
+      </Suspense>
 
-      <DocumentsModal
-        isOpen={showDocuments}
-        onClose={() => setShowDocuments(false)}
-        canManage={session.can('manageCertificates')}
-        isMasterAdmin={session.isMasterAdmin}
-      />
+      <Suspense fallback={null}>
+        <DocumentsModal
+          isOpen={showDocuments}
+          onClose={() => setShowDocuments(false)}
+          canManage={session.can('manageCertificates')}
+          isMasterAdmin={session.isMasterAdmin}
+        />
+      </Suspense>
 
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />
 
-      <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
+      <Suspense fallback={null}>
+        <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
+      </Suspense>
 
-      <DocumentationModal
-        isOpen={showDocumentation}
-        onClose={() => setShowDocumentation(false)}
-        employees={activeEmployees}
-      />
+      <Suspense fallback={null}>
+        <DocumentationModal
+          isOpen={showDocumentation}
+          onClose={() => setShowDocumentation(false)}
+          employees={activeEmployees}
+        />
+      </Suspense>
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}

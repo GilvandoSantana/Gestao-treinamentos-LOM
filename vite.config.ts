@@ -167,6 +167,22 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Isola bibliotecas pesadas de terceiro em arquivos próprios, em
+        // vez de tudo junto num bundle só — o navegador baixa (e guarda em
+        // cache) cada uma separadamente, só quando a tela que precisa dela
+        // é aberta (as telas que as usam já carregam sob demanda via
+        // React.lazy). Não muda nenhum comportamento, só como o código é
+        // dividido em arquivos.
+        manualChunks: {
+          pdf: ["jspdf", "jspdf-autotable"],
+          xlsx: ["xlsx"],
+          "html2canvas": ["html2canvas"],
+          charts: ["recharts"],
+        },
+      },
+    },
   },
   server: {
     host: true,
