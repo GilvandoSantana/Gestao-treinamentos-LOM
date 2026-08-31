@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -47,6 +48,20 @@ async function startServer() {
     console.warn("[Server] Database connection warning:", error);
   }
   const server = createServer(app);
+  // Cabecalhos de seguranca HTTP padrao (X-Content-Type-Options,
+  // X-Frame-Options, Referrer-Policy, HSTS, etc). Content-Security-Policy
+  // e as politicas de cross-origin ficam desligadas por enquanto: o app
+  // carrega imagens/fotos de origens externas (Supabase, R2, Google) e
+  // gera downloads via blob: URL (crachas, fichas, relatorios) - uma CSP
+  // mal calibrada quebraria essas telas silenciosamente. Ajustar a CSP
+  // exige testar cada tela manualmente antes de ativar.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
+    })
+  );
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

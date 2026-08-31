@@ -1,0 +1,21 @@
+# Projeto de pacote unico (nao e monorepo) — o "packages" abaixo e exigido
+# pelo pnpm mesmo assim sempre que este arquivo existe.
+packages:
+  - "."
+
+# A partir do pnpm 10+, os campos "pnpm.overrides" e
+# "pnpm.patchedDependencies" do package.json passaram a ser ignorados
+# silenciosamente (sem nenhum aviso claro) — o lugar certo agora é aqui.
+# Ver: https://pnpm.io/settings
+
+patchedDependencies:
+  wouter@3.7.1: patches/wouter@3.7.1.patch
+
+overrides:
+  tailwindcss>nanoid: 3.3.7
+  # GHSA-v422-hmwv-36x6: body-parser < 1.20.6 tem um DoS quando um valor de
+  # limite invalido desativa silenciosamente a checagem de tamanho. O
+  # express@4.22.2 já teria pedido a versão certa sozinho, mas o range dele
+  # (~1.20.5) ainda deixaria escapar a 1.20.5 se ela resolvesse primeiro —
+  # forçando aqui garante a versão corrigida.
+  body-parser: ">=1.20.6"

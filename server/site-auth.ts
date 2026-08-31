@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import type { Request } from "express";
 import bcrypt from "bcryptjs";
 
@@ -34,7 +34,17 @@ export function checkSitePassword(password: string): boolean {
       "APP_PASSWORD não configurado no servidor. Defina essa variável de ambiente no Railway."
     );
   }
-  return password === expected;
+  // Comparação em tempo constante — evita que alguém descubra a senha
+  // caractere a caractere medindo quanto tempo a resposta demora.
+  const a = Buffer.from(password);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) {
+    // Ainda gasta um tempo comparável ao de uma comparação real, em vez
+    // de retornar na hora — reduz (não elimina) o vazamento de tamanho.
+    timingSafeEqual(b, b);
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
 
 export async function hashAdminPassword(password: string): Promise<string> {
