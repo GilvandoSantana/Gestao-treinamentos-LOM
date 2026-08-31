@@ -56,6 +56,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [alertEmail, setAlertEmail] = useState('');
   const [alertWhatsapp, setAlertWhatsapp] = useState('');
   const [managerName, setManagerName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -193,6 +194,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setAlertEmail('');
     setAlertWhatsapp('');
     setManagerName('');
+    setCompanyName('');
     setPgrFile(null);
   };
 
@@ -204,6 +206,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setAlertEmail(contract.alertEmail ?? '');
     setAlertWhatsapp(contract.alertWhatsapp ?? '');
     setManagerName(contract.managerName ?? '');
+    setCompanyName(contract.companyName ?? '');
     setShowForm(true);
   };
 
@@ -211,10 +214,10 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     e.preventDefault();
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName });
+        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName, companyName });
         toast.success('Contrato atualizado.');
       } else {
-        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName });
+        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName, companyName });
         toast.success('Contrato cadastrado.');
       }
       resetForm();
@@ -420,6 +423,22 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                     <p className="text-xs text-muted-foreground mt-1">
                       Aparece no crachá padrão dos colaboradores deste contrato, no campo
                       "Superior/Gestor do contrato".
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                      Empresa / Razão social (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Ex: FCS CONSTRUÇÕES E EMPREENDIMENTOS EIRELI - ME"
+                      disabled={isSubmitting}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aparece no cabeçalho da Ordem de Serviço deste contrato.
                     </p>
                   </div>
                   <div>

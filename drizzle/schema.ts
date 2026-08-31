@@ -48,6 +48,8 @@ export const employees = mysqlTable("employees", {
   cnhNumero: varchar("cnhNumero", { length: 30 }),
   cnhValidade: varchar("cnhValidade", { length: 10 }),
   cnhCategoria: varchar("cnhCategoria", { length: 10 }),
+  // CPF do colaborador — usado na Ordem de Serviço (Documentação).
+  cpf: varchar("cpf", { length: 14 }),
   // JSON com os valores dos campos personalizados do contrato (ver
   // contractCustomFields) — {fieldKey: valor}.
   customFields: text("customFields"),
@@ -234,6 +236,8 @@ export const contracts = mysqlTable("contracts", {
   pgrFileUrl: text("pgrFileUrl"),
   pgrFileName: varchar("pgrFileName", { length: 255 }),
   pgrUploadedAt: timestamp("pgrUploadedAt"),
+  // Razão social impressa no cabeçalho da Ordem de Serviço (Documentação).
+  companyName: varchar("companyName", { length: 255 }),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -642,3 +646,33 @@ export const epiRoleItems = mysqlTable("epiRoleItems", {
 
 export type EpiRoleItemRow = typeof epiRoleItems.$inferSelect;
 export type InsertEpiRoleItemRow = typeof epiRoleItems.$inferInsert;
+
+/**
+ * Documentação — Ordem de Serviço (NR-01) por função. Cada contrato define,
+ * por função, os textos que preenchem a OS de quem exerce aquela função:
+ * área/setor, tarefas, agentes ambientais, medidas de controle e EPIs
+ * mínimos. Um registro por (contractSlug, role) — substituído por inteiro
+ * a cada salvamento (mesma lógica de epiRoleItems).
+ */
+export const osRoleConfig = mysqlTable("osRoleConfig", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 40 }).notNull(),
+  role: varchar("role", { length: 255 }).notNull(),
+  area: varchar("area", { length: 255 }),
+  setorTrabalho: varchar("setorTrabalho", { length: 255 }),
+  maquinasEquipamentos: text("maquinasEquipamentos"),
+  tarefas: text("tarefas"),
+  agentesFisicos: text("agentesFisicos"),
+  agentesQuimicos: text("agentesQuimicos"),
+  agentesBiologicos: text("agentesBiologicos"),
+  agentesErgonomicos: text("agentesErgonomicos"),
+  agentesAcidentes: text("agentesAcidentes"),
+  medidasAdministrativas: text("medidasAdministrativas"),
+  medidasEngenharia: text("medidasEngenharia"),
+  episMinimos: text("episMinimos"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OsRoleConfigRow = typeof osRoleConfig.$inferSelect;
+export type InsertOsRoleConfigRow = typeof osRoleConfig.$inferInsert;

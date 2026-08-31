@@ -23,6 +23,8 @@ export interface ContractInfo {
   pgrFileUrl: string | null;
   pgrFileName: string | null;
   pgrUploadedAt: string | null;
+  /** Razão social impressa no cabeçalho da Ordem de Serviço (Documentação). */
+  companyName: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

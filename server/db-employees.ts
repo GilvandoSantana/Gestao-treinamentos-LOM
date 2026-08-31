@@ -48,6 +48,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
         cnhNumero: employee.cnhNumero,
         cnhValidade: employee.cnhValidade,
         cnhCategoria: employee.cnhCategoria,
+        cpf: employee.cpf,
         customFields: employee.customFields,
         updatedAt: new Date(),
       },

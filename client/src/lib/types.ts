@@ -23,6 +23,8 @@ export interface Employee {
   cnhNumero?: string;
   cnhValidade?: string;
   cnhCategoria?: string;
+  /** CPF do colaborador — usado na Ordem de Serviço (Documentação). */
+  cpf?: string;
   /** Contrato ao qual o colaborador pertence (ver shared/contracts.ts) */
   contract?: string;
   photoUrl?: string | null;

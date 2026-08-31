@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getAllEmployees, upsertEmployee, deleteEmployee, upsertTraining, getTrainingsByEmployeeId, getTrainingsGroupedByEmployee, setEmployeeDismissed, setEmployeeContract, getDistinctTrainingNames, deleteTraining, deleteTrainingsExcept } from "./db-employees";
 import { listEpiRoleItems, countEpiRoleItemsByRole, listEpiResponsibleSuggestions, replaceEpiRoleItems } from "./db-epi";
+import { getOsRoleConfig, countOsRoleConfigs, saveOsRoleConfig } from "./db-os";
 import { getDb } from "./db";
 import { emailNotifications, trainings, employees } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -1835,7 +1836,12 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
         const contract = await getContractBySlug(input.slug);
-        return { managerName: contract?.managerName ?? null, contractName: contract?.name ?? null };
+        return {
+          managerName: contract?.managerName ?? null,
+          contractName: contract?.name ?? null,
+          companyName: contract?.companyName ?? null,
+          pgrFileUrl: contract?.pgrFileUrl ?? null,
+        };
       }),
 
     list: masterAdminProcedure
@@ -1852,6 +1858,7 @@ export const appRouter = router({
           alertEmail: z.string().email().optional().or(z.literal("")),
           alertWhatsapp: z.string().optional().or(z.literal("")),
           managerName: z.string().trim().max(120).nullish(),
+          companyName: z.string().trim().max(255).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1862,6 +1869,7 @@ export const appRouter = router({
           alertEmail: input.alertEmail || null,
           alertWhatsapp: input.alertWhatsapp || null,
           managerName: input.managerName,
+          companyName: input.companyName,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -1883,6 +1891,7 @@ export const appRouter = router({
           alertEmail: z.string().email().optional().or(z.literal("")),
           alertWhatsapp: z.string().optional().or(z.literal("")),
           managerName: z.string().trim().max(120).nullish(),
+          companyName: z.string().trim().max(255).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1896,6 +1905,7 @@ export const appRouter = router({
           alertEmail: input.alertEmail || null,
           alertWhatsapp: input.alertWhatsapp || null,
           managerName: input.managerName,
+          companyName: input.companyName,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -2662,6 +2672,7 @@ export const appRouter = router({
           cnhNumero: z.string().nullish(),
           cnhValidade: z.string().nullish(),
           cnhCategoria: z.string().nullish(),
+          cpf: z.string().nullish(),
           customFields: z.record(z.string(), z.string()).optional(),
           trainings: z.array(
             z.object({
@@ -2701,6 +2712,7 @@ export const appRouter = router({
               cnhNumero: input.cnhNumero,
               cnhValidade: input.cnhValidade,
               cnhCategoria: input.cnhCategoria,
+              cpf: input.cpf,
               customFields: input.customFields ? JSON.stringify(input.customFields) : undefined,
               // O contrato vem sempre da conta que está cadastrando — não é
               // escolhido no formulário, para não haver como errar nem burlar.
@@ -3174,6 +3186,50 @@ export const appRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
         await replaceEpiRoleItems(ctx.siteContract, input.role, input.items);
+        return { success: true };
+      }),
+  }),
+
+  // Documentação — Ordem de Serviço (NR-01) por função. Cada contrato
+  // define, por função, os textos que preenchem a OS de quem exerce
+  // aquela função.
+  osConfig: router({
+    getByRole: siteAdminProcedure
+      .input(z.object({ role: z.string() }))
+      .query(async ({ input, ctx }) => {
+        if (!ctx.siteContract) return null;
+        return getOsRoleConfig(ctx.siteContract, input.role);
+      }),
+
+    countByRole: siteAdminProcedure.query(async ({ ctx }) => {
+      if (!ctx.siteContract) return {};
+      return countOsRoleConfigs(ctx.siteContract);
+    }),
+
+    saveForRole: requirePermission('editEmployees')
+      .input(
+        z.object({
+          role: z.string().min(1),
+          area: z.string().max(255).nullish(),
+          setorTrabalho: z.string().max(255).nullish(),
+          maquinasEquipamentos: z.string().max(2000).nullish(),
+          tarefas: z.string().max(4000).nullish(),
+          agentesFisicos: z.string().max(2000).nullish(),
+          agentesQuimicos: z.string().max(2000).nullish(),
+          agentesBiologicos: z.string().max(2000).nullish(),
+          agentesErgonomicos: z.string().max(2000).nullish(),
+          agentesAcidentes: z.string().max(2000).nullish(),
+          medidasAdministrativas: z.string().max(2000).nullish(),
+          medidasEngenharia: z.string().max(2000).nullish(),
+          episMinimos: z.string().max(2000).nullish(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const { role, ...rest } = input;
+        await saveOsRoleConfig(ctx.siteContract, role, rest);
         return { success: true };
       }),
   }),

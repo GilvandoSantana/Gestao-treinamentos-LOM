@@ -12,12 +12,14 @@
  */
 
 import { useMemo, useState } from 'react';
-import { X, FileStack, Search, Loader, Download, HardHat, Settings2 } from 'lucide-react';
+import { X, FileStack, Search, Loader, Download, HardHat, ClipboardList, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Employee } from '@/lib/types';
 import type { jsPDF } from 'jspdf';
 import { generateEpiFormPDF } from '@/lib/epi-form';
+import { generateOsFormPDF } from '@/lib/os-form';
 import EpiRoleConfigModal from '@/components/EpiRoleConfigModal';
+import OsRoleConfigModal from '@/components/OsRoleConfigModal';
 
 interface DocumentationModalProps {
   isOpen: boolean;
@@ -25,18 +27,21 @@ interface DocumentationModalProps {
   employees: Employee[];
 }
 
-type DocumentType = 'epi';
+type DocumentType = 'epi' | 'os';
 
 const DOCUMENT_TYPES: { key: DocumentType; label: string; Icon: typeof HardHat }[] = [
   { key: 'epi', label: 'Ficha de EPI', Icon: HardHat },
+  { key: 'os', label: 'Ordem de Serviço', Icon: ClipboardList },
 ];
 
 const GENERATORS: Record<DocumentType, (employee: Employee, sharedDoc?: jsPDF) => Promise<jsPDF>> = {
   epi: generateEpiFormPDF,
+  os: generateOsFormPDF,
 };
 
 const DOCUMENT_TYPE_FILE_PREFIX: Record<DocumentType, string> = {
   epi: 'fichas-epi',
+  os: 'ordens-de-servico',
 };
 
 export default function DocumentationModal({ isOpen, onClose, employees }: DocumentationModalProps) {
@@ -47,6 +52,7 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
   const [progress, setProgress] = useState(0);
   const [singleFile, setSingleFile] = useState(false);
   const [showEpiConfig, setShowEpiConfig] = useState(false);
+  const [showOsConfig, setShowOsConfig] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -93,6 +99,7 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
 
     const generate = GENERATORS[documentType];
     let failures = 0;
+    let firstErrorMessage: string | null = null;
     let sharedDoc: jsPDF | undefined;
 
     // Um PDF por colaborador, em sequência — gerar tudo de uma vez trava o
@@ -104,6 +111,9 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
         if (singleFile) sharedDoc = doc;
       } catch (error) {
         failures++;
+        if (!firstErrorMessage) {
+          firstErrorMessage = error instanceof Error ? error.message : null;
+        }
         console.error('Erro ao gerar documento:', chosen[i].name, error);
       }
       setProgress(i + 1);
@@ -125,6 +135,10 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
           ? `${successCount} documento(s) gerado(s) num único PDF.`
           : `${successCount} documento(s) gerado(s).`
       );
+    } else if (firstErrorMessage) {
+      // Mostra o motivo real (ex: PGR não anexado) em vez de só a contagem —
+      // é o que o usuário precisa pra saber o que corrigir.
+      toast.error(firstErrorMessage);
     } else {
       toast.error(`${failures} de ${chosen.length} documento(s) falharam.`);
     }
@@ -163,6 +177,15 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
               >
                 <Settings2 size={12} />
                 Configurar EPIs por função
+              </button>
+            )}
+            {documentType === 'os' && (
+              <button
+                onClick={() => setShowOsConfig(true)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-orange hover:opacity-80"
+              >
+                <Settings2 size={12} />
+                Configurar OS por função
               </button>
             )}
           </div>
@@ -283,6 +306,7 @@ export default function DocumentationModal({ isOpen, onClose, employees }: Docum
       </div>
 
       <EpiRoleConfigModal isOpen={showEpiConfig} onClose={() => setShowEpiConfig(false)} />
+      <OsRoleConfigModal isOpen={showOsConfig} onClose={() => setShowOsConfig(false)} />
     </div>
   );
 }

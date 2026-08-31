@@ -59,6 +59,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const [cnhNumero, setCnhNumero] = useState('');
   const [cnhValidade, setCnhValidade] = useState('');
   const [cnhCategoria, setCnhCategoria] = useState('');
+  const [cpf, setCpf] = useState('');
   const [reassignContract, setReassignContract] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   // Evita marcar o formulário como "alterado" logo depois de abrir/popular
@@ -119,6 +120,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setCnhNumero(employee.cnhNumero || '');
       setCnhValidade(employee.cnhValidade || '');
       setCnhCategoria(employee.cnhCategoria || '');
+      setCpf(employee.cpf || '');
       setReassignContract(employee.contract || '');
       setCustomFieldValues(employee.customFields || {});
       setPhotoPreview(employee.photoUrl || null);
@@ -142,6 +144,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setCnhNumero('');
       setCnhValidade('');
       setCnhCategoria('');
+      setCpf('');
       setPhotoPreview(null);
       setShowCustomRole(duplicateFrom ? !allRoles.includes(duplicateFrom.role as any) : false);
       setTrainings(
@@ -169,7 +172,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, trainings, photoPreview, reassignContract, customFieldValues]);
+  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, cpf, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -440,6 +443,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         cnhNumero: cnhNumero.trim() || undefined,
         cnhValidade: cnhValidade.trim() || undefined,
         cnhCategoria: cnhCategoria.trim() || undefined,
+        cpf: cpf.trim() || undefined,
         trainings,
         customFields: Object.keys(customFieldValues).length > 0 ? customFieldValues : undefined,
       });
@@ -671,7 +675,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             </div>
           </div>
 
-          {/* Gerência — mostrada no crachá padrão */}
+          {/* Gerência e CPF — Gerência aparece no crachá; CPF é usado na Ordem de Serviço */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-foreground font-semibold mb-2 text-sm">Gerência</label>
@@ -681,6 +685,16 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 onChange={(e) => setGerencia(e.target.value)}
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 placeholder="Ex: Engª Manutenção"
+              />
+            </div>
+            <div>
+              <label className="block text-foreground font-semibold mb-2 text-sm">CPF</label>
+              <input
+                type="text"
+                value={cpf}
+                onChange={(e) => setCpf(e.target.value)}
+                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                placeholder="000.000.000-00"
               />
             </div>
           </div>

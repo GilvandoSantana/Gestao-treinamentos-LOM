@@ -272,6 +272,7 @@ export default function Home() {
           cnhNumero: employeeData.cnhNumero,
           cnhValidade: employeeData.cnhValidade,
           cnhCategoria: employeeData.cnhCategoria,
+          cpf: employeeData.cpf,
           customFields: employeeData.customFields,
           trainings: employeeData.trainings,
         });
