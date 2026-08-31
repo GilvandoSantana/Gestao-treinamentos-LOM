@@ -9,7 +9,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Cliente criado sob demanda, na hora do primeiro uso real — não na
+// importação do módulo. Cada função já confere se as credenciais existem
+// antes de chegar aqui, mas criar o cliente eagerly com string vazia
+// derruba (createClient lança "supabaseUrl is required") assim que
+// qualquer arquivo importa este módulo, mesmo sem nunca fazer upload —
+// isso já quebrou testes automatizados que nem mexem com Supabase.
+let _supabase: ReturnType<typeof createClient> | null = null;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(supabaseUrl, supabaseAnonKey);
+  }
+  return _supabase;
+}
 
 const BUCKET_NAME = "certificates";
 const PHOTOS_BUCKET = "photos";
@@ -37,7 +49,7 @@ export async function uploadCertificateToSupabase(
     const filePath = `certificates/${uniqueFileName}`;
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabase().storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
         contentType: mimeType,
@@ -53,7 +65,7 @@ export async function uploadCertificateToSupabase(
     }
 
     // Get the public URL
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = getSupabase().storage
       .from(BUCKET_NAME)
       .getPublicUrl(filePath);
 
@@ -77,7 +89,7 @@ export async function deleteCertificateFromSupabase(
       throw new Error("Supabase is not configured");
     }
 
-    const { error } = await supabase.storage
+    const { error } = await getSupabase().storage
       .from(BUCKET_NAME)
       .remove([filePath]);
 
@@ -98,7 +110,7 @@ export async function getCertificateUrl(filePath: string): Promise<string> {
       throw new Error("Supabase is not configured");
     }
 
-    const { data } = supabase.storage
+    const { data } = getSupabase().storage
       .from(BUCKET_NAME)
       .getPublicUrl(filePath);
 
@@ -127,7 +139,7 @@ export async function uploadPhotoToSupabase(
     // Use employeeId as the filename to avoid database changes
     const filePath = `${employeeId}.${ext}`;
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabase().storage
       .from(PHOTOS_BUCKET)
       .upload(filePath, file, {
         contentType: mimeType,
@@ -138,7 +150,7 @@ export async function uploadPhotoToSupabase(
       throw new Error(`Supabase photo upload error: ${error.message}`);
     }
 
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = getSupabase().storage
       .from(PHOTOS_BUCKET)
       .getPublicUrl(filePath);
 
@@ -159,7 +171,7 @@ export async function getPhotoUrl(employeeId: string): Promise<string | null> {
     if (!supabaseUrl || !supabaseAnonKey) return null;
 
     // List files once with the employeeId prefix instead of checking each extension separately
-    const { data: list, error } = await supabase.storage
+    const { data: list, error } = await getSupabase().storage
       .from(PHOTOS_BUCKET)
       .list('', { limit: 5, search: employeeId });
 
@@ -168,7 +180,7 @@ export async function getPhotoUrl(employeeId: string): Promise<string | null> {
     const match = list.find(f => f.name.startsWith(employeeId));
     if (!match) return null;
 
-    const { data } = supabase.storage
+    const { data } = getSupabase().storage
       .from(PHOTOS_BUCKET)
       .getPublicUrl(match.name);
 
@@ -194,7 +206,7 @@ export async function getAllPhotoUrls(): Promise<Map<string, string>> {
     let offset = 0;
 
     for (;;) {
-      const { data: list, error } = await supabase.storage
+      const { data: list, error } = await getSupabase().storage
         .from(PHOTOS_BUCKET)
         .list('', { limit: pageSize, offset });
 
@@ -204,7 +216,7 @@ export async function getAllPhotoUrls(): Promise<Map<string, string>> {
         // Arquivos são salvos como "<employeeId>.<ext>"
         const employeeId = file.name.split('.')[0];
         if (!employeeId || urls.has(employeeId)) continue;
-        const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(file.name);
+        const { data } = getSupabase().storage.from(PHOTOS_BUCKET).getPublicUrl(file.name);
         urls.set(employeeId, data.publicUrl);
       }
 
@@ -239,14 +251,14 @@ export async function uploadFdsToSupabase(
     const uniqueFileName = `${Date.now()}-${fileName}`;
     const filePath = `fds/${contractSlug}/${documentType}/${uniqueFileName}`;
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabase().storage
       .from(BUCKET_NAME)
       .upload(filePath, file, { contentType: mimeType, upsert: false });
 
     if (error) throw new Error(`Supabase upload error: ${error.message}`);
     if (!data) throw new Error("No data returned from Supabase upload");
 
-    const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+    const { data: publicUrlData } = getSupabase().storage.from(BUCKET_NAME).getPublicUrl(filePath);
 
     return {
       path: filePath,
@@ -267,7 +279,7 @@ export async function deleteFdsFromSupabase(fileUrl: string): Promise<void> {
     const idx = fileUrl.indexOf(marker);
     if (idx === -1) return;
     const filePath = fileUrl.slice(idx + marker.length);
-    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+    await getSupabase().storage.from(BUCKET_NAME).remove([filePath]);
   } catch (error) {
     console.error("Error deleting FDS from Supabase:", error);
   }
@@ -291,14 +303,14 @@ export async function uploadCloudFileToSupabase(
   const uniqueFileName = `${Date.now()}-${fileName}`;
   const filePath = `cloud/${contractSlug}/${folderPath ? `${folderPath}/` : ""}${uniqueFileName}`;
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabase().storage
     .from(BUCKET_NAME)
     .upload(filePath, file, { contentType: mimeType, upsert: false });
 
   if (error) throw new Error(`Supabase upload error: ${error.message}`);
   if (!data) throw new Error("No data returned from Supabase upload");
 
-  const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+  const { data: publicUrlData } = getSupabase().storage.from(BUCKET_NAME).getPublicUrl(filePath);
   return { path: filePath, url: publicUrlData.publicUrl, fileName, size: file.length };
 }
 
@@ -308,7 +320,7 @@ export async function deleteCloudFileFromSupabase(fileUrl: string): Promise<void
     const idx = fileUrl.indexOf(marker);
     if (idx === -1) return;
     const filePath = decodeURIComponent(fileUrl.slice(idx + marker.length));
-    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+    await getSupabase().storage.from(BUCKET_NAME).remove([filePath]);
   } catch (error) {
     console.error("[Supabase] Failed to delete cloud file:", error);
   }
@@ -328,14 +340,14 @@ export async function uploadInvoiceFileToSupabase(
   const uniqueFileName = `${Date.now()}-${fileName}`;
   const filePath = `invoices/${contractSlug}/${uniqueFileName}`;
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabase().storage
     .from(BUCKET_NAME)
     .upload(filePath, file, { contentType: mimeType, upsert: false });
 
   if (error) throw new Error(`Supabase upload error: ${error.message}`);
   if (!data) throw new Error("No data returned from Supabase upload");
 
-  const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+  const { data: publicUrlData } = getSupabase().storage.from(BUCKET_NAME).getPublicUrl(filePath);
   return { path: filePath, url: publicUrlData.publicUrl, fileName, size: file.length };
 }
 
@@ -345,7 +357,7 @@ export async function deleteInvoiceFileFromSupabase(fileUrl: string): Promise<vo
     const idx = fileUrl.indexOf(marker);
     if (idx === -1) return;
     const filePath = decodeURIComponent(fileUrl.slice(idx + marker.length));
-    await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+    await getSupabase().storage.from(BUCKET_NAME).remove([filePath]);
   } catch (error) {
     console.error("[Supabase] Failed to delete invoice file:", error);
   }

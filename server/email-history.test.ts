@@ -17,8 +17,12 @@ vi.mock("./db-employees", () => ({
 function createMockContext(): TrpcContext {
   return {
     user: null,
-    isSiteAdmin: false,
-    siteAdminUsername: null,
+    // A rota emailHistory.list passou a exigir sessão de administrador do
+    // site depois que este teste foi escrito — sem isso, toda chamada cai
+    // no "Please login" antes mesmo de chegar na lógica que o teste quer
+    // verificar.
+    isSiteAdmin: true,
+    siteAdminUsername: "teste-admin",
     siteRole: 'admin',
     sitePermissions: null,
     req: {

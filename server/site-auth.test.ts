@@ -64,7 +64,7 @@ describe("auth.siteLogin", () => {
 
     const result = await caller.auth.siteLogin({ password: "senha-correta" });
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, sessionMarker: expect.any(String) });
     expect(setCookies).toHaveLength(1);
     expect(setCookies[0]?.name).toBe(SITE_SESSION_COOKIE);
 
@@ -108,21 +108,21 @@ describe("auth.siteLogin", () => {
     const otherCaller = appRouter.createCaller(otherCtx);
 
     const result = await otherCaller.auth.siteLogin({ password: "senha-correta" });
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, sessionMarker: expect.any(String) });
     expect(setCookies).toHaveLength(1);
   });
 });
 
 describe("auth.siteLogout", () => {
-  it("limpa o cookie de sessão do site", async () => {
+  it("limpa o cookie de sessão do site (e o de retaguarda do impersonate)", async () => {
     const { ctx, clearedCookies } = createMockContext();
     const caller = appRouter.createCaller(ctx);
 
     const result = await caller.auth.siteLogout();
 
     expect(result).toEqual({ success: true });
-    expect(clearedCookies).toHaveLength(1);
-    expect(clearedCookies[0]?.name).toBe(SITE_SESSION_COOKIE);
+    expect(clearedCookies).toHaveLength(2);
+    expect(clearedCookies.map((c) => c.name)).toContain(SITE_SESSION_COOKIE);
   });
 });
 

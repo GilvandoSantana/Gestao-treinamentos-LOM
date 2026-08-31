@@ -283,7 +283,7 @@ async function drawPage(
  *   verso (também preenchido), e só depois disso entram as linhas em
  *   branco do verso.
  */
-function planTableRows(items: EpiTableItem[]): {
+export function planTableRows(items: EpiTableItem[]): {
   frontRows: number;
   frontItems: EpiTableItem[];
   backRows: number;

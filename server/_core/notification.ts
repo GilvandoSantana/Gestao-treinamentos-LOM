@@ -68,18 +68,13 @@ export async function notifyOwner(
 ): Promise<boolean> {
   const { title, content } = validatePayload(payload);
 
-  if (!ENV.forgeApiUrl) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service URL is not configured.",
-    });
-  }
-
-  if (!ENV.forgeApiKey) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Notification service API key is not configured.",
-    });
+  // Serviço não configurado é tratado como "indisponível", não como erro de
+  // validação — mesma categoria de "não consegui alcançar o serviço" que já
+  // se aplica a falhas de rede logo abaixo (ver comentário da função:
+  // retorna false, não lança, pra quem chama poder cair pra e-mail/WhatsApp).
+  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
+    console.warn("[Notification] Service not configured (missing URL or API key).");
+    return false;
   }
 
   const endpoint = buildEndpointUrl(ENV.forgeApiUrl);

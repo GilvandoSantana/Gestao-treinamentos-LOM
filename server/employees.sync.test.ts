@@ -12,6 +12,17 @@ vi.mock("./db-employees", () => ({
   upsertTraining: vi.fn(),
   getAllEmployees: vi.fn(() => Promise.resolve([])),
   getTrainingsByEmployeeId: vi.fn(() => Promise.resolve([])),
+  // Adicionada depois que este teste foi escrito (rota employees.list
+  // passou a juntar os treinamentos de todo mundo numa consulta só).
+  getTrainingsGroupedByEmployee: vi.fn(() => Promise.resolve(new Map())),
+  // Idem — sync passou a limpar treinamentos removidos da planilha.
+  deleteTrainingsExcept: vi.fn(() => Promise.resolve()),
+}));
+
+// getAllPhotoUrls só entraria em jogo se o Supabase estivesse configurado
+// de verdade — sem mockar, o teste tentaria uma chamada de rede real.
+vi.mock("./supabase-storage", () => ({
+  getAllPhotoUrls: vi.fn(() => Promise.resolve(new Map())),
 }));
 
 function createMockContext(): TrpcContext {
@@ -19,6 +30,10 @@ function createMockContext(): TrpcContext {
     user: null,
     isSiteAdmin: true,
     siteAdminUsername: null,
+    // A rota exige um contrato escolhido no cabeçalho quando quem chama é
+    // admin — sem isso, cai no "Escolha um contrato..." antes da lógica
+    // que o teste quer verificar.
+    siteContract: "contrato-teste",
     siteRole: 'admin',
     sitePermissions: null,
     req: {
@@ -55,6 +70,8 @@ describe("employees.sync", () => {
     expect(result).toEqual({
       success: true,
       count: 1,
+      updated: 1,
+      failed: [],
     });
   });
 
@@ -102,6 +119,8 @@ describe("employees.sync", () => {
     expect(result).toEqual({
       success: true,
       count: 2,
+      updated: 2,
+      failed: [],
     });
   });
 
@@ -123,6 +142,8 @@ describe("employees.sync", () => {
     expect(result).toEqual({
       success: true,
       count: 1,
+      updated: 1,
+      failed: [],
     });
   });
 });
