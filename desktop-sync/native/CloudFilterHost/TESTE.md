@@ -23,8 +23,9 @@ igual o programa já faz hoje, só muda a aparência.
 1. **.NET 8 SDK** — baixe em https://dotnet.microsoft.com/download/dotnet/8.0
    (escolha "SDK", não só "Runtime"). Depois de instalar, abra o
    PowerShell e confirme com `dotnet --version` (deve mostrar `8.0.x`).
-2. Windows 10 versão 1809 ou mais novo (ou Windows 11) — versões mais
-   antigas não têm esse recurso.
+2. Windows 10 versão 2004 (build 19041, "atualização de maio de 2020") ou
+   mais novo, ou Windows 11 — confirmado após o primeiro teste real
+   (versões mais antigas não têm a API `IsSupported()` que o programa usa).
 
 ## Como testar
 

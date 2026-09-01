@@ -6,7 +6,12 @@
          pra ter acesso às APIs de Windows.Storage.Provider, que são
          exclusivas do Windows e não existem no .NET multiplataforma comum. -->
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <!-- Ajustado depois do primeiro teste real: a API IsSupported() só
+         garante existir a partir do build 19041 do Windows (versão 2004,
+         "atualização de maio de 2020"), não do 17763 que eu tinha posto
+         antes por engano - o build reportou isso como aviso (CA1416),
+         corrigido aqui pra bater com a exigência real. -->
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <!-- Permite compilar este projeto (que mira Windows) a partir de um
          sistema que não é Windows — só pra checagem de sintaxe/tipos
          aqui; o .exe final ainda precisa ser gerado e testado no Windows
