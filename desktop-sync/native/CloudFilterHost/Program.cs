@@ -242,58 +242,63 @@ try
                 Console.WriteLine("OK: conectado.");
 
                 Console.WriteLine($"Criando placeholder de teste \"{testFileName}\"...");
-                // FILETIME (formato de data/hora do Windows) pra agora —
-                // suspeita principal do erro 0x8007017C (ERROR_CLOUD_FILE_
-                // INVALID_REQUEST) da primeira tentativa: os campos de
-                // data ficaram todos zerados, o que a criação de
-                // placeholder aparentemente não aceita (zero costuma
-                // significar "não mudar" em operações de ALTERAR, não faz
-                // sentido numa CRIAÇÃO nova).
-                //
-                // O campo é do tipo FILETIME (struct de duas metades de
-                // 32 bits), não um número de 64 bits direto — descoberto
-                // no erro de compilação da tentativa anterior (CS0029).
+                // FILETIME (formato de data/hora do Windows) pra agora.
                 var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
-                var placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
-                {
-                    new CF_PLACEHOLDER_CREATE_INFO
-                    {
-                        RelativeFileName = testFileName,
-                        FsMetadata = new CF_FS_METADATA
-                        {
-                            FileSize = fakeContent.Length,
-                            BasicInfo = new Kernel32.FILE_BASIC_INFO
-                            {
-                                CreationTime = now,
-                                LastAccessTime = now,
-                                LastWriteTime = now,
-                                ChangeTime = now,
-                                FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
-                            },
-                        },
-                        // Removida a flag MARK_IN_SYNC desta tentativa —
-                        // a documentação da Microsoft descreve essa flag
-                        // como usada "como parte da operação
-                        // TRANSFER_PLACEHOLDERS" (dentro de um callback
-                        // FETCH_PLACEHOLDERS), não numa chamada direta e
-                        // solta de CfCreatePlaceholders como esta — pode
-                        // ser essa a causa do "operação de nuvem
-                        // inválida".
-                        Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
-                    },
-                };
 
-                var createResult = CfCreatePlaceholders(
-                    folderPath,
-                    placeholders,
-                    (uint)placeholders.Length,
-                    CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
-                    out uint entriesProcessed
-                );
-                if (createResult.Failed)
+                // NOVA TENTATIVA: FileIdentity — um "identificador" opaco
+                // que o programa anexa ao arquivo, e que volta identico
+                // nos callbacks futuros (é assim que, na versão real
+                // conectada à Nuvem, o FETCH_DATA vai saber QUAL arquivo
+                // da Nuvem baixar). A documentação diz que é opcional só
+                // para PASTAS — para ARQUIVOS pode ser obrigatório, e eu
+                // tinha deixado vazio em todas as tentativas anteriores.
+                // Uso o próprio nome do arquivo como identidade, por
+                // enquanto.
+                byte[] fileIdentityBytes = System.Text.Encoding.Unicode.GetBytes(testFileName);
+
+                CF_PLACEHOLDER_CREATE_INFO[] placeholders;
+                uint entriesProcessed;
+
+                unsafe
                 {
-                    Console.WriteLine($"ERRO ao criar placeholder: 0x{(uint)createResult:X8}");
-                    return 1;
+                    fixed (byte* pIdentity = fileIdentityBytes)
+                    {
+                        placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
+                        {
+                            new CF_PLACEHOLDER_CREATE_INFO
+                            {
+                                RelativeFileName = testFileName,
+                                FsMetadata = new CF_FS_METADATA
+                                {
+                                    FileSize = fakeContent.Length,
+                                    BasicInfo = new Kernel32.FILE_BASIC_INFO
+                                    {
+                                        CreationTime = now,
+                                        LastAccessTime = now,
+                                        LastWriteTime = now,
+                                        ChangeTime = now,
+                                        FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                                    },
+                                },
+                                FileIdentity = (IntPtr)pIdentity,
+                                FileIdentityLength = (uint)fileIdentityBytes.Length,
+                                Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
+                            },
+                        };
+
+                        var createResult = CfCreatePlaceholders(
+                            folderPath,
+                            placeholders,
+                            (uint)placeholders.Length,
+                            CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
+                            out entriesProcessed
+                        );
+                        if (createResult.Failed)
+                        {
+                            Console.WriteLine($"ERRO ao criar placeholder: 0x{(uint)createResult:X8}");
+                            return 1;
+                        }
+                    }
                 }
                 Console.WriteLine($"OK: {entriesProcessed} placeholder(s) criado(s).");
                 Console.WriteLine($"Resultado individual do arquivo: 0x{(uint)placeholders[0].Result:X8}");
