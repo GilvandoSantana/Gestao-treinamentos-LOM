@@ -11,6 +11,7 @@ import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
 import { hasValidSiteSession } from "../site-auth";
+import { csrfProtection } from "./csrf";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -187,6 +188,7 @@ async function startServer() {
   // tRPC API
   app.use(
     "/api/trpc",
+    csrfProtection,
     createExpressMiddleware({
       router: appRouter,
       createContext,
