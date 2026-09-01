@@ -107,7 +107,12 @@ na sua máquina. Agora vamos testar a mesma coisa, mas baixando um
 arquivo de verdade da Nuvem, em vez de um texto fixo de mentira.
 
 1. Baixe a atualização.
-2. Rode o script que busca um arquivo de verdade da sua Nuvem (na pasta
+2. **Pré-requisito novo desta etapa**: esse script específico roda com
+   Node.js (diferente do resto, que usa só o .NET). Se o comando `node
+   --version` no PowerShell der erro de "não é reconhecido", baixe e
+   instale em https://nodejs.org (escolha a versão "LTS") — é só clicar
+   em "Avançar" em tudo, sem precisar configurar nada.
+3. Rode o script que busca um arquivo de verdade da sua Nuvem (na pasta
    `desktop-sync/scripts`, não na `CloudFilterHost`):
    ```
    cd ..\..\scripts
@@ -115,14 +120,14 @@ arquivo de verdade da Nuvem, em vez de um texto fixo de mentira.
    ```
    (deixe as aspas vazias `""` no lugar do usuário se você usa o acesso
    mestre; senão, coloque seu usuário entre as aspas)
-3. O script vai imprimir um comando pronto, algo como:
+4. O script vai imprimir um comando pronto, algo como:
    ```
    dotnet run -- placeholder-real-test C:\TesteNuvem2 "nome-do-arquivo.pdf" 123456 "https://..."
    ```
-4. Copie e cole esse comando **de volta na pasta CloudFilterHost**
+5. Copie e cole esse comando **de volta na pasta CloudFilterHost**
    (`cd ..\native\CloudFilterHost` antes de rodar).
-5. Abra o arquivo que aparecer em `C:\TesteNuvem2` e confira se o
+6. Abra o arquivo que aparecer em `C:\TesteNuvem2` e confira se o
    conteúdo bate com o arquivo de verdade que está na Nuvem (mesmo
    conteúdo, mesmo tamanho, abre normal).
-6. Me conta o resultado — funcionou, o arquivo abriu certo, ou deu erro
+7. Me conta o resultado — funcionou, o arquivo abriu certo, ou deu erro
    (nesse caso, a saída completa de novo).
