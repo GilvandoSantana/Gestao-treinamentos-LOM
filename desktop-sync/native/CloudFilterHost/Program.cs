@@ -242,7 +242,11 @@ try
                 // placeholder aparentemente não aceita (zero costuma
                 // significar "não mudar" em operações de ALTERAR, não faz
                 // sentido numa CRIAÇÃO nova).
-                long now = DateTime.UtcNow.ToFileTimeUtc();
+                //
+                // O campo é do tipo FILETIME (struct de duas metades de
+                // 32 bits), não um número de 64 bits direto — descoberto
+                // no erro de compilação da tentativa anterior (CS0029).
+                var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
                 var placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
                 {
                     new CF_PLACEHOLDER_CREATE_INFO
@@ -316,3 +320,12 @@ catch (Exception ex)
     }
     return 1;
 }
+
+// Converte um valor de data/hora do .NET (número de 64 bits) pro formato
+// FILETIME do Windows (duas metades de 32 bits) — usado nos campos de
+// data/hora exigidos na criação de um placeholder.
+static System.Runtime.InteropServices.ComTypes.FILETIME ToFileTime(long fileTime) => new()
+{
+    dwLowDateTime = unchecked((int)(fileTime & 0xFFFFFFFF)),
+    dwHighDateTime = unchecked((int)(fileTime >> 32)),
+};
