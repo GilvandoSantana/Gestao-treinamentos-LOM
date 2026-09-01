@@ -90,17 +90,18 @@ try
                 // ",0" no final = primeiro ícone dentro do arquivo .ico.
                 IconResource = Path.Combine(AppContext.BaseDirectory, "icon.ico") + ",0",
                 Version = "1.0.0",
-                // AJUSTADO nesta etapa: pra placeholder funcionar, a
-                // política de população precisa ser "Full" (usa
-                // placeholder de verdade, não baixa tudo de cara) e a de
-                // hidratação "Progressive" (baixa o conteúdo quando o
-                // arquivo é aberto, não tudo de uma vez ao criar). Com
-                // "AlwaysFull"/"Full" (como estava antes), CfCreatePlaceholders
-                // falha com STATUS_CLOUD_FILE_NOT_SUPPORTED.
-                PopulationPolicy = StorageProviderPopulationPolicy.Full,
+                // CORRIGIDO (achei o exemplo oficial testado do próprio
+                // mantenedor do pacote Vanara e ele usa exatamente estes
+                // dois valores — o oposto do que eu tinha "corrigido" na
+                // tentativa anterior). Os nomes destes valores no WinRT
+                // (StorageProviderPopulationPolicy/HydrationPolicy) NÃO
+                // significam a mesma coisa que os nomes parecidos da API
+                // nativa (CF_HYDRATION_POLICY_ALWAYS_FULL) — são dois
+                // sistemas de tipos diferentes, apesar do nome parecido.
+                PopulationPolicy = StorageProviderPopulationPolicy.AlwaysFull,
                 InSyncPolicy = StorageProviderInSyncPolicy.FileCreationTime
                     | StorageProviderInSyncPolicy.DirectoryCreationTime,
-                HydrationPolicy = StorageProviderHydrationPolicy.Progressive,
+                HydrationPolicy = StorageProviderHydrationPolicy.Full,
                 HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.None,
                 ShowSiblingsAsGroup = false,
             };
@@ -224,7 +225,7 @@ try
                     folderPath,
                     callbackTable,
                     IntPtr.Zero,
-                    CF_CONNECT_FLAGS.CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO,
+                    CF_CONNECT_FLAGS.CF_CONNECT_FLAG_NONE,
                     out var connectionKey
                 );
                 if (connectResult.Failed)
