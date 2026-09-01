@@ -16,6 +16,7 @@
 //   CloudFilterHost.exe register <caminho-da-pasta> <nome-de-exibicao>
 //   CloudFilterHost.exe unregister
 
+using System.Runtime.InteropServices;
 using Windows.Storage;
 using Windows.Storage.Provider;
 
@@ -99,13 +100,24 @@ try
 
         case "unregister":
         {
-            // Usa o Id fixo direto, sem precisar procurar a partir da
-            // pasta — GetSyncRootInformationForFolder exige marcações no
-            // sistema de arquivos que só a etapa de placeholder (ainda não
-            // implementada) cria; nesta etapa (só registro), a busca por
-            // pasta falha mesmo com o registro tendo funcionado.
-            StorageProviderSyncRootManager.Unregister(SyncRootId);
-            Console.WriteLine("OK: unidade de sincronização removida.");
+            try
+            {
+                // Usa o Id fixo direto, sem precisar procurar a partir da
+                // pasta — GetSyncRootInformationForFolder exige marcações
+                // no sistema de arquivos que só a etapa de placeholder
+                // (ainda não implementada) cria; nesta etapa (só
+                // registro), a busca por pasta falha mesmo com o registro
+                // tendo funcionado.
+                StorageProviderSyncRootManager.Unregister(SyncRootId);
+                Console.WriteLine("OK: unidade de sincronização removida.");
+            }
+            catch (COMException ex) when (unchecked((uint)ex.HResult) == 0x80070490)
+            {
+                // ERROR_NOT_FOUND — já não tinha nada registrado com esse
+                // Id. É o mesmo resultado final que a pessoa queria (nada
+                // registrado), então não é um erro de verdade.
+                Console.WriteLine("OK: já não havia nada registrado (nada a fazer).");
+            }
             return 0;
         }
 
