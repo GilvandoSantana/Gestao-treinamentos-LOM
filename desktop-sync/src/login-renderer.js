@@ -18,6 +18,11 @@ const btnChooseFolder = document.getElementById("btn-choose-folder");
 const btnFinish = document.getElementById("btn-finish");
 
 let chosenFolder = null;
+// Guarda o contrato quando a conta só tem UM (a etapa de escolha na tela
+// é pulada nesse caso, mas o contrato ainda precisa ser passado pro
+// programa principal — bug real encontrado em 01/09: ficava sem contrato
+// nenhum marcado, mesmo a conta tendo um só).
+let autoSelectedContract = null;
 
 function showStep(step) {
   for (const el of [stepLogin, stepContract, stepFolder]) el.classList.remove("active");
@@ -65,10 +70,15 @@ btnLogin.addEventListener("click", async () => {
         .map((c) => `<option value="${c.slug}">${c.name}</option>`)
         .join("");
       showStep(stepContract);
+    } else if (contracts.ok && contracts.data.length === 1) {
+      // Conta com um contrato só — pula a tela de escolha, mas PRECISA
+      // guardar qual é esse contrato pra passar adiante (não dá pra
+      // deixar sem contrato nenhum marcado, mesmo sendo só um).
+      autoSelectedContract = contracts.data[0].slug;
+      showStep(stepFolder);
     } else {
-      // Conta comum (um contrato só) ou lista vazia — pula direto pra
-      // escolha de pasta; o servidor já sabe o contrato certo sozinho
-      // nesse caso.
+      // Conta mestre/administrador sem contrato fixo — o servidor sabe
+      // lidar com isso sozinho quando precisar.
       showStep(stepFolder);
     }
   } catch (err) {
@@ -103,7 +113,7 @@ btnFinish.addEventListener("click", async () => {
   }
   btnFinish.disabled = true;
   btnFinish.textContent = "Configurando…";
-  const contractSlug = stepContract.classList.contains("active") || contractSelect.value ? contractSelect.value : null;
+  const contractSlug = stepContract.classList.contains("active") ? contractSelect.value : autoSelectedContract;
   const result = await window.desktopSync.finishSetup(contractSlug, chosenFolder);
   if (!result.ok) {
     showError(folderError, result.error);

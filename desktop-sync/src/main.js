@@ -1,7 +1,8 @@
 const { app, Tray, Menu, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require("electron");
 const path = require("path");
+const fs = require("fs/promises");
 const { ApiClient, ApiError } = require("./api-client");
-const { runSyncTick } = require("./sync-engine");
+const { runSyncTick, isIgnoredFileName } = require("./sync-engine");
 const { startPlaceholderSync, stopPlaceholderSync, isPlaceholderSyncRunning } = require("./placeholder-sync");
 const store = require("./store");
 
@@ -77,7 +78,20 @@ async function init() {
       state.username = session.username;
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
       state.folderPath = config.folderPath;
-      await startSync();
+
+      // Confere de novo a pasta salva antes de sincronizar sozinho — não
+      // é só na hora de escolher que isso importa: se a pasta salva de
+      // uma sessão anterior virou perigosa por algum motivo (ou já era,
+      // de antes desta proteção existir), não inicia nada sozinho sem a
+      // pessoa confirmar de novo.
+      const safety = config.folderPath ? await checkFolderSafety(config.folderPath) : { safe: true };
+      if (!safety.safe) {
+        state.lastError = "A pasta salva precisa de confirmação antes de sincronizar de novo — abra o programa e escolha a pasta.";
+        openSettingsWindow();
+        broadcastStatus();
+      } else {
+        await startSync();
+      }
     } catch (error) {
       // Token expirado (passou dos 30 dias) ou revogado — volta pra tela
       // de login em vez de ficar tentando sincronizar sem sucesso.
@@ -340,6 +354,66 @@ ipcMain.handle("list-contracts", async () => {
   }
 });
 
+/**
+ * Verificação de segurança antes de aceitar uma pasta pra sincronizar —
+ * criada depois de um incidente real (01/09): a pessoa escolheu o próprio
+ * Desktop, que já tinha arquivos, e o programa (sem essa checagem) achou
+ * que eram "arquivos novos" e enviou tudo pra Nuvem sem avisar ninguém.
+ *
+ * Duas camadas: bloqueia de vez pastas importantes do sistema (nunca faz
+ * sentido sincronizar o Desktop/Documentos/Downloads inteiro), e avisa
+ * (sem bloquear, dá pra confirmar) quando a pasta escolhida já tem
+ * arquivo dentro — pra pessoa ter certeza de que é a pasta certa antes de
+ * qualquer coisa subir pra Nuvem sem querer.
+ */
+function getKnownSystemFolders() {
+  const names = ["desktop", "documents", "downloads", "pictures", "music", "videos", "home"];
+  const result = [];
+  for (const name of names) {
+    try {
+      result.push(path.resolve(app.getPath(name)));
+    } catch {
+      // Alguns nomes podem não existir dependendo da versão do Windows —
+      // tudo bem, só pula.
+    }
+  }
+  result.push("C:\\", "C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)", "C:\\Users");
+  return result;
+}
+
+async function checkFolderSafety(folderPath) {
+  const normalized = path.resolve(folderPath).toLowerCase();
+  for (const dangerous of getKnownSystemFolders()) {
+    if (normalized === dangerous.toLowerCase()) {
+      return {
+        safe: false,
+        blocking: true,
+        message:
+          `"${folderPath}" é uma pasta importante do sistema — não pode ser usada pra sincronizar. ` +
+          `Crie uma pasta nova, só pra isso (por exemplo, dentro de "Meus Documentos").`,
+      };
+    }
+  }
+
+  try {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    const realEntries = entries.filter((e) => !(e.isFile() && isIgnoredFileName(e.name)));
+    if (realEntries.length > 0) {
+      return {
+        safe: false,
+        blocking: false,
+        message:
+          `Essa pasta já tem ${realEntries.length} item(ns) dentro. Continuar vai ENVIAR esses arquivos ` +
+          `pra Nuvem, onde outras pessoas da empresa também têm acesso. Tem certeza que é essa mesma pasta?`,
+      };
+    }
+  } catch {
+    // Pasta ainda não existe — tudo bem, o programa cria na hora.
+  }
+
+  return { safe: true };
+}
+
 ipcMain.handle("choose-folder", async () => {
   const win = loginWindow || settingsWindow;
   const result = await dialog.showOpenDialog(win, {
@@ -347,7 +421,26 @@ ipcMain.handle("choose-folder", async () => {
     title: "Escolha a pasta para sincronizar",
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return result.filePaths[0];
+
+  const folderPath = result.filePaths[0];
+  const safety = await checkFolderSafety(folderPath);
+  if (!safety.safe) {
+    if (safety.blocking) {
+      dialog.showMessageBoxSync(win, { type: "error", title: "Pasta não permitida", message: safety.message });
+      return null;
+    }
+    const { response } = await dialog.showMessageBox(win, {
+      type: "warning",
+      buttons: ["Cancelar", "Continuar mesmo assim"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "Pasta não está vazia",
+      message: safety.message,
+    });
+    if (response !== 1) return null;
+  }
+
+  return folderPath;
 });
 
 ipcMain.handle("finish-setup", async (_event, contractSlug, folderPath) => {
@@ -403,10 +496,36 @@ ipcMain.handle("change-folder", async () => {
     title: "Escolha a pasta para sincronizar",
   });
   if (result.canceled || result.filePaths.length === 0) return;
-  state.folderPath = result.filePaths[0];
-  knownFiles = new Map(); // pasta nova — recomeça o controle de estado do zero
+
+  const newFolderPath = result.filePaths[0];
+  const safety = await checkFolderSafety(newFolderPath);
+  if (!safety.safe) {
+    if (safety.blocking) {
+      dialog.showMessageBoxSync(settingsWindow, { type: "error", title: "Pasta não permitida", message: safety.message });
+      return;
+    }
+    const { response } = await dialog.showMessageBox(settingsWindow, {
+      type: "warning",
+      buttons: ["Cancelar", "Continuar mesmo assim"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "Pasta não está vazia",
+      message: safety.message,
+    });
+    if (response !== 1) return;
+  }
+
+  // Precisa parar o mecanismo antigo (e o novo, se estiver ativo) antes
+  // de trocar — do jeito que estava antes, a pasta mudava mas o processo
+  // de sincronização que já estava rodando continuava usando a pasta
+  // ANTIGA na memória até o próximo ciclo, o que causou justamente o
+  // incidente do Desktop (01/09): a troca de pasta não reiniciava nada.
+  stopSync();
+  state.folderPath = newFolderPath;
+  knownFiles = new Map();
   const config = store.loadConfig() || {};
   store.saveConfig({ ...config, folderPath: state.folderPath });
+  await startSync();
   broadcastStatus();
 });
 

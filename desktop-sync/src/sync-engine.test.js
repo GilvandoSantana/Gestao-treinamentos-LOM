@@ -242,3 +242,35 @@ describe("sync-engine (desktop) — subpastas recursivas", () => {
     expect(second.log.length).toBe(0);
   });
 });
+
+describe("sync-engine (desktop) — nunca envia arquivo do próprio sistema", () => {
+  // Achado real (01/09): o programa enviou um "desktop.ini" pra Nuvem sem
+  // ninguém pedir isso, junto com arquivos pessoais de uma pasta que não
+  // devia ter sido escolhida. Esses testes garantem que esse tipo de
+  // arquivo nunca mais é considerado "arquivo novo pra subir", não
+  // importa a pasta escolhida.
+  let tmpDir;
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "sync-test-ignored-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("nunca envia desktop.ini, Thumbs.db, .DS_Store ou arquivo temporário do Office", async () => {
+    const cloud = makeFakeCloud();
+    await fs.writeFile(path.join(tmpDir, "desktop.ini"), "[.ShellClassInfo]");
+    await fs.writeFile(path.join(tmpDir, "Thumbs.db"), "lixo binario");
+    await fs.writeFile(path.join(tmpDir, ".DS_Store"), "lixo binario");
+    await fs.writeFile(path.join(tmpDir, "~$documento.docx"), "arquivo temporario do Word");
+    await fs.writeFile(path.join(tmpDir, "planilha.tmp"), "arquivo temporario");
+    await fs.writeFile(path.join(tmpDir, "arquivo-de-verdade.txt"), "esse sim deveria subir");
+
+    const { log } = await runSyncTick(tmpDir, new Map(), cloud);
+
+    const raiz = await cloud.listFolder(null);
+    const nomesEnviados = raiz.files.map((f) => f.name);
+    expect(nomesEnviados).toEqual(["arquivo-de-verdade.txt"]);
+    expect(log.filter((l) => l.kind === "upload")).toHaveLength(1);
+  });
+});

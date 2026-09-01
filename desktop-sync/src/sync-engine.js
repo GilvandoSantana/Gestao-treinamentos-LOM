@@ -20,6 +20,18 @@ const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 
+// Arquivos que o próprio Windows (ou outros programas) cria sozinho
+// dentro de qualquer pasta — nunca fazem sentido subir pra Nuvem, e
+// achado real (Gilvando, 01/09): o programa chegou a subir um
+// "desktop.ini" pra Nuvem sem ninguém pedir isso.
+const IGNORED_FILE_NAMES = new Set(["desktop.ini", "thumbs.db", ".ds_store"]);
+function isIgnoredFileName(name) {
+  if (IGNORED_FILE_NAMES.has(name.toLowerCase())) return true;
+  if (name.startsWith("~$")) return true; // arquivo temporário do Office
+  if (name.endsWith(".tmp") || name.endsWith(".temp")) return true;
+  return false;
+}
+
 const LOCK_DURATION_MS = 2 * 60 * 60 * 1000;
 function isLockActiveClient(lockedBy, lockedAt) {
   if (!lockedBy || !lockedAt) return false;
@@ -93,7 +105,7 @@ async function syncFilesInFolder(
   let localNames;
   try {
     const entries = await fs.readdir(localDirPath, { withFileTypes: true });
-    localNames = entries.filter((e) => e.isFile()).map((e) => e.name);
+    localNames = entries.filter((e) => e.isFile() && !isIgnoredFileName(e.name)).map((e) => e.name);
   } catch (error) {
     addLog(
       `Falha ao ler a pasta local "${relativePrefix || "/"}": ${error instanceof Error ? error.message : "erro desconhecido"}`,
@@ -363,4 +375,11 @@ async function runSyncTick(localRootPath, knownFiles, callbacks, currentUsername
   return { knownFiles: nextKnown, log };
 }
 
-module.exports = { runSyncTick, syncFolderTree, syncFilesInFolder, isLockActiveClient, LOCK_DURATION_MS };
+module.exports = {
+  runSyncTick,
+  syncFolderTree,
+  syncFilesInFolder,
+  isLockActiveClient,
+  LOCK_DURATION_MS,
+  isIgnoredFileName,
+};
