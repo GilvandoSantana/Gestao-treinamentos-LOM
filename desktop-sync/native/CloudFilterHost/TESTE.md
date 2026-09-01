@@ -99,3 +99,30 @@ dotnet run -- unregister
 3. Só depois de tudo isso funcionar: conectar de verdade com os arquivos
    da Nuvem (em vez do texto fixo de teste), e integrar ao programa
    Electron principal.
+
+## Etapa 3 — arquivo de verdade da Nuvem (confirmado: etapa 2 funcionou!)
+
+A etapa 2 (placeholder com texto fixo) **já foi confirmada funcionando**
+na sua máquina. Agora vamos testar a mesma coisa, mas baixando um
+arquivo de verdade da Nuvem, em vez de um texto fixo de mentira.
+
+1. Baixe a atualização.
+2. Rode o script que busca um arquivo de verdade da sua Nuvem (na pasta
+   `desktop-sync/scripts`, não na `CloudFilterHost`):
+   ```
+   cd ..\..\scripts
+   node get-real-file-for-test.js https://gestao-treinamentos-lom.up.railway.app "" "sua-senha-aqui"
+   ```
+   (deixe as aspas vazias `""` no lugar do usuário se você usa o acesso
+   mestre; senão, coloque seu usuário entre as aspas)
+3. O script vai imprimir um comando pronto, algo como:
+   ```
+   dotnet run -- placeholder-real-test C:\TesteNuvem2 "nome-do-arquivo.pdf" 123456 "https://..."
+   ```
+4. Copie e cole esse comando **de volta na pasta CloudFilterHost**
+   (`cd ..\native\CloudFilterHost` antes de rodar).
+5. Abra o arquivo que aparecer em `C:\TesteNuvem2` e confira se o
+   conteúdo bate com o arquivo de verdade que está na Nuvem (mesmo
+   conteúdo, mesmo tamanho, abre normal).
+6. Me conta o resultado — funcionou, o arquivo abriu certo, ou deu erro
+   (nesse caso, a saída completa de novo).

@@ -21,6 +21,7 @@
 //   CloudFilterHost.exe register <caminho-da-pasta> <nome-de-exibicao>
 //   CloudFilterHost.exe unregister
 //   CloudFilterHost.exe placeholder-test <caminho-da-pasta>
+//   CloudFilterHost.exe placeholder-real-test <caminho-da-pasta> <nome-do-arquivo> <tamanho-em-bytes> <link-de-download>
 
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -306,6 +307,177 @@ try
                 Console.WriteLine(
                     $"Agora abra o arquivo \"{Path.Combine(folderPath, testFileName)}\" " +
                     "(no Bloco de Notas, por exemplo) e veja se aparece o texto de teste."
+                );
+                Console.WriteLine("Pressione Enter aqui para encerrar (e desconectar) quando terminar de testar.");
+                Console.ReadLine();
+
+                CfDisconnectSyncRoot(connectionKey);
+                Console.WriteLine("Desconectado.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERRO: {ex.GetType().FullName} (HResult 0x{ex.HResult:X8}): {ex.Message}");
+                return 1;
+            }
+        }
+
+        case "placeholder-real-test":
+        {
+            // Igual ao placeholder-test, mas com um arquivo DE VERDADE da
+            // Nuvem em vez de conteúdo fixo — usa o link de download que
+            // o script get-real-file-for-test.js gera. Ainda um teste
+            // isolado (não integrado ao programa Electron principal
+            // ainda) — o próximo passo depois deste funcionar.
+            if (args.Length < 5)
+            {
+                Console.WriteLine(
+                    "Uso: CloudFilterHost.exe placeholder-real-test <caminho-da-pasta> <nome-do-arquivo> <tamanho-em-bytes> <link-de-download>"
+                );
+                return 1;
+            }
+            string realFolderPath = args[1];
+            string realFileName = args[2];
+            long realFileSize = long.Parse(args[3]);
+            string downloadUrl = args[4];
+
+            if (!Directory.Exists(realFolderPath))
+            {
+                Console.WriteLine($"ERRO: a pasta não existe: {realFolderPath}");
+                return 1;
+            }
+
+            using var httpClient = new System.Net.Http.HttpClient();
+
+            CF_CALLBACK fetchRealDataCallback = (in CF_CALLBACK_INFO callbackInfo, in CF_CALLBACK_PARAMETERS callbackParameters) =>
+            {
+                Console.WriteLine("--> Callback FETCH_DATA disparado! Baixando o conteúdo de verdade da Nuvem...");
+                try
+                {
+                    // Bloqueia aqui de propósito (.Result em vez de await)
+                    // — o callback do CfAPI não é assíncrono; numa versão
+                    // futura mais robusta isso merece um cuidado melhor,
+                    // mas pra este teste isolado é suficiente.
+                    byte[] realContent = httpClient.GetByteArrayAsync(downloadUrl).GetAwaiter().GetResult();
+                    Console.WriteLine($"    Baixados {realContent.Length} bytes de verdade da Nuvem.");
+
+                    var opInfo = new CF_OPERATION_INFO
+                    {
+                        StructSize = (uint)Marshal.SizeOf<CF_OPERATION_INFO>(),
+                        Type = CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_DATA,
+                        ConnectionKey = callbackInfo.ConnectionKey,
+                        TransferKey = callbackInfo.TransferKey,
+                        RequestKey = callbackInfo.RequestKey,
+                    };
+
+                    unsafe
+                    {
+                        fixed (byte* pContent = realContent)
+                        {
+                            var opParams = new CF_OPERATION_PARAMETERS
+                            {
+                                ParamSize = (uint)Marshal.SizeOf<CF_OPERATION_PARAMETERS>(),
+                            };
+                            opParams.TransferData = new()
+                            {
+                                CompletionStatus = NTStatus.STATUS_SUCCESS,
+                                Buffer = (IntPtr)pContent,
+                                Offset = 0,
+                                Length = realContent.Length,
+                            };
+
+                            var hr = CfExecute(opInfo, ref opParams);
+                            Console.WriteLine($"    CfExecute (entregar conteúdo) resultado: 0x{hr:X8}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"    ERRO dentro do callback: {ex.GetType().FullName}: {ex.Message}");
+                }
+            };
+
+            try
+            {
+                var callbackTable = new CF_CALLBACK_REGISTRATION[]
+                {
+                    new CF_CALLBACK_REGISTRATION
+                    {
+                        Type = CF_CALLBACK_TYPE.CF_CALLBACK_TYPE_FETCH_DATA,
+                        Callback = fetchRealDataCallback,
+                    },
+                    CF_CALLBACK_REGISTRATION.CF_CALLBACK_REGISTRATION_END,
+                };
+
+                Console.WriteLine("Conectando ao sync root (CfConnectSyncRoot)...");
+                var connectResult = CfConnectSyncRoot(
+                    realFolderPath,
+                    callbackTable,
+                    IntPtr.Zero,
+                    CF_CONNECT_FLAGS.CF_CONNECT_FLAG_NONE,
+                    out var connectionKey
+                );
+                if (connectResult.Failed)
+                {
+                    Console.WriteLine($"ERRO ao conectar: 0x{(uint)connectResult:X8}");
+                    return 1;
+                }
+                Console.WriteLine("OK: conectado.");
+
+                Console.WriteLine($"Criando placeholder \"{realFileName}\" ({realFileSize} bytes)...");
+                var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
+                byte[] fileIdentityBytes = System.Text.Encoding.Unicode.GetBytes(realFileName);
+
+                CF_PLACEHOLDER_CREATE_INFO[] placeholders;
+                uint entriesProcessed;
+
+                unsafe
+                {
+                    fixed (byte* pIdentity = fileIdentityBytes)
+                    {
+                        placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
+                        {
+                            new CF_PLACEHOLDER_CREATE_INFO
+                            {
+                                RelativeFileName = realFileName,
+                                FsMetadata = new CF_FS_METADATA
+                                {
+                                    FileSize = realFileSize,
+                                    BasicInfo = new Kernel32.FILE_BASIC_INFO
+                                    {
+                                        CreationTime = now,
+                                        LastAccessTime = now,
+                                        LastWriteTime = now,
+                                        ChangeTime = now,
+                                        FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                                    },
+                                },
+                                FileIdentity = (IntPtr)pIdentity,
+                                FileIdentityLength = (uint)fileIdentityBytes.Length,
+                                Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
+                            },
+                        };
+
+                        var createResult = CfCreatePlaceholders(
+                            realFolderPath,
+                            placeholders,
+                            (uint)placeholders.Length,
+                            CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
+                            out entriesProcessed
+                        );
+                        if (createResult.Failed)
+                        {
+                            Console.WriteLine($"ERRO ao criar placeholder: 0x{(uint)createResult:X8}");
+                            return 1;
+                        }
+                    }
+                }
+                Console.WriteLine($"OK: {entriesProcessed} placeholder(s) criado(s).");
+                Console.WriteLine($"Resultado individual do arquivo: 0x{(uint)placeholders[0].Result:X8}");
+                Console.WriteLine();
+                Console.WriteLine(
+                    $"Agora abra o arquivo \"{Path.Combine(realFolderPath, realFileName)}\" e confira se o " +
+                    "conteúdo bate com o arquivo de verdade da Nuvem."
                 );
                 Console.WriteLine("Pressione Enter aqui para encerrar (e desconectar) quando terminar de testar.");
                 Console.ReadLine();
