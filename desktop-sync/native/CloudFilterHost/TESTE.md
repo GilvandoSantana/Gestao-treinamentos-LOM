@@ -66,7 +66,14 @@ dotnet run -- unregister C:\TesteNuvem
 
 ## Próximas etapas (só depois desta funcionar)
 
-1. Trocar o ícone genérico pelo ícone próprio do programa
+1. ~~Trocar o ícone genérico pelo ícone próprio do programa~~ — feito,
+   ainda não testado. Pra ver o resultado: rode
+   `dotnet run -- unregister C:\TesteNuvem` e depois
+   `dotnet run -- register C:\TesteNuvem "Teste Nuvem"` de novo (o
+   Explorador às vezes guarda o ícone antigo em cache, então desregistrar
+   e registrar de novo garante que ele busca o ícone atualizado). Veja se
+   agora aparece o ícone de nuvem laranja do sistema, em vez do genérico
+   do Windows.
 2. Implementar os arquivos "placeholder" (aparecem na pasta sem estar
    baixados de verdade, baixam sozinhos quando abertos — a parte que
    falta pra ficar 100% igual ao Drive)

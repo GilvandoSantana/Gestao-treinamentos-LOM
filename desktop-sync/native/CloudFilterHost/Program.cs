@@ -69,11 +69,12 @@ try
                 Id = "SupportMining.GestaoNuvem!ContaPadrao",
                 Path = storageFolder,
                 DisplayNameResource = displayName,
-                // Ícone padrão do Windows por enquanto (uma nuvem genérica) —
-                // trocar pelo ícone próprio do programa é um ajuste fino de
-                // uma etapa posterior, depois que o básico estiver
-                // confirmado funcionando.
-                IconResource = "%SystemRoot%\\System32\\imageres.dll,-1043",
+                // Ícone próprio do sistema, copiado junto do .exe na
+                // publicação — referenciado por caminho relativo ao
+                // próprio executável (AppContext.BaseDirectory), pra
+                // funcionar não importa onde o programa for instalado.
+                // ",0" no final = primeiro ícone dentro do arquivo .ico.
+                IconResource = Path.Combine(AppContext.BaseDirectory, "icon.ico") + ",0",
                 Version = "1.0.0",
                 // Por enquanto, sem placeholder — baixa tudo de verdade,
                 // igual o programa já faz hoje. Só a aparência de "unidade

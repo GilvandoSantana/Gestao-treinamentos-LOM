@@ -28,4 +28,11 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Copia o ícone junto pra pasta de saída, do lado do .exe, pra
+         `Program.cs` conseguir achar ele por caminho relativo não importa
+         onde o programa for instalado. -->
+    <None Include="icon.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
