@@ -150,7 +150,34 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+// Restringe um plugin (ou lista de plugins) de terceiro a rodar só no
+// `vite dev` — nunca no `vite build` de produção. Usa o campo `apply`
+// nativo do Vite, sem precisar mexer no código-fonte do plugin.
+function devOnly<T extends Plugin | Plugin[] | false | null | undefined>(plugin: T): T {
+  const list = Array.isArray(plugin) ? plugin : [plugin];
+  for (const p of list) {
+    if (p && typeof p === "object" && !("apply" in p)) {
+      (p as Plugin).apply = "serve";
+    }
+  }
+  return plugin;
+}
+
+const plugins = [
+  react(),
+  tailwindcss(),
+  // jsxLocPlugin e vitePluginManusRuntime são ferramentas de
+  // desenvolvimento/pré-visualização da própria plataforma (seletor de
+  // elemento, painel de edição visual, etc) — sem nenhuma relação com o
+  // sistema em si. Sem essa restrição, iam pro build de produção sem
+  // necessidade: o script do vitePluginManusRuntime sozinho pesa ~360KB
+  // embutido direto no HTML. `apply: 'serve'` restringe os dois a rodar
+  // só durante `vite dev`, nunca em `vite build` (que é o que o Railway
+  // usa pra gerar o que os usuários de verdade baixam).
+  devOnly(jsxLocPlugin()),
+  devOnly(vitePluginManusRuntime()),
+  vitePluginManusDebugCollector(),
+];
 
 export default defineConfig({
   plugins,
@@ -167,22 +194,18 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        // Isola bibliotecas pesadas de terceiro em arquivos próprios, em
-        // vez de tudo junto num bundle só — o navegador baixa (e guarda em
-        // cache) cada uma separadamente, só quando a tela que precisa dela
-        // é aberta (as telas que as usam já carregam sob demanda via
-        // React.lazy). Não muda nenhum comportamento, só como o código é
-        // dividido em arquivos.
-        manualChunks: {
-          pdf: ["jspdf", "jspdf-autotable"],
-          spreadsheet: ["exceljs"],
-          "html2canvas": ["html2canvas"],
-          charts: ["recharts"],
-        },
-      },
-    },
+    // Sem manualChunks de propósito: uma tentativa anterior de isolar
+    // jspdf/exceljs/recharts em chunks nomeados (pdf/spreadsheet/charts)
+    // acabou tendo o efeito contrário do pretendido — o agrupamento por
+    // nome de pacote juntou codigo de interoperabilidade CJS compartilhado
+    // dentro desses chunks, criando uma ligação estática artificial que
+    // fazia o bundle de entrada importar os três de forma incondicional,
+    // MESMO com todo o resto (React.lazy, Suspense com gate por estado)
+    // configurado certinho. Testado e confirmado: sem manualChunks, o
+    // Rollup divide automaticamente do jeito certo pelas fronteiras reais
+    // de import() dinâmico — só 1 arquivo carrega na abertura do site, e
+    // cada biblioteca pesada só é buscada quando a tela que a usa é aberta
+    // de verdade.
   },
   server: {
     host: true,

@@ -15,11 +15,6 @@ import type { Employee } from '@/lib/types';
 import { getTrainingStatus, getWorstStatus } from '@/lib/training-utils';
 import CertificatesList from './CertificatesList';
 import ComplianceStamp from './ComplianceStamp';
-import { generateBadgePDF } from './BadgeGenerator';
-import { generateBadgeLockPDF } from './BadgeLockGenerator';
-import { generateBadgeWaterPDF } from './BadgeWaterGenerator';
-import { generateBadgeSupportPDF } from './BadgeSupportGenerator';
-import { generateBadgeWarehousePDF } from './BadgeWarehouseGenerator';
 
 interface EmployeeTableProps {
   employees: Employee[];
@@ -58,23 +53,28 @@ export default function EmployeeTable({ employees, onEdit, onDelete, onView, onV
     setExpandedTrainingId(null);
   };
 
-  const handleGenerateBadge = (employee: Employee) => {
+  const handleGenerateBadge = async (employee: Employee) => {
+    const { generateBadgePDF } = await import('./BadgeGenerator');
     generateBadgePDF(employee);
   };
 
-  const handleGenerateLockBadge = (employee: Employee) => {
+  const handleGenerateLockBadge = async (employee: Employee) => {
+    const { generateBadgeLockPDF } = await import('./BadgeLockGenerator');
     generateBadgeLockPDF(employee);
   };
 
-  const handleGenerateWaterBadge = (employee: Employee) => {
+  const handleGenerateWaterBadge = async (employee: Employee) => {
+    const { generateBadgeWaterPDF } = await import('./BadgeWaterGenerator');
     generateBadgeWaterPDF(employee);
   };
 
-  const handleGenerateSupportBadge = (employee: Employee) => {
+  const handleGenerateSupportBadge = async (employee: Employee) => {
+    const { generateBadgeSupportPDF } = await import('./BadgeSupportGenerator');
     generateBadgeSupportPDF(employee);
   };
 
-  const handleGenerateWarehouseBadge = (employee: Employee) => {
+  const handleGenerateWarehouseBadge = async (employee: Employee) => {
+    const { generateBadgeWarehousePDF } = await import('./BadgeWarehouseGenerator');
     generateBadgeWarehousePDF(employee);
   };
 

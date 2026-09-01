@@ -39,7 +39,6 @@ const CloudModal = lazy(() => import('@/components/CloudModal'));
 const InvoicesModal = lazy(() => import('@/components/InvoicesModal'));
 const RolesTrainingTypesModal = lazy(() => import('@/components/RolesTrainingTypesModal'));
 const WarehouseModal = lazy(() => import('@/components/WarehouseModal'));
-import { generateEmployeeDataExportPDF } from '@/lib/employee-data-export';
 const ComplianceCharts = lazy(() => import('@/components/ComplianceCharts'));
 const AuditHistory = lazy(() => import('@/components/AuditHistory'));
 import RoleFilter from '@/components/RoleFilter';
@@ -506,6 +505,7 @@ export default function Home() {
         const contracts = await utils.client.contracts.list.query({ includeDeleted: true });
         contractName = contracts.find((c) => c.slug === employee.contract)?.name ?? employee.contract;
       }
+      const { generateEmployeeDataExportPDF } = await import('@/lib/employee-data-export');
       generateEmployeeDataExportPDF(employee, certificates as any, contractName);
       toast.success('PDF gerado.');
     } catch (error) {
@@ -859,14 +859,16 @@ export default function Home() {
         }}
       />
 
-      <Suspense fallback={null}>
-        <ExcelImportModal
-          isOpen={showExcelImport}
-          onClose={() => setShowExcelImport(false)}
-          onImport={handleExcelImport}
-          employees={activeEmployees}
-        />
-      </Suspense>
+      {showExcelImport && (
+        <Suspense fallback={null}>
+          <ExcelImportModal
+            isOpen={showExcelImport}
+            onClose={() => setShowExcelImport(false)}
+            onImport={handleExcelImport}
+            employees={activeEmployees}
+          />
+        </Suspense>
+      )}
 
       <RenewTrainingModal
         isOpen={showRenewBulk}
@@ -874,30 +876,36 @@ export default function Home() {
         employees={activeEmployees}
       />
 
-      <Suspense fallback={null}>
-        <CloudModal
-          isOpen={showCloud}
-          onClose={() => setShowCloud(false)}
-          canManage={session.can('manageCloud')}
-          isMasterAdmin={session.isMasterAdmin}
-        />
-      </Suspense>
+      {showCloud && (
+        <Suspense fallback={null}>
+          <CloudModal
+            isOpen={showCloud}
+            onClose={() => setShowCloud(false)}
+            canManage={session.can('manageCloud')}
+            isMasterAdmin={session.isMasterAdmin}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <InvoicesModal
-          isOpen={showInvoices}
-          onClose={() => setShowInvoices(false)}
-          canManage={session.can('manageInvoices')}
-          isMasterAdmin={session.isMasterAdmin}
-        />
-      </Suspense>
+      {showInvoices && (
+        <Suspense fallback={null}>
+          <InvoicesModal
+            isOpen={showInvoices}
+            onClose={() => setShowInvoices(false)}
+            canManage={session.can('manageInvoices')}
+            isMasterAdmin={session.isMasterAdmin}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <RolesTrainingTypesModal
-          isOpen={showRolesTrainingTypes}
-          onClose={() => setShowRolesTrainingTypes(false)}
-        />
-      </Suspense>
+      {showRolesTrainingTypes && (
+        <Suspense fallback={null}>
+          <RolesTrainingTypesModal
+            isOpen={showRolesTrainingTypes}
+            onClose={() => setShowRolesTrainingTypes(false)}
+          />
+        </Suspense>
+      )}
 
       <EmployeeViewModal
         isOpen={!!viewingEmployee}
@@ -905,14 +913,16 @@ export default function Home() {
         onClose={() => setViewingEmployee(null)}
       />
 
-      <Suspense fallback={null}>
-        <WarehouseModal
-          isOpen={showWarehouse}
-          onClose={() => setShowWarehouse(false)}
-          canManage={session.can('manageWarehouse')}
-          isMasterAdmin={session.isMasterAdmin}
-        />
-      </Suspense>
+      {showWarehouse && (
+        <Suspense fallback={null}>
+          <WarehouseModal
+            isOpen={showWarehouse}
+            onClose={() => setShowWarehouse(false)}
+            canManage={session.can('manageWarehouse')}
+            isMasterAdmin={session.isMasterAdmin}
+          />
+        </Suspense>
+      )}
 
       {selectedEmployeeForAudit && (
         <Suspense fallback={null}>
@@ -945,36 +955,44 @@ export default function Home() {
         }
       />
 
-      <Suspense fallback={null}>
-        <BadgesModal
-          isOpen={showBadges}
-          onClose={() => setShowBadges(false)}
-          employees={activeEmployees}
-        />
-      </Suspense>
+      {showBadges && (
+        <Suspense fallback={null}>
+          <BadgesModal
+            isOpen={showBadges}
+            onClose={() => setShowBadges(false)}
+            employees={activeEmployees}
+          />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <DocumentsModal
-          isOpen={showDocuments}
-          onClose={() => setShowDocuments(false)}
-          canManage={session.can('manageCertificates')}
-          isMasterAdmin={session.isMasterAdmin}
-        />
-      </Suspense>
+      {showDocuments && (
+        <Suspense fallback={null}>
+          <DocumentsModal
+            isOpen={showDocuments}
+            onClose={() => setShowDocuments(false)}
+            canManage={session.can('manageCertificates')}
+            isMasterAdmin={session.isMasterAdmin}
+          />
+        </Suspense>
+      )}
 
       <ActivityLogModal isOpen={showActivity} onClose={() => setShowActivity(false)} />
 
-      <Suspense fallback={null}>
-        <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
-      </Suspense>
+      {showContracts && (
+        <Suspense fallback={null}>
+          <ContractsModal isOpen={showContracts} onClose={() => setShowContracts(false)} />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <DocumentationModal
-          isOpen={showDocumentation}
-          onClose={() => setShowDocumentation(false)}
-          employees={activeEmployees}
-        />
-      </Suspense>
+      {showDocumentation && (
+        <Suspense fallback={null}>
+          <DocumentationModal
+            isOpen={showDocumentation}
+            onClose={() => setShowDocumentation(false)}
+            employees={activeEmployees}
+          />
+        </Suspense>
+      )}
 
       <DismissConfirmModal
         isOpen={dismissConfirm !== null}
