@@ -74,17 +74,12 @@ dotnet run -- unregister
    Microsoft) pra falar com uma API do Windows bem mais complexa. É bem
    provável que precise de várias rodadas de ajuste.
 
-   **Antes de testar, registre a pasta de novo** (a política de
-   população/hidratação mudou de novo — descobri, com um exemplo oficial
-   testado do próprio mantenedor do pacote, que a configuração da
-   tentativa anterior estava errada):
+   **Antes de testar, use uma pasta totalmente NOVA** (não `C:\TesteNuvem` de novo — essa pasta já foi registrada/desregistrada várias vezes com configurações diferentes ao longo dos nossos testes, e pode ter ficado algum estado antigo em cache no Windows atrapalhando). Faça assim, do zero:
    ```
-   dotnet run -- register C:\TesteNuvem "Teste Nuvem"
-   ```
-
-   Depois rode o teste de placeholder:
-   ```
-   dotnet run -- placeholder-test C:\TesteNuvem
+   dotnet run -- unregister
+   mkdir C:\TesteNuvem2
+   dotnet run -- register C:\TesteNuvem2 "Teste Nuvem"
+   dotnet run -- placeholder-test C:\TesteNuvem2
    ```
 
    O programa vai:

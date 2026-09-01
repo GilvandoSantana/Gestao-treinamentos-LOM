@@ -23,6 +23,7 @@
 //   CloudFilterHost.exe placeholder-test <caminho-da-pasta>
 
 using System.Runtime.InteropServices;
+using System.Threading;
 using Vanara.PInvoke;
 using Windows.Storage;
 using Windows.Storage.Provider;
@@ -107,6 +108,11 @@ try
             };
 
             StorageProviderSyncRootManager.Register(info);
+            // O exemplo oficial do Vanara espera 1 segundo depois de
+            // registrar "pra dar tempo do cache invalidar" — mesmo não
+            // sendo a causa mais provável do erro atual, é uma espera
+            // barata que não custa nada incluir.
+            Thread.Sleep(1000);
             Console.WriteLine("OK: pasta registrada como unidade de sincronização.");
             return 0;
         }
