@@ -14,10 +14,15 @@
 // Uso:
 //   CloudFilterHost.exe check
 //   CloudFilterHost.exe register <caminho-da-pasta> <nome-de-exibicao>
-//   CloudFilterHost.exe unregister <caminho-da-pasta>
+//   CloudFilterHost.exe unregister
 
 using Windows.Storage;
 using Windows.Storage.Provider;
+
+// Fixo por enquanto — uma conta só. Se um dia o programa precisar
+// sincronizar mais de uma conta/contrato como unidades separadas, cada
+// uma precisa do seu próprio Id.
+const string SyncRootId = "SupportMining.GestaoNuvem!ContaPadrao";
 
 if (args.Length == 0)
 {
@@ -66,7 +71,7 @@ try
             {
                 // Identificador fixo — se mudar entre uma execução e outra,
                 // o Windows entende que é uma unidade DIFERENTE.
-                Id = "SupportMining.GestaoNuvem!ContaPadrao",
+                Id = SyncRootId,
                 Path = storageFolder,
                 DisplayNameResource = displayName,
                 // Ícone próprio do sistema, copiado junto do .exe na
@@ -94,16 +99,12 @@ try
 
         case "unregister":
         {
-            if (args.Length < 2)
-            {
-                Console.WriteLine("Uso: CloudFilterHost.exe unregister <caminho-da-pasta>");
-                return 1;
-            }
-            string folderPath = args[1];
-            var storageFolder = await StorageFolder.GetFolderFromPathAsync(folderPath);
-            StorageProviderSyncRootManager.Unregister(
-                StorageProviderSyncRootManager.GetSyncRootInformationForFolder(storageFolder).Id
-            );
+            // Usa o Id fixo direto, sem precisar procurar a partir da
+            // pasta — GetSyncRootInformationForFolder exige marcações no
+            // sistema de arquivos que só a etapa de placeholder (ainda não
+            // implementada) cria; nesta etapa (só registro), a busca por
+            // pasta falha mesmo com o registro tendo funcionado.
+            StorageProviderSyncRootManager.Unregister(SyncRootId);
             Console.WriteLine("OK: unidade de sincronização removida.");
             return 0;
         }
@@ -115,13 +116,15 @@ try
 }
 catch (Exception ex)
 {
-    // Imprime o tipo exato da exceção e a mensagem completa de propósito —
-    // isso é o que vou precisar ver, palavra por palavra, se algo der
-    // errado no seu teste.
-    Console.WriteLine($"ERRO: {ex.GetType().FullName}: {ex.Message}");
+    // Imprime o tipo exato da exceção, o código de erro do Windows em
+    // hexadecimal (HResult) e a mensagem — o HResult é o que realmente
+    // identifica o erro quando (como aconteceu) a mensagem vem vazia.
+    Console.WriteLine($"ERRO: {ex.GetType().FullName} (HResult 0x{ex.HResult:X8}): {ex.Message}");
     if (ex.InnerException != null)
     {
-        Console.WriteLine($"CAUSA INTERNA: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}");
+        Console.WriteLine(
+            $"CAUSA INTERNA: {ex.InnerException.GetType().FullName} (HResult 0x{ex.InnerException.HResult:X8}): {ex.InnerException.Message}"
+        );
     }
     return 1;
 }

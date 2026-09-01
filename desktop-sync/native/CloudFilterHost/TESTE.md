@@ -61,14 +61,14 @@ igual o programa já faz hoje, só muda a aparência.
 ## Para desfazer o teste
 
 ```
-dotnet run -- unregister C:\TesteNuvem
+dotnet run -- unregister
 ```
 
 ## Próximas etapas (só depois desta funcionar)
 
 1. ~~Trocar o ícone genérico pelo ícone próprio do programa~~ — feito,
    ainda não testado. Pra ver o resultado: rode
-   `dotnet run -- unregister C:\TesteNuvem` e depois
+   `dotnet run -- unregister` e depois
    `dotnet run -- register C:\TesteNuvem "Teste Nuvem"` de novo (o
    Explorador às vezes guarda o ícone antigo em cache, então desregistrar
    e registrar de novo garante que ele busca o ícone atualizado). Veja se
