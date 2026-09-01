@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Precisa mirar o Windows especificamente (não só "net8.0" genérico)
+         pra ter acesso às APIs de Windows.Storage.Provider, que são
+         exclusivas do Windows e não existem no .NET multiplataforma comum. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <!-- Permite compilar este projeto (que mira Windows) a partir de um
+         sistema que não é Windows — só pra checagem de sintaxe/tipos
+         aqui; o .exe final ainda precisa ser gerado e testado no Windows
+         de verdade. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CloudFilterHost</RootNamespace>
+    <!-- Gera um .exe único e independente, sem exigir que a pessoa tenha
+         o .NET instalado separadamente pra rodar (facilita a distribuição
+         junto do programa Electron). -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+</Project>
