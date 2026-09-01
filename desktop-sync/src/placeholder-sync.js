@@ -70,11 +70,15 @@ function findCloudFilterHostExe() {
   return { candidates };
 }
 
-async function findExistingExe() {
+async function findExistingExe(onLog) {
   const { candidates } = findCloudFilterHostExe();
   const fsSync = require("fs");
+  const log = onLog || ((msg) => console.log(msg));
+  log(`Procurando CloudFilterHost.exe em ${candidates.length} lugar(es) possível(is):`);
   for (const candidate of candidates) {
-    if (fsSync.existsSync(candidate)) return candidate;
+    const exists = fsSync.existsSync(candidate);
+    log(`  ${exists ? "[ACHOU]" : "[não achou]"} ${candidate}`);
+    if (exists) return candidate;
   }
   return null;
 }
@@ -90,14 +94,23 @@ async function findExistingExe() {
  * @param {(message: string, kind: string) => void} opts.onLog
  */
 async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, onLog }) {
-  const exePath = await findExistingExe();
+  // Sempre manda pro terminal (visível rodando "npm start") E pro log da
+  // tela — dobrado de propósito, porque descobrir "por que o modo novo
+  // não ativou" só pelo log da tela às vezes corta informação.
+  const diagLog = (msg) => {
+    console.log(`[placeholder-sync] ${msg}`);
+  };
+
+  const exePath = await findExistingExe(diagLog);
   if (!exePath) {
     onLog(
-      "Programa auxiliar (CloudFilterHost.exe) não encontrado — a sincronização vai continuar no modo antigo (baixa tudo de uma vez), sem o efeito de \"aparece na hora, baixa quando abre\".",
+      "Programa auxiliar (CloudFilterHost.exe) não encontrado em nenhuma das pastas esperadas — a sincronização vai continuar no modo antigo (baixa tudo de uma vez), sem o efeito de \"aparece na hora, baixa quando abre\". Veja o terminal (janela do PowerShell onde rodou \"npm start\") para os caminhos exatos que foram checados.",
       "error"
     );
     return false;
   }
+  diagLog(`Usando: ${exePath}`);
+  onLog(`Programa auxiliar encontrado: ${exePath}`, "info");
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
   const entries = await generateManifestEntries(apiClient);
@@ -114,6 +127,8 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
     let settled = false;
     let stdoutBuffer = "";
 
+    diagLog(`Executando: ${exePath} sync-tree "${folderPath}" "${manifestPath}" ${serverUrl} <token>`);
+
     child.stdout.on("data", (data) => {
       stdoutBuffer += data.toString();
       const lines = stdoutBuffer.split("\n");
@@ -121,6 +136,9 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+        // Tudo vai pro terminal, sem exceção — é o que mais importa pra
+        // diagnosticar quando alguma coisa não sai como esperado.
+        diagLog(`(saída do programa auxiliar) ${trimmed}`);
         if (trimmed.startsWith("ERRO")) {
           onLog(trimmed, "error");
         } else if (trimmed.includes("FETCH_DATA")) {
@@ -138,10 +156,13 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
     });
 
     child.stderr.on("data", (data) => {
-      onLog(`Erro do programa auxiliar: ${data.toString().trim()}`, "error");
+      const trimmed = data.toString().trim();
+      diagLog(`(erro do programa auxiliar) ${trimmed}`);
+      onLog(`Erro do programa auxiliar: ${trimmed}`, "error");
     });
 
     child.on("error", (err) => {
+      diagLog(`Falha ao iniciar o processo: ${err.message}`);
       onLog(`Falha ao iniciar o programa auxiliar: ${err.message}`, "error");
       if (!settled) {
         settled = true;
@@ -149,7 +170,8 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
       }
     });
 
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
+      diagLog(`Processo encerrou (código ${code}, sinal ${signal}).`);
       if (code !== 0 && code !== null) {
         onLog(`Programa auxiliar encerrou de forma inesperada (código ${code}).`, "error");
       }
@@ -165,6 +187,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
     // processo pode continuar rodando normalmente por trás).
     setTimeout(() => {
       if (!settled) {
+        diagLog("30s se passaram sem confirmação de \"OK: N placeholder(s)\" — seguindo em frente mesmo assim.");
         settled = true;
         resolve(true);
       }

@@ -224,6 +224,7 @@ function getStatusSnapshot() {
 async function startSync() {
   if (!apiClient || !state.folderPath) return;
 
+  console.log(`[main] Iniciando sincronização da pasta "${state.folderPath}" — tentando o modo placeholder primeiro.`);
   const usedPlaceholder = await startPlaceholderSync({
     folderPath: state.folderPath,
     serverUrl: apiClient.serverUrl,
@@ -246,6 +247,7 @@ async function startSync() {
   });
 
   if (usedPlaceholder) {
+    console.log("[main] Modo placeholder ativado com sucesso.");
     state.syncMode = "placeholder";
     state.lastSyncAt = new Date().toISOString();
     broadcastStatus();
@@ -253,6 +255,7 @@ async function startSync() {
   }
 
   // Reserva: mecanismo antigo, baixa tudo de uma vez.
+  console.log("[main] Modo placeholder NÃO ativou — caindo pro modo antigo (baixa tudo de uma vez).");
   state.syncMode = "download";
   startSyncLoop();
 }
