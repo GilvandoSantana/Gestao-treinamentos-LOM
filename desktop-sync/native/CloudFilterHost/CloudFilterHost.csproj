@@ -19,6 +19,10 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Necessário pelo trecho que usa "fixed"/ponteiro pra passar o
+         conteúdo do arquivo de teste pro Windows sem cópia extra
+         (CfExecute espera um ponteiro de memória bruto). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>CloudFilterHost</RootNamespace>
     <!-- Gera um .exe único e independente, sem exigir que a pessoa tenha
          o .NET instalado separadamente pra rodar (facilita a distribuição
@@ -29,9 +33,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Copia o ícone junto pra pasta de saída, do lado do .exe, pra
-         `Program.cs` conseguir achar ele por caminho relativo não importa
-         onde o programa for instalado. -->
+    <!-- Pacote da comunidade (nao da Microsoft, mas bem estabelecido e
+         mantido ha anos) com as funcoes de baixo nivel de placeholder
+         (CfConnectSyncRoot, CfCreatePlaceholders, CfExecute etc) ja
+         empacotadas em C# - evita eu ter que escrever a comunicacao mais
+         arriscada (layout exato de struct) do zero, sem poder testar. -->
+    <PackageReference Include="Vanara.PInvoke.CldApi" Version="5.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="icon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

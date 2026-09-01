@@ -6,19 +6,27 @@
 // onde foi escrito não tem acesso ao Windows nem ao NuGet pra validar.
 // A primeira vez que ele roda de verdade é na máquina de quem for testar.
 //
-// ETAPA 1 (este arquivo): só registrar/desregistrar uma pasta como
-// "unidade de sincronização" com nome e ícone próprios — sem ainda criar
-// arquivo placeholder nenhum (isso é a próxima etapa, só depois de
-// confirmar que esta parte funciona).
+// ETAPA 1 (já testada e funcionando): registrar/desregistrar uma pasta
+// como "unidade de sincronização" com nome e ícone próprios.
+//
+// ETAPA 2 (esta adição, AINDA NÃO TESTADA): criar um arquivo de teste que
+// aparece "vazio" (placeholder) e baixa um conteúdo fixo quando aberto —
+// prova de conceito antes de conectar com os arquivos de verdade da
+// Nuvem. Usa o pacote da comunidade Vanara.PInvoke.CldApi (não é da
+// Microsoft, mas é bem estabelecido) em vez de eu escrever a comunicação
+// de mais baixo nível do zero.
 //
 // Uso:
 //   CloudFilterHost.exe check
 //   CloudFilterHost.exe register <caminho-da-pasta> <nome-de-exibicao>
 //   CloudFilterHost.exe unregister
+//   CloudFilterHost.exe placeholder-test <caminho-da-pasta>
 
 using System.Runtime.InteropServices;
+using Vanara.PInvoke;
 using Windows.Storage;
 using Windows.Storage.Provider;
+using static Vanara.PInvoke.CldApi;
 
 // Fixo por enquanto — uma conta só. Se um dia o programa precisar
 // sincronizar mais de uma conta/contrato como unidades separadas, cada
@@ -82,13 +90,17 @@ try
                 // ",0" no final = primeiro ícone dentro do arquivo .ico.
                 IconResource = Path.Combine(AppContext.BaseDirectory, "icon.ico") + ",0",
                 Version = "1.0.0",
-                // Por enquanto, sem placeholder — baixa tudo de verdade,
-                // igual o programa já faz hoje. Só a aparência de "unidade
-                // separada" muda nesta etapa.
-                PopulationPolicy = StorageProviderPopulationPolicy.AlwaysFull,
+                // AJUSTADO nesta etapa: pra placeholder funcionar, a
+                // política de população precisa ser "Full" (usa
+                // placeholder de verdade, não baixa tudo de cara) e a de
+                // hidratação "Progressive" (baixa o conteúdo quando o
+                // arquivo é aberto, não tudo de uma vez ao criar). Com
+                // "AlwaysFull"/"Full" (como estava antes), CfCreatePlaceholders
+                // falha com STATUS_CLOUD_FILE_NOT_SUPPORTED.
+                PopulationPolicy = StorageProviderPopulationPolicy.Full,
                 InSyncPolicy = StorageProviderInSyncPolicy.FileCreationTime
                     | StorageProviderInSyncPolicy.DirectoryCreationTime,
-                HydrationPolicy = StorageProviderHydrationPolicy.Full,
+                HydrationPolicy = StorageProviderHydrationPolicy.Progressive,
                 HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.None,
                 ShowSiblingsAsGroup = false,
             };
@@ -119,6 +131,148 @@ try
                 Console.WriteLine("OK: já não havia nada registrado (nada a fazer).");
             }
             return 0;
+        }
+
+        case "placeholder-test":
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("Uso: CloudFilterHost.exe placeholder-test <caminho-da-pasta>");
+                return 1;
+            }
+            string folderPath = args[1];
+            const string testFileName = "arquivo-de-teste-da-nuvem.txt";
+            byte[] fakeContent = System.Text.Encoding.UTF8.GetBytes(
+                "Este conteudo veio do callback de hidratacao (FETCH_DATA) - " +
+                "prova de que o mecanismo de placeholder funciona, ainda sem " +
+                "conectar com a Nuvem de verdade."
+            );
+
+            if (!Directory.Exists(folderPath))
+            {
+                Console.WriteLine($"ERRO: a pasta não existe: {folderPath}");
+                return 1;
+            }
+
+            // O delegate PRECISA ficar vivo (referenciado) enquanto o
+            // programa espera callback - se o coletor de lixo do .NET
+            // recolher ele antes da hora, o callback quebra de um jeito
+            // bem difícil de diagnosticar. Por isso é uma variável aqui
+            // fora, não uma lambda descartável.
+            CF_CALLBACK fetchDataCallback = (in CF_CALLBACK_INFO callbackInfo, in CF_CALLBACK_PARAMETERS callbackParameters) =>
+            {
+                Console.WriteLine("--> Callback FETCH_DATA disparado! O Windows pediu o conteúdo do arquivo.");
+                try
+                {
+                    var opInfo = new CF_OPERATION_INFO
+                    {
+                        StructSize = (uint)Marshal.SizeOf<CF_OPERATION_INFO>(),
+                        Type = CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_DATA,
+                        ConnectionKey = callbackInfo.ConnectionKey,
+                        TransferKey = callbackInfo.TransferKey,
+                        RequestKey = callbackInfo.RequestKey,
+                    };
+
+                    unsafe
+                    {
+                        fixed (byte* pContent = fakeContent)
+                        {
+                            var opParams = new CF_OPERATION_PARAMETERS
+                            {
+                                ParamSize = (uint)Marshal.SizeOf<CF_OPERATION_PARAMETERS>(),
+                            };
+                            opParams.TransferData.CompletionStatus = NTStatus.STATUS_SUCCESS;
+                            opParams.TransferData.Buffer = (IntPtr)pContent;
+                            opParams.TransferData.Offset = 0;
+                            opParams.TransferData.Length = fakeContent.Length;
+
+                            var hr = CfExecute(opInfo, ref opParams);
+                            Console.WriteLine($"    CfExecute (entregar conteúdo) resultado: 0x{hr:X8}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"    ERRO dentro do callback: {ex.GetType().FullName}: {ex.Message}");
+                }
+            };
+
+            try
+            {
+                var callbackTable = new CF_CALLBACK_REGISTRATION[]
+                {
+                    new CF_CALLBACK_REGISTRATION
+                    {
+                        Type = CF_CALLBACK_TYPE.CF_CALLBACK_TYPE_FETCH_DATA,
+                        Callback = fetchDataCallback,
+                    },
+                    CF_CALLBACK_REGISTRATION.CF_CALLBACK_REGISTRATION_END,
+                };
+
+                Console.WriteLine("Conectando ao sync root (CfConnectSyncRoot)...");
+                var connectResult = CfConnectSyncRoot(
+                    folderPath,
+                    callbackTable,
+                    IntPtr.Zero,
+                    CF_CONNECT_FLAGS.CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO,
+                    out var connectionKey
+                );
+                if (connectResult.Failed)
+                {
+                    Console.WriteLine($"ERRO ao conectar: 0x{(uint)connectResult:X8}");
+                    return 1;
+                }
+                Console.WriteLine("OK: conectado.");
+
+                Console.WriteLine($"Criando placeholder de teste \"{testFileName}\"...");
+                var placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
+                {
+                    new CF_PLACEHOLDER_CREATE_INFO
+                    {
+                        RelativeFileName = testFileName,
+                        FsMetadata = new CF_FS_METADATA
+                        {
+                            FileSize = fakeContent.Length,
+                            BasicInfo = new Kernel32.FILE_BASIC_INFO
+                            {
+                                FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                            },
+                        },
+                        Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC,
+                    },
+                };
+
+                var createResult = CfCreatePlaceholders(
+                    folderPath,
+                    placeholders,
+                    (uint)placeholders.Length,
+                    CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
+                    out uint entriesProcessed
+                );
+                if (createResult.Failed)
+                {
+                    Console.WriteLine($"ERRO ao criar placeholder: 0x{(uint)createResult:X8}");
+                    return 1;
+                }
+                Console.WriteLine($"OK: {entriesProcessed} placeholder(s) criado(s).");
+                Console.WriteLine($"Resultado individual do arquivo: 0x{(uint)placeholders[0].Result:X8}");
+                Console.WriteLine();
+                Console.WriteLine(
+                    $"Agora abra o arquivo \"{Path.Combine(folderPath, testFileName)}\" " +
+                    "(no Bloco de Notas, por exemplo) e veja se aparece o texto de teste."
+                );
+                Console.WriteLine("Pressione Enter aqui para encerrar (e desconectar) quando terminar de testar.");
+                Console.ReadLine();
+
+                CfDisconnectSyncRoot(connectionKey);
+                Console.WriteLine("Desconectado.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERRO: {ex.GetType().FullName} (HResult 0x{ex.HResult:X8}): {ex.Message}");
+                return 1;
+            }
         }
 
         default:

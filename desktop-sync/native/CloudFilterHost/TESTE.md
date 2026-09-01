@@ -66,16 +66,39 @@ dotnet run -- unregister
 
 ## Próximas etapas (só depois desta funcionar)
 
-1. ~~Trocar o ícone genérico pelo ícone próprio do programa~~ — feito,
-   ainda não testado. Pra ver o resultado: rode
-   `dotnet run -- unregister` e depois
-   `dotnet run -- register C:\TesteNuvem "Teste Nuvem"` de novo (o
-   Explorador às vezes guarda o ícone antigo em cache, então desregistrar
-   e registrar de novo garante que ele busca o ícone atualizado). Veja se
-   agora aparece o ícone de nuvem laranja do sistema, em vez do genérico
-   do Windows.
-2. Implementar os arquivos "placeholder" (aparecem na pasta sem estar
-   baixados de verdade, baixam sozinhos quando abertos — a parte que
-   falta pra ficar 100% igual ao Drive)
-3. Integrar isso ao programa Electron principal (por enquanto, teste como
-   um programa separado, de propósito, pra isolar problemas)
+1. ~~Trocar o ícone genérico pelo ícone próprio do programa~~ — confirmado
+   funcionando (você já viu o ícone laranja aparecer).
+2. **Etapa atual — arquivo "placeholder" (aparece sem estar baixado,
+   baixa quando abre)**. Esta é de longe a parte mais arriscada de todo o
+   projeto — usa um pacote de terceiros (Vanara.PInvoke.CldApi, não é da
+   Microsoft) pra falar com uma API do Windows bem mais complexa. É bem
+   provável que precise de várias rodadas de ajuste.
+
+   **Antes de testar, registre a pasta de novo** (mudei a configuração —
+   a versão anterior não permite placeholder):
+   ```
+   dotnet run -- register C:\TesteNuvem "Teste Nuvem"
+   ```
+
+   Depois rode o teste de placeholder:
+   ```
+   dotnet run -- placeholder-test C:\TesteNuvem
+   ```
+
+   O programa vai:
+   - Tentar se conectar à pasta como "fornecedor" de sincronização
+   - Criar um arquivo chamado `arquivo-de-teste-da-nuvem.txt` dentro dela
+   - Ficar esperando (não feche a janela do PowerShell ainda)
+
+   **Aí você testa**: abra esse arquivo (pode ser com clique duplo, abre
+   no Bloco de Notas) e veja se aparece um texto de teste em inglês
+   dizendo que veio do callback de hidratação. Volte no PowerShell e veja
+   se apareceu a linha `--> Callback FETCH_DATA disparado!`.
+
+   **Me mande**: a saída completa do PowerShell (do `dotnet run` até
+   você apertar Enter pra sair), se o arquivo abriu com o texto certo ou
+   deu erro/veio vazio, e se possível uma captura de tela do arquivo
+   aberto.
+3. Só depois de tudo isso funcionar: conectar de verdade com os arquivos
+   da Nuvem (em vez do texto fixo de teste), e integrar ao programa
+   Electron principal.
