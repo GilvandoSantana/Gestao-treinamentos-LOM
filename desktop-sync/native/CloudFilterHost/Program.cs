@@ -264,7 +264,15 @@ try
                                 FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
                             },
                         },
-                        Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC,
+                        // Removida a flag MARK_IN_SYNC desta tentativa —
+                        // a documentação da Microsoft descreve essa flag
+                        // como usada "como parte da operação
+                        // TRANSFER_PLACEHOLDERS" (dentro de um callback
+                        // FETCH_PLACEHOLDERS), não numa chamada direta e
+                        // solta de CfCreatePlaceholders como esta — pode
+                        // ser essa a causa do "operação de nuvem
+                        // inválida".
+                        Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
                     },
                 };
 
