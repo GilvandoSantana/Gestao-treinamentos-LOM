@@ -131,3 +131,26 @@ arquivo de verdade da Nuvem, em vez de um texto fixo de mentira.
    conteúdo, mesmo tamanho, abre normal).
 7. Me conta o resultado — funcionou, o arquivo abriu certo, ou deu erro
    (nesse caso, a saída completa de novo).
+
+## Etapa 4 — a pasta inteira de uma vez (confirmado: etapa 3 funcionou!)
+
+A etapa 3 (um arquivo de verdade) **já foi confirmada funcionando** —
+você abriu o PGR de verdade e o conteúdo bateu certinho. Agora vamos
+testar com a estrutura de pastas inteira da sua Nuvem de uma vez.
+
+1. Baixe a atualização.
+2. Rode, na pasta `desktop-sync/scripts` (ainda precisa do Node.js
+   instalado da etapa anterior) — troque usuário/senha/contrato pelos
+   seus de verdade:
+   ```
+   node generate-manifest.js https://gestao-treinamentos-lom.up.railway.app "seu-usuario" "sua-senha" lom
+   ```
+3. O script vai imprimir um comando `dotnet run -- sync-tree ...` —
+   copie e cole ele **de volta na pasta CloudFilterHost**.
+4. Navegue por `C:\TesteNuvem2` (ou apague o conteúdo antes, se quiser
+   começar limpo) e veja se a estrutura de pastas e arquivos da Nuvem
+   apareceu inteira.
+5. Abra dois ou três arquivos diferentes, de pastas diferentes, e
+   confira se cada um baixa e abre certo.
+6. Me conta o resultado — quantos arquivos apareceram, se as pastas
+   vieram certas, e se os arquivos que você abriu funcionaram.

@@ -22,9 +22,13 @@
 //   CloudFilterHost.exe unregister
 //   CloudFilterHost.exe placeholder-test <caminho-da-pasta>
 //   CloudFilterHost.exe placeholder-real-test <caminho-da-pasta> <nome-do-arquivo> <tamanho-em-bytes> <link-de-download>
+//   CloudFilterHost.exe sync-tree <pasta-local> <manifesto.json> <servidor> <token>
 
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
+using System.Collections.Generic;
+using System.Linq;
 using Vanara.PInvoke;
 using Windows.Storage;
 using Windows.Storage.Provider;
@@ -493,6 +497,255 @@ try
             }
         }
 
+        case "sync-tree":
+        {
+            // Etapa de integração real: em vez de UM arquivo de teste,
+            // recria a ÁRVORE INTEIRA de pastas/arquivos da Nuvem como
+            // placeholders, a partir de um manifesto gerado pelo script
+            // generate-manifest.js. Continua sendo um teste isolado (não
+            // chamado pelo programa Electron ainda).
+            if (args.Length < 5)
+            {
+                Console.WriteLine("Uso: CloudFilterHost.exe sync-tree <pasta-local> <manifesto.json> <servidor> <token>");
+                return 1;
+            }
+            string rootPath = args[1];
+            string manifestPath = args[2];
+            string apiServerUrl = args[3].TrimEnd('/');
+            string bearerToken = args[4];
+
+            if (!Directory.Exists(rootPath))
+            {
+                Console.WriteLine($"ERRO: a pasta não existe: {rootPath}");
+                return 1;
+            }
+            if (!File.Exists(manifestPath))
+            {
+                Console.WriteLine($"ERRO: manifesto não encontrado: {manifestPath}");
+                return 1;
+            }
+
+            var manifestJson = File.ReadAllText(manifestPath);
+            var manifest = JsonSerializer.Deserialize<ManifestRoot>(
+                manifestJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            );
+            if (manifest?.Entries == null)
+            {
+                Console.WriteLine("ERRO: manifesto inválido ou vazio.");
+                return 1;
+            }
+            Console.WriteLine($"Manifesto lido: {manifest.Entries.Count} arquivo(s).");
+
+            using var httpClient = new System.Net.Http.HttpClient();
+
+            // Callback FETCH_DATA: lê o ID do arquivo de volta do
+            // FileIdentity (gravado na criação do placeholder), busca um
+            // link de download ATUALIZADO na Nuvem (o link assinado
+            // expira em 1 hora — busca um novo a cada abertura em vez de
+            // guardar um fixo, pra funcionar mesmo dias depois), baixa o
+            // conteúdo de verdade, entrega pro Windows.
+            CF_CALLBACK fetchDataCallback = (in CF_CALLBACK_INFO callbackInfo, in CF_CALLBACK_PARAMETERS callbackParameters) =>
+            {
+                try
+                {
+                    string fileId = Marshal.PtrToStringUni(
+                        callbackInfo.FileIdentity,
+                        (int)(callbackInfo.FileIdentityLength / 2)
+                    ) ?? "";
+                    Console.WriteLine($"--> FETCH_DATA: \"{callbackInfo.NormalizedPath}\" (id da Nuvem: {fileId})");
+
+                    string requestBody = "{\"0\":{\"json\":{\"id\":\"" + fileId.Replace("\"", "\\\"") + "\"}}}";
+                    var urlRequest = new System.Net.Http.HttpRequestMessage(
+                        System.Net.Http.HttpMethod.Post,
+                        $"{apiServerUrl}/api/trpc/cloud.getDownloadUrl?batch=1"
+                    )
+                    {
+                        Content = new System.Net.Http.StringContent(
+                            requestBody,
+                            System.Text.Encoding.UTF8,
+                            "application/json"
+                        ),
+                    };
+                    urlRequest.Headers.Add("Authorization", $"Bearer {bearerToken}");
+                    urlRequest.Headers.Add("Origin", apiServerUrl);
+
+                    var urlResponse = httpClient.SendAsync(urlRequest).GetAwaiter().GetResult();
+                    string urlResponseText = urlResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                    using var urlDoc = JsonDocument.Parse(urlResponseText);
+                    string downloadUrl = urlDoc.RootElement[0]
+                        .GetProperty("result").GetProperty("data").GetProperty("json").GetProperty("url").GetString()!;
+
+                    byte[] realContent = httpClient.GetByteArrayAsync(downloadUrl).GetAwaiter().GetResult();
+                    Console.WriteLine($"    Baixados {realContent.Length} bytes.");
+
+                    var opInfo = new CF_OPERATION_INFO
+                    {
+                        StructSize = (uint)Marshal.SizeOf<CF_OPERATION_INFO>(),
+                        Type = CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_DATA,
+                        ConnectionKey = callbackInfo.ConnectionKey,
+                        TransferKey = callbackInfo.TransferKey,
+                        RequestKey = callbackInfo.RequestKey,
+                    };
+
+                    unsafe
+                    {
+                        fixed (byte* pContent = realContent)
+                        {
+                            var opParams = new CF_OPERATION_PARAMETERS
+                            {
+                                ParamSize = (uint)Marshal.SizeOf<CF_OPERATION_PARAMETERS>(),
+                            };
+                            opParams.TransferData = new()
+                            {
+                                CompletionStatus = NTStatus.STATUS_SUCCESS,
+                                Buffer = (IntPtr)pContent,
+                                Offset = 0,
+                                Length = realContent.Length,
+                            };
+                            var hr = CfExecute(opInfo, ref opParams);
+                            Console.WriteLine($"    CfExecute resultado: 0x{hr:X8}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"    ERRO dentro do callback: {ex.GetType().FullName}: {ex.Message}");
+                }
+            };
+
+            try
+            {
+                var callbackTable = new CF_CALLBACK_REGISTRATION[]
+                {
+                    new CF_CALLBACK_REGISTRATION
+                    {
+                        Type = CF_CALLBACK_TYPE.CF_CALLBACK_TYPE_FETCH_DATA,
+                        Callback = fetchDataCallback,
+                    },
+                    CF_CALLBACK_REGISTRATION.CF_CALLBACK_REGISTRATION_END,
+                };
+
+                Console.WriteLine("Conectando ao sync root (CfConnectSyncRoot)...");
+                var connectResult = CfConnectSyncRoot(
+                    rootPath,
+                    callbackTable,
+                    IntPtr.Zero,
+                    CF_CONNECT_FLAGS.CF_CONNECT_FLAG_NONE,
+                    out var connectionKey
+                );
+                if (connectResult.Failed)
+                {
+                    Console.WriteLine($"ERRO ao conectar: 0x{(uint)connectResult:X8}");
+                    return 1;
+                }
+                Console.WriteLine("OK: conectado.");
+
+                // Agrupa os arquivos do manifesto por pasta (CfCreatePlaceholders
+                // exige uma chamada por pasta, não uma chamada só pra
+                // árvore inteira).
+                var byFolder = new Dictionary<string, List<ManifestEntryItem>>();
+                foreach (var entry in manifest.Entries)
+                {
+                    string dir = Path.GetDirectoryName(entry.RelativePath) ?? "";
+                    if (!byFolder.TryGetValue(dir, out var list))
+                    {
+                        list = new List<ManifestEntryItem>();
+                        byFolder[dir] = list;
+                    }
+                    list.Add(entry);
+                }
+
+                // Cria as pastas de verdade primeiro, da mais rasa pra
+                // mais funda, garantindo que a pasta pai sempre existe
+                // antes de tentar criar a filha.
+                foreach (var dir in byFolder.Keys.Where(d => !string.IsNullOrEmpty(d)).OrderBy(d => d.Split('\\').Length))
+                {
+                    Directory.CreateDirectory(Path.Combine(rootPath, dir));
+                }
+
+                int totalCreated = 0;
+                int totalErrors = 0;
+                foreach (var kvp in byFolder)
+                {
+                    string dir = kvp.Key;
+                    List<ManifestEntryItem> files = kvp.Value;
+                    string fullDirPath = string.IsNullOrEmpty(dir) ? rootPath : Path.Combine(rootPath, dir);
+                    var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
+
+                    // GCHandle (em vez de "fixed") porque aqui precisamos
+                    // fixar VÁRIOS blocos de memória diferentes (um por
+                    // arquivo) ao mesmo tempo, até a chamada terminar —
+                    // "fixed" só fixa um bloco por vez.
+                    var handles = new List<GCHandle>();
+                    try
+                    {
+                        var placeholders = new CF_PLACEHOLDER_CREATE_INFO[files.Count];
+                        for (int i = 0; i < files.Count; i++)
+                        {
+                            byte[] idBytes = System.Text.Encoding.Unicode.GetBytes(files[i].FileId);
+                            var handle = GCHandle.Alloc(idBytes, GCHandleType.Pinned);
+                            handles.Add(handle);
+
+                            placeholders[i] = new CF_PLACEHOLDER_CREATE_INFO
+                            {
+                                RelativeFileName = Path.GetFileName(files[i].RelativePath),
+                                FsMetadata = new CF_FS_METADATA
+                                {
+                                    FileSize = files[i].FileSize,
+                                    BasicInfo = new Kernel32.FILE_BASIC_INFO
+                                    {
+                                        CreationTime = now,
+                                        LastAccessTime = now,
+                                        LastWriteTime = now,
+                                        ChangeTime = now,
+                                        FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                                    },
+                                },
+                                FileIdentity = handle.AddrOfPinnedObject(),
+                                FileIdentityLength = (uint)idBytes.Length,
+                                Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
+                            };
+                        }
+
+                        var createResult = CfCreatePlaceholders(
+                            fullDirPath,
+                            placeholders,
+                            (uint)placeholders.Length,
+                            CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
+                            out uint processed
+                        );
+                        if (createResult.Failed)
+                        {
+                            Console.WriteLine($"ERRO ao criar placeholders em \"{dir}\": 0x{(uint)createResult:X8}");
+                            totalErrors++;
+                            continue;
+                        }
+                        totalCreated += (int)processed;
+                    }
+                    finally
+                    {
+                        foreach (var h in handles) h.Free();
+                    }
+                }
+
+                Console.WriteLine($"OK: {totalCreated} placeholder(s) criado(s) no total ({totalErrors} pasta(s) com erro).");
+                Console.WriteLine();
+                Console.WriteLine("Navegue pela pasta e abra qualquer arquivo — deve baixar na hora.");
+                Console.WriteLine("Pressione Enter aqui para encerrar (e desconectar) quando terminar de testar.");
+                Console.ReadLine();
+
+                CfDisconnectSyncRoot(connectionKey);
+                Console.WriteLine("Desconectado.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERRO: {ex.GetType().FullName} (HResult 0x{ex.HResult:X8}): {ex.Message}");
+                return 1;
+            }
+        }
+
         default:
             Console.WriteLine($"Comando desconhecido: {command}");
             return 1;
@@ -521,3 +774,17 @@ static System.Runtime.InteropServices.ComTypes.FILETIME ToFileTime(long fileTime
     dwLowDateTime = unchecked((int)(fileTime & 0xFFFFFFFF)),
     dwHighDateTime = unchecked((int)(fileTime >> 32)),
 };
+
+// Classes usadas só pra ler o manifesto JSON gerado pelo
+// generate-manifest.js no comando sync-tree.
+class ManifestRoot
+{
+    public List<ManifestEntryItem>? Entries { get; set; }
+}
+
+class ManifestEntryItem
+{
+    public string RelativePath { get; set; } = "";
+    public string FileId { get; set; } = "";
+    public long FileSize { get; set; }
+}
