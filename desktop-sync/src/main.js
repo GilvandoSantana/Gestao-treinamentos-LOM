@@ -2,6 +2,7 @@ const { app, Tray, Menu, BrowserWindow, ipcMain, dialog, shell, nativeImage } = 
 const path = require("path");
 const { ApiClient, ApiError } = require("./api-client");
 const { runSyncTick } = require("./sync-engine");
+const { startPlaceholderSync, stopPlaceholderSync, isPlaceholderSyncRunning } = require("./placeholder-sync");
 const store = require("./store");
 
 const DEFAULT_SERVER_URL = "https://gestao-treinamentos-lom.up.railway.app";
@@ -23,6 +24,12 @@ const state = {
   lastSyncAt: null,
   lastError: null,
   log: [],
+  // "placeholder" = arquivos aparecem na hora, baixam quando abre (modo
+  // novo). "download" = baixa tudo de uma vez (modo antigo, usado quando
+  // o programa auxiliar não está disponível). Enquanto for "placeholder",
+  // criar/editar arquivo direto na pasta ainda NÃO sobe sozinho — isso é
+  // a próxima etapa.
+  syncMode: null,
 };
 
 // Impede duas cópias do programa rodando ao mesmo tempo — a segunda
@@ -70,7 +77,7 @@ async function init() {
       state.username = session.username;
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
       state.folderPath = config.folderPath;
-      startSyncLoop();
+      await startSync();
     } catch (error) {
       // Token expirado (passou dos 30 dias) ou revogado — volta pra tela
       // de login em vez de ficar tentando sincronizar sem sucesso.
@@ -183,7 +190,63 @@ function getStatusSnapshot() {
     lastSyncAt: state.lastSyncAt,
     lastError: state.lastError,
     log: state.log,
+    syncMode: state.syncMode,
   };
+}
+
+/**
+ * Decide qual mecanismo de sincronização usar: o novo (placeholder —
+ * arquivo aparece na hora, baixa quando abre) se o programa auxiliar
+ * estiver disponível, ou o antigo (baixa tudo de uma vez) como reserva.
+ *
+ * IMPORTANTE: os dois mecanismos NÃO rodam ao mesmo tempo na mesma pasta
+ * de propósito — rodar os dois juntos poderia fazer um achar que o
+ * arquivo que o outro está gerenciando mudou e tentar agir em cima dele,
+ * criando conflito. Por isso, no modo placeholder, o mecanismo antigo
+ * fica completamente desligado — o que significa que criar ou editar um
+ * arquivo direto na pasta ainda NÃO sobe sozinho pra Nuvem nesta versão
+ * (fica pra próxima etapa).
+ */
+async function startSync() {
+  if (!apiClient || !state.folderPath) return;
+
+  const usedPlaceholder = await startPlaceholderSync({
+    folderPath: state.folderPath,
+    serverUrl: apiClient.serverUrl,
+    token: apiClient.token,
+    apiClient,
+    onLog: (message, kind) => {
+      pushLog([{ id: `ph-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
+      broadcastStatus();
+    },
+  }).catch((error) => {
+    pushLog([
+      {
+        id: `ph-err-${Date.now()}`,
+        time: new Date(),
+        message: `Falha ao iniciar sincronização por placeholder: ${error?.message || "erro desconhecido"}`,
+        kind: "error",
+      },
+    ]);
+    return false;
+  });
+
+  if (usedPlaceholder) {
+    state.syncMode = "placeholder";
+    state.lastSyncAt = new Date().toISOString();
+    broadcastStatus();
+    return;
+  }
+
+  // Reserva: mecanismo antigo, baixa tudo de uma vez.
+  state.syncMode = "download";
+  startSyncLoop();
+}
+
+function stopSync() {
+  stopPlaceholderSync();
+  stopSyncLoop();
+  state.syncMode = null;
 }
 
 function startSyncLoop() {
@@ -199,6 +262,10 @@ function stopSyncLoop() {
 
 let tickRunning = false;
 async function runSyncNow() {
+  // No modo placeholder, o programa auxiliar já fica rodando sozinho —
+  // rodar o mecanismo antigo por cima da mesma pasta criaria conflito
+  // (um mexendo no que o outro está gerenciando).
+  if (state.syncMode === "placeholder") return;
   if (tickRunning || !apiClient || !state.folderPath) return;
   tickRunning = true;
   state.isSyncing = true;
@@ -225,7 +292,7 @@ async function runSyncNow() {
     if (error instanceof ApiError && error.status === 401) {
       // Token expirou ou foi revogado no meio do caminho — para de tentar
       // e pede login de novo, em vez de martelar erro a cada 20 segundos.
-      stopSyncLoop();
+      stopSync();
       apiClient = null;
       store.clearToken();
       state.lastError = "Sessão expirada. Entre novamente.";
@@ -313,7 +380,7 @@ ipcMain.handle("finish-setup", async (_event, contractSlug, folderPath) => {
     if (loginWindow) {
       loginWindow.close();
     }
-    startSyncLoop();
+    await startSync();
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error?.message || "Falha ao concluir a configuração." };
@@ -344,7 +411,7 @@ ipcMain.handle("change-folder", async () => {
 });
 
 ipcMain.handle("disconnect", () => {
-  stopSyncLoop();
+  stopSync();
   apiClient = null;
   knownFiles = new Map();
   store.clearAll();

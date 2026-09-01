@@ -26,6 +26,19 @@ function render(status) {
   folderValue.title = status.folderPath || "";
   lastSyncValue.textContent = formatTime(status.lastSyncAt);
 
+  const modeRow = document.getElementById("mode-row");
+  const modeWarning = document.getElementById("mode-warning");
+  if (status.syncMode === "placeholder") {
+    modeRow.textContent = "Arquivos aparecem na hora, baixam ao abrir";
+    modeWarning.style.display = "block";
+  } else if (status.syncMode === "download") {
+    modeRow.textContent = "Baixa tudo de uma vez (modo de reserva)";
+    modeWarning.style.display = "none";
+  } else {
+    modeRow.textContent = "—";
+    modeWarning.style.display = "none";
+  }
+
   statusBadge.classList.remove("status-idle", "status-syncing", "status-error");
   if (status.isSyncing) {
     statusBadge.classList.add("status-syncing");
