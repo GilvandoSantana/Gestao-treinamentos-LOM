@@ -209,10 +209,11 @@ async function runSyncNow() {
       state.folderPath,
       knownFiles,
       {
-        listCloudFiles: () => apiClient.listCloudFiles(null),
+        listFolder: (folderId) => apiClient.listFolder(folderId),
         downloadCloudFile: (fileId) => apiClient.downloadCloudFile(fileId),
-        uploadNewFile: (name, buffer) => apiClient.uploadNewFile(null, name, buffer),
+        uploadNewFile: (folderId, name, buffer) => apiClient.uploadNewFile(folderId, name, buffer),
         uploadNewVersion: (fileId, buffer) => apiClient.uploadNewVersion(fileId, buffer),
+        createRemoteFolder: (parentId, name) => apiClient.createRemoteFolder(parentId, name),
       },
       state.username
     );

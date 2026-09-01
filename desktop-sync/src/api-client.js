@@ -109,12 +109,11 @@ class ApiClient {
     return parseTrpcResponse(res);
   }
 
-  /** Lista os arquivos de uma pasta da Nuvem (null = pasta raiz do contrato). */
-  async listCloudFiles(folderId) {
+  /** Lista pastas e arquivos de uma pasta da Nuvem (null = raiz do contrato). */
+  async listFolder(folderId) {
     const url = buildQueryUrl(this.serverUrl, "cloud.list", { folderId: folderId ?? null });
     const res = await fetch(url, { headers: this._authHeaders() });
-    const data = await parseTrpcResponse(res);
-    return data.files;
+    return parseTrpcResponse(res);
   }
 
   /** Baixa o conteúdo de um arquivo da Nuvem como Buffer. */
@@ -129,6 +128,21 @@ class ApiClient {
     if (!fileRes.ok) throw new ApiError("Falha ao baixar o conteúdo do arquivo.", fileRes.status);
     const arrayBuffer = await fileRes.arrayBuffer();
     return Buffer.from(arrayBuffer);
+  }
+
+  /** Cria uma pasta nova na Nuvem (espelhando uma pasta criada no
+   * computador). Exige permissão de gerenciar a Nuvem, não só visualizar —
+   * uma conta só-leitura vai receber erro aqui, tratado como um item de
+   * log de erro pelo motor de sincronização, sem derrubar o programa. */
+  async createRemoteFolder(parentId, name) {
+    const url = new URL("/api/trpc/cloud.createFolder?batch=1", this.serverUrl).toString();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._authHeaders() },
+      body: JSON.stringify({ "0": { json: { parentId: parentId ?? null, name } } }),
+    });
+    const data = await parseTrpcResponse(res);
+    return { id: data.id };
   }
 
   /** Envia um arquivo novo (que só existe localmente) pra Nuvem. */
