@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { SimpleWorkbook, readSheetAsJson } from './xlsx-compat';
 import type { Employee } from './types';
 
 export interface ExcelRow {
@@ -22,98 +22,68 @@ export interface ExcelRow {
  * repita o nome dela em várias linhas (o modelo baixável já mostra isso).
  */
 export async function parseExcelFile(file: File): Promise<Employee[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+  const data = await file.arrayBuffer();
+  const rows: ExcelRow[] = (await readSheetAsJson(data)) as ExcelRow[];
 
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        if (!data) {
-          reject(new Error('Arquivo vazio'));
-          return;
-        }
+  if (rows.length === 0) {
+    throw new Error('Nenhum dado encontrado na planilha');
+  }
 
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  const employees: Employee[] = [];
+  const employeeMap = new Map<string, Employee>();
 
-        if (!worksheet) {
-          reject(new Error('Nenhuma planilha encontrada'));
-          return;
-        }
+  for (const row of rows) {
+    const nome = String(row['Nome'] || row['name'] || '').trim();
 
-        const rows: ExcelRow[] = XLSX.utils.sheet_to_json(worksheet);
+    if (!nome) continue;
 
-        if (rows.length === 0) {
-          reject(new Error('Nenhum dado encontrado na planilha'));
-          return;
-        }
+    // Get or create employee
+    let employee = employeeMap.get(nome);
+    if (!employee) {
+      const birthDate = parseDate(row['Data de Nascimento'] ?? row['birthDate']) || undefined;
 
-        const employees: Employee[] = [];
-        const employeeMap = new Map<string, Employee>();
+      employee = {
+        id: `emp-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: nome,
+        registration: String(row['Matrícula'] || row['registration'] || '').trim() || undefined,
+        role: String(row['Função'] || row['role'] || '').trim(),
+        educationLevel: String(row['Escolaridade'] || row['educationLevel'] || '').trim() || undefined,
+        birthDate,
+        phone: String(row['Telefone'] || row['phone'] || '').trim() || undefined,
+        trainings: [],
+      };
+      employeeMap.set(nome, employee);
+      employees.push(employee);
+    }
 
-        for (const row of rows) {
-          const nome = String(row['Nome'] || row['name'] || '').trim();
-          
-          if (!nome) continue;
+    // Add training if present
+    const trainingName = String(row['Treinamento'] || row['training'] || '').trim();
+    if (trainingName) {
+      const completionDate =
+        parseDate(row['Data de Realização'] ?? row['completionDate']) ||
+        new Date().toISOString().split('T')[0];
+      const expirationDate =
+        parseDate(row['Data de Vencimento'] ?? row['expirationDate']) ||
+        new Date().toISOString().split('T')[0];
 
-          // Get or create employee
-          let employee = employeeMap.get(nome);
-          if (!employee) {
-            const birthDate = parseDate(row['Data de Nascimento'] ?? row['birthDate']) || undefined;
+      const training = {
+        id: `train-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: trainingName,
+        completionDate,
+        expirationDate,
+      };
 
-            employee = {
-              id: `emp-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-              name: nome,
-              registration: String(row['Matrícula'] || row['registration'] || '').trim() || undefined,
-              role: String(row['Função'] || row['role'] || '').trim(),
-              educationLevel: String(row['Escolaridade'] || row['educationLevel'] || '').trim() || undefined,
-              birthDate,
-              phone: String(row['Telefone'] || row['phone'] || '').trim() || undefined,
-              trainings: [],
-            };
-            employeeMap.set(nome, employee);
-            employees.push(employee);
-          }
-
-          // Add training if present
-          const trainingName = String(row['Treinamento'] || row['training'] || '').trim();
-          if (trainingName) {
-            const completionDate =
-              parseDate(row['Data de Realização'] ?? row['completionDate']) ||
-              new Date().toISOString().split('T')[0];
-            const expirationDate =
-              parseDate(row['Data de Vencimento'] ?? row['expirationDate']) ||
-              new Date().toISOString().split('T')[0];
-
-            const training = {
-              id: `train-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-              name: trainingName,
-              completionDate,
-              expirationDate,
-            };
-
-            // Avoid duplicate trainings
-            if (!employee.trainings.some(t => t.name === trainingName)) {
-              employee.trainings.push(training);
-            }
-          }
-        }
-
-        // Sort employees by name
-        employees.sort((a, b) => a.name.localeCompare(b.name));
-
-        resolve(employees);
-      } catch (error) {
-        reject(new Error(`Erro ao processar arquivo: ${error instanceof Error ? error.message : 'Desconhecido'}`));
+      // Avoid duplicate trainings
+      if (!employee.trainings.some(t => t.name === trainingName)) {
+        employee.trainings.push(training);
       }
-    };
+    }
+  }
 
-    reader.onerror = () => {
-      reject(new Error('Erro ao ler arquivo'));
-    };
+  // Sort employees by name
+  employees.sort((a, b) => a.name.localeCompare(b.name));
 
-    reader.readAsArrayBuffer(file);
-  });
+  return employees;
 }
 
 /**
@@ -224,8 +194,8 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
       };
     });
 
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  worksheet['!cols'] = [
+  const workbook = new SimpleWorkbook();
+  workbook.addJsonSheet('Colaboradores', rows, [
     { wch: 25 }, // Nome
     { wch: 12 }, // Matrícula
     { wch: 22 }, // Função
@@ -235,11 +205,8 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento
-  ];
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Colaboradores');
-  XLSX.writeFile(workbook, 'colaboradores-para-completar.xlsx');
+  ]);
+  void workbook.download('colaboradores-para-completar.xlsx');
 }
 
 export function generateExcelTemplate(): void {
@@ -279,12 +246,8 @@ export function generateExcelTemplate(): void {
     },
   ];
 
-  const worksheet = XLSX.utils.json_to_sheet(sampleData);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Treinamentos');
-
-  // Set column widths
-  worksheet['!cols'] = [
+  const workbook = new SimpleWorkbook();
+  workbook.addJsonSheet('Treinamentos', sampleData, [
     { wch: 25 }, // Nome
     { wch: 12 }, // Matrícula
     { wch: 22 }, // Função
@@ -294,7 +257,6 @@ export function generateExcelTemplate(): void {
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento
-  ];
-
-  XLSX.writeFile(workbook, 'template_colaboradores.xlsx');
+  ]);
+  void workbook.download('template_colaboradores.xlsx');
 }

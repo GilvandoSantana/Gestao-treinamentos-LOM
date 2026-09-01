@@ -56,6 +56,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.2",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "express": "^4.22.2",
     "framer-motion": "^12.23.22",
     "helmet": "^8.3.0",
@@ -83,7 +84,6 @@
     "uuid": "^10.0.0",
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
-    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -116,5 +116,15 @@
     "vite-plugin-manus-runtime": "^0.0.57",
     "vitest": "^2.1.4"
   },
-  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
+  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",
+  "pnpm": {
+    "patchedDependencies": {
+      "wouter@3.7.1": "patches/wouter@3.7.1.patch"
+    },
+    "overrides": {
+      "tailwindcss>nanoid": "3.3.7",
+      "body-parser": ">=1.20.6",
+      "uuid": ">=11.1.1"
+    }
+  }
 }

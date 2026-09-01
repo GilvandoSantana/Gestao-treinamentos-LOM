@@ -4,7 +4,7 @@
  * sistema original (Vercel) fazia.
  */
 
-import * as XLSX from 'xlsx';
+import { SimpleWorkbook, readSheetAsJson } from './xlsx-compat';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { WarehouseItemInfo, WarehouseMovementInfo } from '@shared/warehouse';
@@ -21,11 +21,9 @@ export function exportItemsToExcel(items: WarehouseItemInfo[]): void {
     CA: item.ca ?? '',
     Patrimônio: item.patrimonio ?? '',
   }));
-  const worksheet = XLSX.utils.json_to_sheet(data);
-  worksheet['!cols'] = COLS;
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Itens');
-  XLSX.writeFile(workbook, 'almoxarifado_itens.xlsx');
+  const workbook = new SimpleWorkbook();
+  workbook.addJsonSheet('Itens', data, COLS);
+  void workbook.download('almoxarifado_itens.xlsx');
 }
 
 export function downloadItemsTemplate(): void {
@@ -34,10 +32,8 @@ export function downloadItemsTemplate(): void {
     { Código: 'EX002', Nome: 'Furadeira de Impacto', Tipo: 'ferramenta', Unidade: 'pç', Quantidade: 5, CA: '', Patrimônio: 'PAT-0042' },
     { Código: 'EX003', Nome: 'Capacete de Segurança', Tipo: 'epi', Unidade: 'un', Quantidade: 20, CA: '12345', Patrimônio: '' },
   ];
-  const worksheet = XLSX.utils.json_to_sheet(templateData);
-  worksheet['!cols'] = COLS;
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Itens');
+  const workbook = new SimpleWorkbook();
+  workbook.addJsonSheet('Itens', templateData, COLS);
 
   const instructionData = [
     ['INSTRUÇÕES PARA IMPORTAÇÃO'],
@@ -54,10 +50,9 @@ export function downloadItemsTemplate(): void {
     ['Linhas de EPI sem CA, ou de Ferramenta sem Patrimônio, serão rejeitadas na importação.'],
     ['Não altere os nomes das colunas!'],
   ];
-  const instructionSheet = XLSX.utils.aoa_to_sheet(instructionData);
-  XLSX.utils.book_append_sheet(workbook, instructionSheet, 'Instruções');
+  workbook.addAoaSheet('Instruções', instructionData);
 
-  XLSX.writeFile(workbook, 'modelo_almoxarifado.xlsx');
+  void workbook.download('modelo_almoxarifado.xlsx');
 }
 
 export interface ParsedImportItem {
@@ -72,63 +67,42 @@ export interface ParsedImportItem {
 
 const VALID_TYPES = ['epi', 'ferramenta', 'equipamento', 'material_consumo', 'material_limpeza', 'gas', 'material'];
 
-export function parseItemsExcelFile(file: File): Promise<ParsedImportItem[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        if (!data) {
-          reject(new Error('Arquivo vazio'));
-          return;
-        }
-        const workbook = XLSX.read(data, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        if (!worksheet) {
-          reject(new Error('Nenhuma planilha encontrada'));
-          return;
-        }
-        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(worksheet);
+export async function parseItemsExcelFile(file: File): Promise<ParsedImportItem[]> {
+  const data = await file.arrayBuffer();
+  const rows: Record<string, unknown>[] = await readSheetAsJson(data);
 
-        const items: ParsedImportItem[] = rows.map((row, index) => {
-          const code = String(row['Código'] ?? row['Code'] ?? '').trim();
-          const name = String(row['Nome'] ?? row['Name'] ?? '').trim();
-          const rawType = String(row['Tipo'] ?? row['Type'] ?? 'material').trim().toLowerCase();
-          const unit = String(row['Unidade'] ?? row['Unit'] ?? 'un').trim() || 'un';
-          const quantity = parseInt(String(row['Quantidade'] ?? row['Quantity'] ?? '0'), 10);
-          const ca = String(row['CA'] ?? '').trim() || null;
-          const patrimonio = String(row['Patrimônio'] ?? row['Patrimonio'] ?? '').trim() || null;
+  const items: ParsedImportItem[] = rows.map((row, index) => {
+    const code = String(row['Código'] ?? row['Code'] ?? '').trim();
+    const name = String(row['Nome'] ?? row['Name'] ?? '').trim();
+    const rawType = String(row['Tipo'] ?? row['Type'] ?? 'material').trim().toLowerCase();
+    const unit = String(row['Unidade'] ?? row['Unit'] ?? 'un').trim() || 'un';
+    const quantity = parseInt(String(row['Quantidade'] ?? row['Quantity'] ?? '0'), 10);
+    const ca = String(row['CA'] ?? '').trim() || null;
+    const patrimonio = String(row['Patrimônio'] ?? row['Patrimonio'] ?? '').trim() || null;
 
-          if (!code || !name) {
-            throw new Error(`Linha ${index + 2}: Código e Nome são obrigatórios`);
-          }
-          const type = VALID_TYPES.includes(rawType) ? rawType : 'material';
-          if (type === 'epi' && !ca) {
-            throw new Error(`Linha ${index + 2}: item do tipo "epi" precisa da coluna CA preenchida`);
-          }
-          if (type === 'ferramenta' && !patrimonio) {
-            throw new Error(`Linha ${index + 2}: item do tipo "ferramenta" precisa da coluna Patrimônio preenchida`);
-          }
+    if (!code || !name) {
+      throw new Error(`Linha ${index + 2}: Código e Nome são obrigatórios`);
+    }
+    const type = VALID_TYPES.includes(rawType) ? rawType : 'material';
+    if (type === 'epi' && !ca) {
+      throw new Error(`Linha ${index + 2}: item do tipo "epi" precisa da coluna CA preenchida`);
+    }
+    if (type === 'ferramenta' && !patrimonio) {
+      throw new Error(`Linha ${index + 2}: item do tipo "ferramenta" precisa da coluna Patrimônio preenchida`);
+    }
 
-          return {
-            code,
-            name,
-            type,
-            unit,
-            quantity: Number.isNaN(quantity) ? 0 : quantity,
-            ca,
-            patrimonio,
-          };
-        });
-
-        resolve(items);
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error('Erro ao processar arquivo'));
-      }
+    return {
+      code,
+      name,
+      type,
+      unit,
+      quantity: Number.isNaN(quantity) ? 0 : quantity,
+      ca,
+      patrimonio,
     };
-    reader.onerror = () => reject(new Error('Erro ao ler o arquivo'));
-    reader.readAsArrayBuffer(file);
   });
+
+  return items;
 }
 
 export function generateMonthlyReportPDF(

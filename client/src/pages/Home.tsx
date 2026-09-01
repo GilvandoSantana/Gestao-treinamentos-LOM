@@ -341,10 +341,10 @@ export default function Home() {
   const exportData = async () => {
     try {
       setIsSyncing(true);
-      // Import dinâmico: xlsx só é baixado quando a pessoa realmente
+      // Import dinâmico: exceljs só é baixado quando a pessoa realmente
       // exporta, em vez de sempre, pra todo mundo que abre o site.
-      const XLSX = await import('xlsx');
-      const excelData: any[] = [];
+      const { SimpleWorkbook } = await import('@/lib/xlsx-compat');
+      const excelData: Record<string, string>[] = [];
 
       employees.forEach(emp => {
         if (emp.trainings && emp.trainings.length > 0) {
@@ -370,11 +370,15 @@ export default function Home() {
         }
       });
 
-      const ws = XLSX.utils.json_to_sheet(excelData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Treinamentos');
-      ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 30 }, { wch: 18 }, { wch: 15 }];
-      XLSX.writeFile(wb, `treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const workbook = new SimpleWorkbook();
+      workbook.addJsonSheet('Treinamentos', excelData, [
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 30 },
+        { wch: 18 },
+        { wch: 15 },
+      ]);
+      await workbook.download(`treinamentos_${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.success('Dados exportados para Excel com sucesso!');
     } catch (error) {
       toast.error('Erro ao exportar dados para Excel.');

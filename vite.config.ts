@@ -177,7 +177,7 @@ export default defineConfig({
         // dividido em arquivos.
         manualChunks: {
           pdf: ["jspdf", "jspdf-autotable"],
-          xlsx: ["xlsx"],
+          spreadsheet: ["exceljs"],
           "html2canvas": ["html2canvas"],
           charts: ["recharts"],
         },
