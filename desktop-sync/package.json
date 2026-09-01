@@ -1,0 +1,38 @@
+{
+  "name": "gestao-nuvem-sync",
+  "version": "1.0.0",
+  "description": "Sincronizador de pasta local com a Nuvem do sistema de Gestão de Controle dos Contratos",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "test": "vitest run"
+  },
+  "author": "Support Mining",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "vitest": "^2.1.9"
+  },
+  "dependencies": {},
+  "build": {
+    "appId": "com.supportmining.gestao-nuvem-sync",
+    "productName": "Sincronização com a Nuvem",
+    "files": ["src/**/*", "!src/**/*.test.js"],
+    "directories": {
+      "output": "dist-installer"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sincronização com a Nuvem"
+    }
+  }
+}

@@ -4,6 +4,10 @@ node_modules/
 # Build
 dist/
 build/
+# Exceção: build/icon.ico do desktop-sync é um recurso de verdade (ícone
+# fonte pro instalador Windows), não saída gerada — precisa ficar versionado.
+!desktop-sync/build/
+!desktop-sync/build/icon.ico
 
 # Variáveis de ambiente (nunca versionar segredos)
 .env
