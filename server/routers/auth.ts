@@ -10,6 +10,7 @@ import {
   checkLoginRateLimit,
   checkSitePassword,
   clearLoginAttempts,
+  createDesktopSyncToken,
   createSiteSessionToken,
   generateSessionMarker,
   getClientKey,
@@ -147,6 +148,82 @@ export const authRouter = router({
         ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
 
         return { success: true, sessionMarker } as const;
+      }),
+
+    // Login do programa de sincronização de pasta local (Windows) — mesma
+    // validação de usuário/senha do login do site, mas devolve um token de
+    // longa duração em vez de um cookie (o programa guarda esse token
+    // criptografado no computador e usa como cabeçalho Authorization em
+    // cada chamada). Usa o mesmo limite de tentativas do login do site.
+    desktopLogin: publicProcedure
+      .input(
+        z.object({
+          username: z.string().trim().min(1).optional(),
+          password: z.string().min(1),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const clientKey = getClientKey(ctx.req);
+
+        const remainingMs = checkLoginRateLimit(clientKey);
+        if (remainingMs !== null) {
+          const minutes = Math.ceil(remainingMs / 60000);
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Muitas tentativas incorretas. Tente novamente em ${minutes} minuto${minutes !== 1 ? "s" : ""}.`,
+          });
+        }
+
+        let isValid = false;
+        let sessionUsername = "master";
+        let sessionRole: "admin" | "user" = "admin";
+        let sessionAdminId: string | null = null;
+
+        const masterUsername = process.env.MASTER_USERNAME?.trim().toLowerCase();
+        const typedUsername = input.username?.trim().toLowerCase();
+        const isMasterAttempt =
+          !typedUsername || (!!masterUsername && typedUsername === masterUsername);
+
+        if (typedUsername && !isMasterAttempt) {
+          const admin = await getAdminByUsername(typedUsername);
+          if (admin) {
+            isValid = await verifyAdminPassword(input.password, admin.passwordHash);
+            sessionUsername = admin.username;
+            sessionRole = admin.role === "user" ? "user" : "admin";
+            sessionAdminId = admin.id;
+          }
+        } else {
+          try {
+            isValid = checkSitePassword(input.password);
+            sessionUsername = masterUsername ?? "master";
+          } catch (error) {
+            console.error("desktopLogin config error:", error);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Autenticação do site não configurada no servidor.",
+            });
+          }
+        }
+
+        if (!isValid) {
+          registerFailedLoginAttempt(clientKey);
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Usuário ou senha incorretos.",
+          });
+        }
+
+        clearLoginAttempts(clientKey);
+
+        void logActivity({
+          username: sessionUsername,
+          role: sessionRole,
+          action: "login",
+        });
+
+        const token = await createDesktopSyncToken(sessionUsername, sessionRole, sessionAdminId);
+
+        return { success: true, token, username: sessionUsername } as const;
       }),
 
     siteLogout: publicProcedure.mutation(({ ctx }) => {

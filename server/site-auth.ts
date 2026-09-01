@@ -11,6 +11,18 @@ export const SITE_SESSION_COOKIE = "site_session";
 export const IMPERSONATION_BACKUP_COOKIE = "site_admin_backup";
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8 horas (uma jornada de trabalho)
 
+// Token de longa duração pro programa de sincronização de pasta (Windows) -
+// diferente do cookie do navegador: sem o mecanismo de "marcador" (que só
+// faz sentido dentro de uma aba, ligado ao sessionStorage) e com validade
+// bem mais longa, já que o programa roda sozinho, sem ninguém pra logar de
+// novo toda hora. 30 dias é um meio-termo: dá pra deixar o computador
+// ligado o mes inteiro sem precisar reconectar, mas limita por quanto tempo
+// um token perdido/roubado continuaria valendo (o token fica só na máquina
+// da pessoa, mas não tem hoje um jeito de revogar um token específico antes
+// do prazo — só trocar a senha do SESSION_SECRET do servidor, que derruba
+// TODAS as sessões de uma vez).
+const DESKTOP_SYNC_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 dias
+
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 16) {
@@ -96,6 +108,59 @@ export async function verifySiteSessionToken(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * Token de longa duração pro programa de sincronização de pasta local
+ * (Windows). Mesma validação de usuário/senha do login do site, mas sem
+ * cookie e sem o marcador de sessão de navegador — o programa guarda esse
+ * token criptografado no próprio computador e manda como cabeçalho
+ * `Authorization: Bearer <token>` em cada chamada, em vez de cookie.
+ */
+export async function createDesktopSyncToken(
+  username: string,
+  role: "admin" | "user",
+  adminId: string | null
+): Promise<string> {
+  return new SignJWT({ scope: "desktop-sync", username, role, adminId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${DESKTOP_SYNC_TTL_SECONDS}s`)
+    .sign(getSecretKey());
+}
+
+export type DesktopSyncSession = {
+  username: string;
+  role: "admin" | "user";
+  adminId: string | null;
+};
+
+/** Decodifica e valida um token do programa de sincronização. Devolve
+ * `null` se o token não existir, estiver expirado, ou não for desse tipo
+ * (por exemplo, se alguém tentar usar um cookie de navegador aqui). */
+export async function verifyDesktopSyncToken(
+  token: string
+): Promise<DesktopSyncSession | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.scope !== "desktop-sync") return null;
+    if (typeof payload.username !== "string") return null;
+    return {
+      username: payload.username,
+      role: payload.role === "user" ? "user" : "admin",
+      adminId: typeof payload.adminId === "string" ? payload.adminId : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Lê o token do cabeçalho `Authorization: Bearer <token>`, se houver. */
+export function getBearerToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match ? match[1] : null;
+}
+
 const EMPTY_SESSION: SiteSession = {
   isSiteAdmin: false,
   username: null,
@@ -106,7 +171,23 @@ const EMPTY_SESSION: SiteSession = {
 export async function getSiteSession(req: Request): Promise<SiteSession> {
   const cookies = parseCookieHeader(req.headers.cookie ?? "");
   const token = cookies[SITE_SESSION_COOKIE];
-  if (!token) return { ...EMPTY_SESSION };
+
+  if (!token) {
+    // Sem cookie de navegador — tenta o token do programa de sincronização
+    // de pasta local, mandado como cabeçalho Authorization: Bearer.
+    const bearerToken = getBearerToken(req);
+    if (!bearerToken) return { ...EMPTY_SESSION };
+
+    const desktopSession = await verifyDesktopSyncToken(bearerToken);
+    if (!desktopSession) return { ...EMPTY_SESSION };
+
+    return {
+      isSiteAdmin: true,
+      username: desktopSession.username,
+      role: desktopSession.role,
+      adminId: desktopSession.adminId,
+    };
+  }
 
   try {
     const { payload } = await jwtVerify(token, getSecretKey());

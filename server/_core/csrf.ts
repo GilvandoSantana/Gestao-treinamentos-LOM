@@ -26,6 +26,20 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return;
   }
 
+  // Requisição autenticada por token (Authorization: Bearer ...), usada
+  // pelo programa de sincronização de pasta local — não pelo navegador.
+  // CSRF é um problema de credencial que o NAVEGADOR anexa sozinho sem a
+  // pessoa perceber (cookie); um cabeçalho Authorization não é anexado
+  // automaticamente por nenhum navegador em requisição de outra origem —
+  // uma página maliciosa não tem como forjar um valor que ela não conhece.
+  // Não precisa validar o token aqui (isso é papel do contexto do tRPC,
+  // que rejeita se for inválido) — só a presença dele já tira o cenário
+  // de risco que esta proteção existe para cobrir.
+  if (req.headers.authorization?.startsWith("Bearer ")) {
+    next();
+    return;
+  }
+
   const expectedHost = req.hostname;
   if (!expectedHost) {
     // Sem host pra comparar (não deveria acontecer atrás do Railway) —
