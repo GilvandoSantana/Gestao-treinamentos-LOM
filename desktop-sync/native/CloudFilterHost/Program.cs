@@ -181,10 +181,20 @@ try
                             {
                                 ParamSize = (uint)Marshal.SizeOf<CF_OPERATION_PARAMETERS>(),
                             };
-                            opParams.TransferData.CompletionStatus = NTStatus.STATUS_SUCCESS;
-                            opParams.TransferData.Buffer = (IntPtr)pContent;
-                            opParams.TransferData.Offset = 0;
-                            opParams.TransferData.Length = fakeContent.Length;
+                            // TransferData é uma propriedade que devolve uma
+                            // CÓPIA (não uma referência editável) — o C#
+                            // recusa "opParams.TransferData.Campo = x" com
+                            // erro CS1612 por isso. Precisa montar o valor
+                            // inteiro de uma vez com "new()" (o tipo exato
+                            // é inferido da própria propriedade) e atribuir
+                            // tudo de uma só vez.
+                            opParams.TransferData = new()
+                            {
+                                CompletionStatus = NTStatus.STATUS_SUCCESS,
+                                Buffer = (IntPtr)pContent,
+                                Offset = 0,
+                                Length = fakeContent.Length,
+                            };
 
                             var hr = CfExecute(opInfo, ref opParams);
                             Console.WriteLine($"    CfExecute (entregar conteúdo) resultado: 0x{hr:X8}");
