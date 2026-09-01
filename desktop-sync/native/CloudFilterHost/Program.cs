@@ -235,6 +235,14 @@ try
                 Console.WriteLine("OK: conectado.");
 
                 Console.WriteLine($"Criando placeholder de teste \"{testFileName}\"...");
+                // FILETIME (formato de data/hora do Windows) pra agora —
+                // suspeita principal do erro 0x8007017C (ERROR_CLOUD_FILE_
+                // INVALID_REQUEST) da primeira tentativa: os campos de
+                // data ficaram todos zerados, o que a criação de
+                // placeholder aparentemente não aceita (zero costuma
+                // significar "não mudar" em operações de ALTERAR, não faz
+                // sentido numa CRIAÇÃO nova).
+                long now = DateTime.UtcNow.ToFileTimeUtc();
                 var placeholders = new CF_PLACEHOLDER_CREATE_INFO[]
                 {
                     new CF_PLACEHOLDER_CREATE_INFO
@@ -245,6 +253,10 @@ try
                             FileSize = fakeContent.Length,
                             BasicInfo = new Kernel32.FILE_BASIC_INFO
                             {
+                                CreationTime = now,
+                                LastAccessTime = now,
+                                LastWriteTime = now,
+                                ChangeTime = now,
                                 FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
                             },
                         },
