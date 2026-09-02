@@ -651,9 +651,33 @@ try
                     // Agrupa os arquivos do manifesto por pasta
                     // (CfCreatePlaceholders exige uma chamada por pasta,
                     // não uma chamada só pra árvore inteira) — só os que
-                    // ainda não foram criados numa passada anterior.
+                    // ainda não foram criados numa passada anterior E que
+                    // ainda não existem de verdade no disco.
+                    //
+                    // O segundo filtro (File.Exists) é o que faltava:
+                    // achado real (Gilvando, 01/09) — um arquivo criado
+                    // pela PESSOA direto na pasta (que já sobe sozinho pra
+                    // Nuvem desde a etapa anterior) aparece, na consulta
+                    // seguinte à Nuvem, como se fosse um arquivo "novo"
+                    // vindo de lá — mas ele já existe no disco de verdade
+                    // (não como placeholder), então tentar criar um
+                    // placeholder em cima dele dá erro "já existe"
+                    // (0x800700B7 / ERROR_ALREADY_EXISTS).
                     var fileEntries = manifestToApply.Entries!
                         .Where(e => !e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .Where(e =>
+                        {
+                            if (File.Exists(Path.Combine(rootPath, e.RelativePath)))
+                            {
+                                // Já existe de verdade — provavelmente a
+                                // pessoa criou/editou local e já subiu
+                                // sozinho. Marca como "resolvido" pra não
+                                // ficar checando de novo a cada 30s.
+                                createdPaths.Add(e.RelativePath);
+                                return false;
+                            }
+                            return true;
+                        })
                         .ToList();
                     var folderEntries = manifestToApply.Entries!
                         .Where(e => e.IsFolder && !createdPaths.Contains(e.RelativePath))
