@@ -1,15 +1,14 @@
 /**
- * Layout puro da Ordem de Serviço (NR-01).
+ * Layout da Ordem de Serviço (NR-01) — reproduz visualmente o modelo em
+ * planilha enviado pelo administrador: barras de título em azul marinho
+ * (RGB 0,32,96) com texto branco em negrito, campos em caixas com borda
+ * dispostos em grade (como uma planilha), e uma tabela de Agentes
+ * Ambientais com cabeçalho.
  *
- * Reproduz o modelo em planilha enviado pelo administrador: uma página A4
- * retrato por colaborador, com o texto legal fixo da NR-01 e os dados da
- * função (área, tarefas, agentes ambientais, medidas de controle, EPIs
- * mínimos) vindos da configuração por função de cada contrato.
- *
- * Diferente da Ficha de EPI (grade fixa calibrada para caber em 1 página),
- * aqui o conteúdo por função tem tamanho livre (o admin escreve o quanto
- * quiser) — por isso o desenho flui verticalmente e quebra de página
- * sozinho quando necessário, em vez de forçar tudo em uma página só.
+ * O conteúdo por função (tarefas, agentes, medidas, EPIs) tem tamanho
+ * livre — o admin escreve o quanto quiser — por isso a altura de cada
+ * caixa se ajusta ao texto e o desenho flui para uma nova página sozinho
+ * quando necessário, em vez de forçar tudo em uma página só.
  */
 
 import { jsPDF } from 'jspdf';
@@ -19,7 +18,13 @@ const MARGIN = 14;
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const BOTTOM_LIMIT = PAGE_HEIGHT - 16;
+const BOTTOM_LIMIT = PAGE_HEIGHT - 14;
+
+// Azul marinho exato do modelo em planilha (fill FF002060).
+const NAVY: [number, number, number] = [0, 32, 96];
+const BORDER_GRAY: [number, number, number] = [120, 120, 120];
+const BLACK: [number, number, number] = [0, 0, 0];
+const WHITE: [number, number, number] = [255, 255, 255];
 
 export interface OsRoleData {
   area: string | null;
@@ -60,6 +65,16 @@ function formatDateBR(date: Date): string {
   return `${d}/${m}/${date.getFullYear()}`;
 }
 
+interface CellSpec {
+  text: string;
+  width: number;
+  bold?: boolean;
+  fontSize?: number;
+  color?: [number, number, number];
+  fill?: [number, number, number];
+  align?: 'left' | 'center';
+}
+
 /** Estado de "cursor" do desenho — a posição Y atual na página. */
 class Cursor {
   y = MARGIN;
@@ -76,62 +91,99 @@ class Cursor {
     this.y += mm;
   }
 
-  /** Um título de seção (fundo cinza, texto em negrito). */
-  sectionTitle(text: string) {
-    this.ensureSpace(7);
-    this.doc.setFillColor(230, 230, 230);
-    this.doc.rect(MARGIN, this.y, CONTENT_WIDTH, 6, 'F');
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(9);
-    this.doc.setTextColor(0, 0, 0);
-    this.doc.text(text, MARGIN + 2, this.y + 4.3);
-    this.y += 6 + 2;
+  /**
+   * Uma barra de título em azul marinho com texto branco em negrito —
+   * mesmo visual das seções do modelo (fill FF002060).
+   */
+  sectionHeader(text: string, opts?: { fontSize?: number }) {
+    const height = 6.5;
+    this.ensureSpace(height);
+    const { doc } = this;
+    doc.setFillColor(...NAVY);
+    doc.setDrawColor(...NAVY);
+    doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(opts?.fontSize ?? 9.5);
+    doc.setTextColor(...WHITE);
+    doc.text(text, MARGIN + 2, this.y + height / 2 + 1.4);
+    doc.setTextColor(...BLACK);
+    this.y += height;
   }
 
-  /** Um bloco "Rótulo: texto corrido", com o rótulo em negrito. */
-  labelValue(label: string, value: string, opts?: { labelWidth?: number }) {
-    const labelWidth = opts?.labelWidth ?? this.doc.getTextWidth(label) + 2;
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(8.5);
-    const lines: string[] = this.doc.splitTextToSize(value || '—', CONTENT_WIDTH - labelWidth);
-    this.ensureSpace(lines.length * 4 + 2);
-    this.doc.text(label, MARGIN, this.y + 3.2);
-    this.doc.setFont('helvetica', 'normal');
-    lines.forEach((line, i) => {
-      this.doc.text(line, MARGIN + labelWidth, this.y + 3.2 + i * 4);
-    });
-    this.y += lines.length * 4 + 2;
-  }
-
-  /** Parágrafo de texto corrido, justificado à largura do conteúdo. */
-  paragraph(text: string, opts?: { fontSize?: number; bold?: boolean }) {
-    const fontSize = opts?.fontSize ?? 7.8;
-    this.doc.setFont('helvetica', opts?.bold ? 'bold' : 'normal');
+  /** Mede quantas linhas um texto ocupa numa largura útil (descontando o padding). */
+  private measureLines(text: string, usableWidth: number, fontSize: number): string[] {
     this.doc.setFontSize(fontSize);
-    const lines: string[] = this.doc.splitTextToSize(text, CONTENT_WIDTH);
-    const lineHeight = fontSize * 0.42;
-    for (const line of lines) {
-      this.ensureSpace(lineHeight + 0.5);
-      this.doc.text(line, MARGIN, this.y + lineHeight);
-      this.y += lineHeight;
-    }
-    this.y += 1.5;
+    return this.doc.splitTextToSize(text, usableWidth) as string[];
   }
 
-  /** Lista numerada, uma linha (ou mais, se precisar quebrar) por item. */
-  numberedList(items: string[]) {
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(7.8);
-    items.forEach((item, index) => {
-      const prefix = `${index + 1}. `;
-      const lines: string[] = this.doc.splitTextToSize(item, CONTENT_WIDTH - 5);
-      lines.forEach((line, i) => {
-        this.ensureSpace(3.6);
-        this.doc.text(i === 0 ? prefix + line : line, MARGIN + (i === 0 ? 0 : 5), this.y + 3);
-        this.y += 3.6;
+  /**
+   * Uma linha de caixas com borda lado a lado (label em negrito + valor),
+   * repetida quantas vezes precisar — mesma ideia da grade da planilha.
+   * Todas as caixas da linha compartilham a mesma altura (a maior delas).
+   */
+  cellRow(cells: CellSpec[], opts?: { minHeight?: number; padding?: number }) {
+    const padding = opts?.padding ?? 1.6;
+    const fontSize = 8.3;
+    const lineHeight = 3.6;
+
+    const lineSets = cells.map((cell) => this.measureLines(cell.text, cell.width - padding * 2, cell.fontSize ?? fontSize));
+    const maxLines = Math.max(1, ...lineSets.map((lines) => lines.length));
+    const height = Math.max(opts?.minHeight ?? 0, maxLines * lineHeight + padding * 2);
+
+    this.ensureSpace(height);
+    const { doc } = this;
+    let x = MARGIN;
+    cells.forEach((cell, i) => {
+      if (cell.fill) {
+        doc.setFillColor(...cell.fill);
+        doc.rect(x, this.y, cell.width, height, 'F');
+      }
+      doc.setDrawColor(...BORDER_GRAY);
+      doc.rect(x, this.y, cell.width, height, 'S');
+
+      doc.setFont('helvetica', cell.bold ? 'bold' : 'normal');
+      doc.setFontSize(cell.fontSize ?? fontSize);
+      doc.setTextColor(...(cell.color ?? BLACK));
+      const lines = lineSets[i];
+      const textX = cell.align === 'center' ? x + cell.width / 2 : x + padding;
+      lines.forEach((line, li) => {
+        doc.text(line, textX, this.y + padding + lineHeight * (li + 1) - 1, {
+          align: cell.align === 'center' ? 'center' : 'left',
+        });
       });
+      x += cell.width;
     });
-    this.y += 1.5;
+    doc.setTextColor(...BLACK);
+    this.y += height;
+  }
+
+  /** Uma caixa larga (label acima, texto corrido abaixo) — pra blocos longos. */
+  textBlock(label: string, value: string, opts?: { minHeight?: number }) {
+    const padding = 2;
+    const fontSize = 8.3;
+    const lineHeight = 3.7;
+    const lines = this.measureLines(value, CONTENT_WIDTH - padding * 2, fontSize);
+    const labelHeight = label ? 4.2 : 0;
+    const height = Math.max(opts?.minHeight ?? 0, labelHeight + lines.length * lineHeight + padding * 2);
+
+    this.ensureSpace(height);
+    const { doc } = this;
+    doc.setDrawColor(...BORDER_GRAY);
+    doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'S');
+
+    let textY = this.y + padding;
+    if (label) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(fontSize);
+      doc.text(label, MARGIN + padding, textY + 3);
+      textY += labelHeight;
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(fontSize);
+    lines.forEach((line, li) => {
+      doc.text(line, MARGIN + padding, textY + lineHeight * (li + 1) - 1);
+    });
+    this.y += height;
   }
 }
 
@@ -140,86 +192,162 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
   const cursor = new Cursor(doc);
   const today = formatDateBR(new Date());
 
-  // Cabeçalho
+  // ── Cabeçalho: barra azul marinho com título + Nº/Data à direita ──
+  const HEADER_HEIGHT = 13;
+  cursor.ensureSpace(HEADER_HEIGHT);
+  doc.setFillColor(...NAVY);
+  doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, HEADER_HEIGHT, 'F');
+  doc.setDrawColor(...BORDER_GRAY);
+  doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, HEADER_HEIGHT, 'S');
+  const numDataX = MARGIN + CONTENT_WIDTH - 45;
+  doc.line(numDataX, cursor.y, numDataX, cursor.y + HEADER_HEIGHT);
+
+  doc.setTextColor(...WHITE);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
-  doc.text('ORDEM DE SERVIÇO CONFORME NR 01 - DISPOSIÇÕES GERAIS', PAGE_WIDTH / 2, cursor.y + 4, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text('Conforme item 1.4 - Direitos e Deveres do Empregador e do Empregado', PAGE_WIDTH / 2, cursor.y + 9, {
+  doc.setFontSize(11);
+  doc.text('ORDEM DE SERVIÇO CONFORME NR 01 - DISPOSIÇÕES GERAIS', MARGIN + (CONTENT_WIDTH - 45) / 2, cursor.y + 6, {
     align: 'center',
   });
-  doc.setFontSize(8);
-  doc.text(`Data: ${today}`, PAGE_WIDTH - MARGIN, cursor.y + 4, { align: 'right' });
-  cursor.gap(15);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.text('Conforme item 1.4 - Direitos e Deveres do Empregador e do Empregado', MARGIN + (CONTENT_WIDTH - 45) / 2, cursor.y + 10.5, {
+    align: 'center',
+  });
 
-  cursor.labelValue('Empresa: ', companyName || '—');
-  cursor.labelValue('Área: ', role?.area || '—');
-  cursor.gap(1);
-  cursor.labelValue('Empregado: ', employee.name);
-  cursor.labelValue('CPF: ', employee.cpf || '—');
-  cursor.gap(1);
-  cursor.labelValue('Cargo: ', employee.role);
-  cursor.labelValue('Setor de Trabalho: ', role?.setorTrabalho || '—');
-  cursor.gap(1);
-  cursor.labelValue('Gerência: ', employee.gerencia || '—');
-  cursor.gap(1);
-  cursor.labelValue('Contrato: ', contractName);
-  cursor.gap(3);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text('Nº:', numDataX + 2, cursor.y + 5.5);
+  doc.text(`Data: ${today}`, numDataX + 2, cursor.y + 10.5);
+  doc.setTextColor(...BLACK);
+  cursor.gap(HEADER_HEIGHT);
 
-  cursor.sectionTitle('Conceito Legal da Norma Regulamentadora NR 1 - Disposições Gerais');
-  cursor.paragraph(
+  // ── Dados do colaborador / contrato, em caixas pareadas ──
+  cursor.cellRow([
+    { text: 'Empresa:', width: 30, bold: true },
+    { text: companyName || '—', width: 90 },
+    { text: 'Área:', width: 22, bold: true },
+    { text: role?.area || '—', width: CONTENT_WIDTH - 30 - 90 - 22 },
+  ]);
+  cursor.cellRow([
+    { text: 'Empregado:', width: 30, bold: true },
+    { text: employee.name, width: 90 },
+    { text: 'CPF:', width: 22, bold: true },
+    { text: employee.cpf || '—', width: CONTENT_WIDTH - 30 - 90 - 22 },
+  ]);
+  cursor.cellRow([
+    { text: 'Cargo:', width: 30, bold: true },
+    { text: employee.role, width: 90 },
+    { text: 'Setor de Trabalho:', width: 34, bold: true },
+    { text: role?.setorTrabalho || '—', width: CONTENT_WIDTH - 30 - 90 - 34 },
+  ]);
+  cursor.cellRow([
+    { text: 'Gerência:', width: 30, bold: true },
+    { text: employee.gerencia || '—', width: 90 },
+    { text: 'Contrato:', width: 22, bold: true },
+    { text: contractName || '—', width: CONTENT_WIDTH - 30 - 90 - 22 },
+  ]);
+  cursor.cellRow([
+    { text: 'Observações:', width: 30, bold: true },
+    { text: '', width: CONTENT_WIDTH - 30 },
+  ]);
+  cursor.gap(2);
+
+  cursor.sectionHeader('Conceito Legal da Norma Regulamentadora NR 1 - Disposições Gerais');
+  cursor.textBlock(
+    '',
     'Conforme estabelecido pelo item 1.4 da NR 01 - Disposições Gerais cabe ao Empregador elaborar Ordem de Serviço e informar aos trabalhadores os riscos ocupacionais existentes nos locais de trabalho, as medidas de controle adotadas pela empresa para reduzir ou eliminar tais riscos, os resultados dos exames médicos e de exames complementares de diagnóstico aos quais os próprios trabalhadores forem submetidos e os resultados das avaliações ambientais realizadas nos locais de trabalho.'
   );
+  cursor.gap(2);
 
-  cursor.sectionTitle('Objetivos');
-  cursor.paragraph(
+  cursor.sectionHeader('Objetivos');
+  cursor.textBlock(
+    '',
     'Informar os Trabalhadores sobre os agentes ambientais de risco Físico, Químico, Biológico, Ergonômico e Acidentes bem como dar ciência aos trabalhadores sobre as doenças ocupacionais relativas ao ambiente de trabalho exposto. Instruí-los quanto a forma de eliminar, neutralizar ou minimizar os efeitos pelo contato com os riscos através da conscientização, medidas administrativas, medidas de controle coletivo e o fornecimento, manutenção e controle da periodicidade de troca dos Equipamentos de Proteção Individual.'
   );
+  cursor.gap(2);
 
-  cursor.sectionTitle('Obrigações do Empregado');
-  cursor.numberedList(OBRIGACOES_EMPREGADO);
+  cursor.sectionHeader('Obrigações do Empregado');
+  {
+    const padding = 1.8;
+    const fontSize = 8;
+    const lineHeight = 3.6;
+    const numbered = OBRIGACOES_EMPREGADO.map((text, i) => `${String(i + 1).padStart(2, '0')} - ${text}`);
+    doc.setFontSize(fontSize);
+    const allLines = numbered.map((t) => doc.splitTextToSize(t, CONTENT_WIDTH - padding * 2) as string[]);
+    const totalLines = allLines.reduce((sum, l) => sum + l.length, 0);
+    const boxHeight = totalLines * lineHeight + padding * 2;
+    cursor.ensureSpace(boxHeight);
+    doc.setDrawColor(...BORDER_GRAY);
+    doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, boxHeight, 'S');
+    doc.setFont('helvetica', 'normal');
+    let ty = cursor.y + padding;
+    allLines.forEach((lines) => {
+      lines.forEach((line) => {
+        doc.text(line, MARGIN + padding, ty + lineHeight - 1);
+        ty += lineHeight;
+      });
+    });
+    cursor.gap(boxHeight);
+  }
+  cursor.gap(2);
 
-  cursor.sectionTitle('Descrição das atividades do Setor / Frente de Serviço');
-  cursor.labelValue('Tarefa: ', role?.tarefas || '—', { labelWidth: 14 });
+  cursor.sectionHeader('Descrição das atividades do Setor / Frente de Serviço');
+  cursor.textBlock('Tarefa:', role?.tarefas || '—');
+  cursor.gap(2);
 
-  cursor.sectionTitle('Relação de Insumos do Setor de Trabalho');
-  cursor.labelValue('Máquinas, Equipamentos e Ferramentas: ', role?.maquinasEquipamentos || '—');
+  cursor.sectionHeader('Relação de Insumos do Setor de Trabalho');
+  cursor.textBlock('Máquinas, Equipamentos e Ferramentas:', role?.maquinasEquipamentos || '—');
+  cursor.gap(2);
 
-  cursor.sectionTitle('Agentes Ambientais');
-  cursor.labelValue('Físicos: ', role?.agentesFisicos || '—');
-  cursor.labelValue('Químicos: ', role?.agentesQuimicos || '—');
-  cursor.labelValue('Biológicos: ', role?.agentesBiologicos || 'NA.');
-  cursor.labelValue('Ergonômico: ', role?.agentesErgonomicos || '—');
-  cursor.labelValue('Acidentes: ', role?.agentesAcidentes || '—');
+  cursor.sectionHeader('Agentes Ambientais');
+  cursor.cellRow(
+    [
+      { text: 'Tipo de Agente', width: 40, bold: true },
+      { text: 'Descrição do Agente', width: CONTENT_WIDTH - 40, bold: true },
+    ],
+    { minHeight: 5.5 }
+  );
+  const agentRows: [string, string][] = [
+    ['Físicos:', role?.agentesFisicos || '—'],
+    ['Químicos:', role?.agentesQuimicos || '—'],
+    ['Biológicos:', role?.agentesBiologicos || 'NA.'],
+    ['Ergonômico:', role?.agentesErgonomicos || '—'],
+    ['Acidentes:', role?.agentesAcidentes || '—'],
+  ];
+  for (const [label, value] of agentRows) {
+    cursor.cellRow([
+      { text: label, width: 40 },
+      { text: value, width: CONTENT_WIDTH - 40 },
+    ]);
+  }
+  cursor.gap(2);
 
-  cursor.sectionTitle('Medidas de Controle Existentes');
-  cursor.labelValue('Medidas Administrativas: ', role?.medidasAdministrativas || '—');
-  cursor.labelValue('Medidas de Engenharia: ', role?.medidasEngenharia || '—');
+  cursor.sectionHeader('Medidas de Controle Existentes');
+  cursor.textBlock('Medidas Administrativas:', role?.medidasAdministrativas || '—');
+  cursor.textBlock('Medidas de Engenharia:', role?.medidasEngenharia || '—');
+  cursor.gap(2);
 
-  cursor.sectionTitle("EPI's Mínimos");
-  cursor.paragraph(role?.episMinimos || '—');
+  cursor.sectionHeader("EPI's Mínimos");
+  cursor.textBlock('', role?.episMinimos || '—');
+  cursor.gap(2);
 
-  // Assinaturas
-  cursor.ensureSpace(30);
-  cursor.gap(4);
-  doc.setDrawColor(0, 0, 0);
-  doc.line(MARGIN, cursor.y, MARGIN + 85, cursor.y);
-  doc.line(MARGIN + 95, cursor.y, MARGIN + CONTENT_WIDTH, cursor.y);
-  cursor.gap(3.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text('Assinatura do Empregado', MARGIN, cursor.y);
-  doc.text('Responsável Setor de Segurança', MARGIN + 95, cursor.y);
-  cursor.gap(5);
-  doc.text(`Nome: ${employee.name}`, MARGIN, cursor.y);
-  cursor.gap(4);
-  doc.text(`Cargo / Função: ${employee.role}`, MARGIN, cursor.y);
-  doc.text(`Data: ${today}`, MARGIN + 95, cursor.y);
-  cursor.gap(6);
-  cursor.paragraph(
-    'Confirmo ter recebido e entendido todas as informações expostas na estrutura deste documento através de minha assinatura acima.',
-    { fontSize: 7 }
+  // ── Assinaturas ──
+  cursor.sectionHeader('Assinatura do Empregado');
+  cursor.cellRow([
+    { text: 'Nome:', width: 30, bold: true },
+    { text: employee.name, width: CONTENT_WIDTH - 30 - 55 },
+    { text: 'Data:', width: 20, bold: true },
+    { text: today, width: 35 },
+  ]);
+  cursor.cellRow([
+    { text: 'Cargo / Função:', width: 30, bold: true },
+    { text: employee.role, width: CONTENT_WIDTH - 30 },
+  ]);
+  cursor.sectionHeader('Responsável Setor de Segurança');
+  cursor.cellRow([{ text: '', width: CONTENT_WIDTH }], { minHeight: 10 });
+
+  cursor.textBlock(
+    '',
+    'Confirmo ter recebido e entendido todas as informações expostas na estrutura deste documento através de minha assinatura acima.'
   );
 }
