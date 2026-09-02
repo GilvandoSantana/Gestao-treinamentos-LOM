@@ -47,7 +47,7 @@ async function run() {
     }
     for (const folder of listing.folders) {
       const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
-      entries.push({ relativePath: childPath, isFolder: true });
+      entries.push({ relativePath: childPath, isFolder: true, folderId: folder.id });
       // Pasta restrita a um grupo que a pessoa não participa: aparece
       // (vazia), mas não desce nela — mesmo comportamento do site.
       if (folder.hasAccess === false) continue;

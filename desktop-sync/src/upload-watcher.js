@@ -17,7 +17,12 @@
 
 const fs = require("fs");
 const fsp = require("fs/promises");
-const path = require("path");
+// path.win32 explicitamente (não o "path" padrão, que muda de
+// comportamento dependendo do sistema operacional que roda o código) —
+// este programa só roda no Windows e todo caminho aqui é no formato
+// Windows (barra invertida), então força esse comportamento sempre, não
+// importa onde o código é executado.
+const path = require("path").win32;
 const { isIgnoredFileName } = require("./sync-engine");
 
 const DEBOUNCE_MS = 2000;
@@ -44,15 +49,41 @@ function decideUploadAction(localSize, knownCloudEntry) {
 }
 
 /**
+ * Decide, a partir do caminho relativo de um arquivo, qual pasta da
+ * Nuvem usar como destino do upload — ou se a pasta onde ele apareceu
+ * ainda não existe na Nuvem (caso em que não dá pra enviar ainda).
+ *
+ * Bug real encontrado (Gilvando, 01/09): a versão anterior só checava
+ * "esse arquivo está dentro de alguma subpasta?" — tratando TODA
+ * subpasta como se fosse nova, mesmo pastas que já existem há tempos
+ * (como "Público"). Agora consulta de verdade o mapa de pastas que a
+ * Nuvem confirmou que existem.
+ * @param {string} relativePath - caminho relativo do arquivo (separador do SO)
+ * @param {Map<string, string>} knownCloudFolders - caminho (com "/") -> folderId
+ * @returns {{known: true, folderId: string | null} | {known: false}}
+ */
+function resolveParentFolder(relativePath, knownCloudFolders) {
+  const parentDir = path.dirname(relativePath).split(path.sep).join("/");
+  if (parentDir === ".") {
+    return { known: true, folderId: null };
+  }
+  if (knownCloudFolders.has(parentDir)) {
+    return { known: true, folderId: knownCloudFolders.get(parentDir) };
+  }
+  return { known: false };
+}
+
+/**
  * @param {object} opts
  * @param {string} opts.folderPath
  * @param {import('./api-client').ApiClient} opts.apiClient
  * @param {() => Map<string, {fileId: string, fileSize: number}>} opts.getKnownCloudFiles
+ * @param {() => Map<string, string>} opts.getKnownCloudFolders
  * @param {(relativePath: string, fileId: string, fileSize: number) => void} opts.onUploaded
  * @param {(message: string, kind: string) => void} opts.onLog
  * @returns {() => void} função pra parar de vigiar
  */
-function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, onUploaded, onLog }) {
+function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnownCloudFolders, onUploaded, onLog }) {
   const timers = new Map();
   const uploading = new Set();
 
@@ -78,13 +109,12 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, onUploa
 
     if (decision.action === "skip") return;
 
-    const parentDir = path.dirname(relativePath);
-    const cloudParentFolderId = null; // TODO: pastas novas criadas localmente ainda não sobem sozinhas nesta etapa
+    const parentResolution = resolveParentFolder(relativePath, getKnownCloudFolders());
 
     uploading.add(relativePath);
     try {
       if (decision.action === "new") {
-        if (parentDir !== ".") {
+        if (!parentResolution.known) {
           onLog(
             `"${key}" está numa pasta nova que ainda não existe na Nuvem — por enquanto, crie a pasta pelo site antes de colocar arquivo nela.`,
             "error"
@@ -92,7 +122,7 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, onUploa
           return;
         }
         const buffer = await fsp.readFile(fullPath);
-        const result = await apiClient.uploadNewFile(cloudParentFolderId, name, buffer);
+        const result = await apiClient.uploadNewFile(parentResolution.folderId, name, buffer);
         getKnownCloudFiles().set(key, { fileId: result.id, fileSize: buffer.length });
         onUploaded(key, result.id, buffer.length);
         onLog(`Enviado "${key}" (novo no computador).`, "upload");
@@ -140,4 +170,4 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, onUploa
   };
 }
 
-module.exports = { decideUploadAction, startUploadWatcher };
+module.exports = { decideUploadAction, resolveParentFolder, startUploadWatcher };

@@ -27,6 +27,7 @@ let stopWatcher = null;
 // decidir se um arquivo que mudou é edição de verdade ou só o próprio
 // mecanismo de placeholder mexendo.
 let knownCloudFiles = new Map();
+let knownCloudFolders = new Map();
 const MANIFEST_REFRESH_INTERVAL_MS = 30_000;
 
 /** Escreve o manifesto de forma segura contra leitura no meio do
@@ -89,7 +90,7 @@ async function generateManifestEntries(apiClient) {
       // vazias) nunca aparecia no computador, porque o programa só
       // "descobria" uma pasta ao ver um arquivo dentro dela. Achado real
       // (Gilvando, 01/09): a pasta "Pública" sumia por causa disso.
-      entries.push({ relativePath: childPath, isFolder: true });
+      entries.push({ relativePath: childPath, isFolder: true, folderId: folder.id });
 
       // Pasta restrita a um grupo que a pessoa não participa: no site,
       // ela APARECE na listagem (meio apagada), só não dá pra entrar e
@@ -113,6 +114,22 @@ function buildKnownCloudFilesMap(entries) {
   for (const entry of entries) {
     if (!entry.isFolder) {
       map.set(entry.relativePath.split("\\").join("/"), { fileId: entry.fileId, fileSize: entry.fileSize });
+    }
+  }
+  return map;
+}
+
+/** Constrói o mapa relativePath -> folderId a partir das entradas de
+ * pasta do manifesto — usado pelo upload-watcher pra saber se a pasta
+ * onde um arquivo novo apareceu já existe de verdade na Nuvem (e, se
+ * existir, pra qual ID enviar), em vez de simplesmente assumir "está numa
+ * subpasta, então deve ser nova" (bug real: toda subpasta, mesmo as que
+ * já existem há tempos, caía nesse caso por engano). */
+function buildKnownCloudFoldersMap(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    if (entry.isFolder) {
+      map.set(entry.relativePath.split("\\").join("/"), entry.folderId);
     }
   }
   return map;
@@ -206,6 +223,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   const entries = await generateManifestEntries(apiClient);
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
   knownCloudFiles = buildKnownCloudFilesMap(entries);
+  knownCloudFolders = buildKnownCloudFoldersMap(entries);
 
   const manifestPath = path.join(os.tmpdir(), `gestao-nuvem-manifest-${Date.now()}.json`);
   await writeManifestAtomic(manifestPath, entries);
@@ -227,6 +245,8 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
       // um arquivo que ele mesmo acabou de enviar).
       const freshMap = buildKnownCloudFilesMap(freshEntries);
       for (const [key, value] of freshMap) knownCloudFiles.set(key, value);
+      const freshFolderMap = buildKnownCloudFoldersMap(freshEntries);
+      for (const [key, value] of freshFolderMap) knownCloudFolders.set(key, value);
     } catch (error) {
       onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
     }
@@ -236,6 +256,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
     folderPath,
     apiClient,
     getKnownCloudFiles: () => knownCloudFiles,
+    getKnownCloudFolders: () => knownCloudFolders,
     onUploaded: () => {},
     onLog,
   });
@@ -338,6 +359,7 @@ function stopPlaceholderSync() {
     stopWatcher = null;
   }
   knownCloudFiles = new Map();
+  knownCloudFolders = new Map();
   if (child) {
     child.kill();
     child = null;

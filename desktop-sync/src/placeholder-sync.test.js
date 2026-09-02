@@ -42,7 +42,7 @@ describe("generateManifestEntries", () => {
 
     const entries = await generateManifestEntries(client);
 
-    expect(entries).toContainEqual({ relativePath: "Pública", isFolder: true });
+    expect(entries).toContainEqual({ relativePath: "Pública", isFolder: true, folderId: "f1" });
   });
 
   it("marca pastas vazias em vários níveis (pasta vazia dentro de pasta vazia)", async () => {
@@ -60,8 +60,8 @@ describe("generateManifestEntries", () => {
 
     const entries = await generateManifestEntries(client);
 
-    expect(entries).toContainEqual({ relativePath: "Nivel1", isFolder: true });
-    expect(entries).toContainEqual({ relativePath: "Nivel1\\Nivel2", isFolder: true });
+    expect(entries).toContainEqual({ relativePath: "Nivel1", isFolder: true, folderId: "f1" });
+    expect(entries).toContainEqual({ relativePath: "Nivel1\\Nivel2", isFolder: true, folderId: "f2" });
   });
 
   it("mostra a pasta sem permissão (vazia), mas nunca desce nela pra ver o conteúdo", async () => {
@@ -80,7 +80,7 @@ describe("generateManifestEntries", () => {
 
     const entries = await generateManifestEntries(client);
 
-    expect(entries).toEqual([{ relativePath: "Restrita", isFolder: true }]);
+    expect(entries).toEqual([{ relativePath: "Restrita", isFolder: true, folderId: "f1" }]);
     expect(calledListFolderForRestricted).toBe(false);
   });
 });
