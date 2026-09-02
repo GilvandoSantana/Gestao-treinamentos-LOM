@@ -3,7 +3,12 @@ const path = require("path");
 const fs = require("fs/promises");
 const { ApiClient, ApiError } = require("./api-client");
 const { runSyncTick, isIgnoredFileName } = require("./sync-engine");
-const { startPlaceholderSync, stopPlaceholderSync, isPlaceholderSyncRunning } = require("./placeholder-sync");
+const {
+  startPlaceholderSync,
+  stopPlaceholderSync,
+  isPlaceholderSyncRunning,
+  resumeDeletions,
+} = require("./placeholder-sync");
 const store = require("./store");
 
 const DEFAULT_SERVER_URL = "https://gestao-treinamentos-lom.up.railway.app";
@@ -282,8 +287,13 @@ let tickRunning = false;
 async function runSyncNow() {
   // No modo placeholder, o programa auxiliar já fica rodando sozinho —
   // rodar o mecanismo antigo por cima da mesma pasta criaria conflito
-  // (um mexendo no que o outro está gerenciando).
-  if (state.syncMode === "placeholder") return;
+  // (um mexendo no que o outro está gerenciando). Ainda assim, o clique
+  // em "Sincronizar agora" serve pra confirmar e retomar exclusões
+  // pausadas pelo freio de segurança (exclusão em massa detectada).
+  if (state.syncMode === "placeholder") {
+    resumeDeletions();
+    return;
+  }
   if (tickRunning || !apiClient || !state.folderPath) return;
   tickRunning = true;
   state.isSyncing = true;

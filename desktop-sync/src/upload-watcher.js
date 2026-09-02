@@ -27,6 +27,35 @@ const { isIgnoredFileName } = require("./sync-engine");
 
 const DEBOUNCE_MS = 2000;
 
+// "Freio de emergência" contra exclusão em massa — se muita coisa for
+// apagada de uma vez num intervalo curto (por exemplo, a pessoa apaga a
+// pasta inteira sem querer, ou move ela pra outro lugar), o Windows
+// dispara um aviso de exclusão pra cada arquivo lá dentro. Sem essa
+// proteção, isso viraria uma exclusão em massa automática na Nuvem — o
+// mesmo tipo de risco do incidente de upload em massa (01/09), só que
+// pior, porque é exclusão. Passado o limite, para de apagar sozinho até
+// a pessoa confirmar clicando em "Sincronizar agora".
+const DELETE_BURST_LIMIT = 5;
+const DELETE_BURST_WINDOW_MS = 10_000;
+
+/**
+ * Decide se mais uma exclusão pode passar, ou se o freio de emergência
+ * deve travar por causa de exclusão em massa — função pura (sem estado
+ * escondido, sem tocar em disco/rede), pra dar pra testar isolado essa
+ * parte mais crítica de toda a funcionalidade de exclusão.
+ * @param {number[]} recentTimestamps - horários (Date.now()) das exclusões recentes já processadas
+ * @param {number} now - Date.now() da exclusão que está sendo avaliada agora
+ * @param {number} [limit] - quantas exclusões tolerar dentro da janela
+ * @param {number} [windowMs] - tamanho da janela de tempo, em ms
+ * @returns {{allowed: boolean, updatedTimestamps: number[]}}
+ */
+function checkDeletionBurst(recentTimestamps, now, limit = DELETE_BURST_LIMIT, windowMs = DELETE_BURST_WINDOW_MS) {
+  const withinWindow = recentTimestamps.filter((t) => now - t < windowMs);
+  withinWindow.push(now);
+  const allowed = withinWindow.length <= limit;
+  return { allowed, updatedTimestamps: withinWindow };
+}
+
 /**
  * Decide o que fazer com um arquivo local que acabou de mudar, a partir
  * do que já se sabe sobre ele na Nuvem. Função pura, sem tocar em disco
@@ -130,6 +159,74 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   const timers = new Map();
   const uploading = new Set();
   const folderCreationInFlight = new Map();
+  let recentDeletionTimestamps = [];
+  let deletionsPaused = false;
+
+  function canProcessDeletion() {
+    if (deletionsPaused) return false;
+    const { allowed, updatedTimestamps } = checkDeletionBurst(recentDeletionTimestamps, Date.now());
+    recentDeletionTimestamps = updatedTimestamps;
+    if (!allowed) {
+      deletionsPaused = true;
+      onLog(
+        `Muitas exclusões de uma vez (mais de ${DELETE_BURST_LIMIT} em ${DELETE_BURST_WINDOW_MS / 1000}s) — ` +
+          'parei de apagar da Nuvem automaticamente, por segurança. Clique em "Sincronizar agora" ' +
+          "pra confirmar e continuar apagando o restante.",
+        "error"
+      );
+      return false;
+    }
+    return true;
+  }
+
+  function resumeDeletions() {
+    if (deletionsPaused) {
+      deletionsPaused = false;
+      recentDeletionTimestamps = [];
+      onLog("Exclusões automáticas retomadas.", "info");
+    }
+  }
+
+  async function handleDeletion(relativePath) {
+    const key = relativePath.split(path.sep).join("/");
+
+    const knownFile = getKnownCloudFiles().get(key);
+    if (knownFile) {
+      if (!canProcessDeletion()) return;
+      try {
+        await apiClient.deleteFile(knownFile.fileId);
+        getKnownCloudFiles().delete(key);
+        onLog(`"${key}" apagado — movido pra lixeira da Nuvem (dá pra recuperar pelo site).`, "upload");
+      } catch (error) {
+        onLog(`Erro ao apagar "${key}" da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+      }
+      return;
+    }
+
+    const knownFolderId = getKnownCloudFolders().get(key);
+    if (knownFolderId) {
+      if (!canProcessDeletion()) return;
+      try {
+        await apiClient.deleteFolder(knownFolderId);
+        getKnownCloudFolders().delete(key);
+        // Remove também qualquer arquivo/pasta que a gente sabia que
+        // vivia dentro dela — o servidor já apaga tudo em cascata, isso
+        // aqui é só pra não achar que ainda existem localmente.
+        for (const filePath of Array.from(getKnownCloudFiles().keys())) {
+          if (filePath.startsWith(`${key}/`)) getKnownCloudFiles().delete(filePath);
+        }
+        for (const folderPath of Array.from(getKnownCloudFolders().keys())) {
+          if (folderPath.startsWith(`${key}/`)) getKnownCloudFolders().delete(folderPath);
+        }
+        onLog(`Pasta "${key}" apagada — movida pra lixeira da Nuvem (dá pra recuperar pelo site).`, "upload");
+      } catch (error) {
+        onLog(`Erro ao apagar a pasta "${key}" da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+      }
+    }
+    // Se não é nenhum dos dois (não era um arquivo/pasta que a gente
+    // conhecia — por exemplo, algo criado e apagado rápido demais pro
+    // upload nem ter acontecido ainda), não tem nada a fazer.
+  }
 
   async function handleChange(relativePath) {
     const name = path.basename(relativePath);
@@ -141,8 +238,10 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     try {
       stat = await fsp.stat(fullPath);
     } catch {
-      // Arquivo foi apagado ou não existe mais — não sincroniza exclusão,
-      // de propósito (evita perda de dado por engano), então não faz nada.
+      // Não existe mais no disco — a pessoa apagou (ou moveu) de
+      // verdade. Reflete isso na Nuvem também (protegido pelo freio de
+      // exclusão em massa acima).
+      await handleDeletion(relativePath);
       return;
     }
 
@@ -227,14 +326,17 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     });
   } catch (error) {
     onLog(`Não foi possível vigiar a pasta por mudanças: ${error?.message || "erro desconhecido"}`, "error");
-    return () => {};
+    return { stop: () => {}, resumeDeletions: () => {} };
   }
 
-  return () => {
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
-    watcher.close();
+  return {
+    stop: () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      watcher.close();
+    },
+    resumeDeletions,
   };
 }
 
-module.exports = { decideUploadAction, ensureCloudFolder, performUpload, startUploadWatcher };
+module.exports = { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst, startUploadWatcher };

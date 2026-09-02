@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideUploadAction, ensureCloudFolder, performUpload } from "./upload-watcher.js";
+import { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst } from "./upload-watcher.js";
 
 describe("decideUploadAction", () => {
   it("arquivo sem nenhum registro na Nuvem → novo, deve subir", () => {
@@ -145,5 +145,51 @@ describe("performUpload", () => {
       { fileId: "id-existente-456", buffer: Buffer.from("conteudo editado"), name: "bora.txt" },
     ]);
     expect(result).toEqual({ fileId: "id-existente-456" });
+  });
+});
+
+describe("checkDeletionBurst", () => {
+  // Freio de emergência contra exclusão em massa (ex: a pessoa apaga a
+  // pasta inteira sem querer, ou move ela pra outro lugar sem perceber
+  // que isso conta como "apagar tudo" pro vigia de arquivos). Sem essa
+  // proteção, isso viraria uma exclusão em massa automática na Nuvem —
+  // o mesmo tipo de risco do incidente de upload em massa (01/09), só
+  // que mais grave, porque é exclusão.
+
+  it("poucas exclusões dentro do limite → todas permitidas", () => {
+    let timestamps = [];
+    const now = 1000;
+    for (let i = 0; i < 5; i++) {
+      const result = checkDeletionBurst(timestamps, now + i, 5, 10_000);
+      expect(result.allowed).toBe(true);
+      timestamps = result.updatedTimestamps;
+    }
+  });
+
+  it("a exclusão que ultrapassa o limite dentro da janela é bloqueada", () => {
+    let timestamps = [];
+    const now = 1000;
+    // As primeiras 5 (limite) devem passar.
+    for (let i = 0; i < 5; i++) {
+      const result = checkDeletionBurst(timestamps, now + i, 5, 10_000);
+      timestamps = result.updatedTimestamps;
+    }
+    // A 6ª, ainda dentro da janela de tempo, deve ser bloqueada.
+    const sixth = checkDeletionBurst(timestamps, now + 5, 5, 10_000);
+    expect(sixth.allowed).toBe(false);
+  });
+
+  it("exclusões antigas (fora da janela de tempo) não contam mais pro limite", () => {
+    let timestamps = [];
+    const windowMs = 10_000;
+    // 5 exclusões bem no início.
+    for (let i = 0; i < 5; i++) {
+      const result = checkDeletionBurst(timestamps, i, 5, windowMs);
+      timestamps = result.updatedTimestamps;
+    }
+    // Muito tempo depois (passou da janela) — não deveria contar as
+    // antigas, então esta ainda é permitida.
+    const later = checkDeletionBurst(timestamps, windowMs + 100_000, 5, windowMs);
+    expect(later.allowed).toBe(true);
   });
 });

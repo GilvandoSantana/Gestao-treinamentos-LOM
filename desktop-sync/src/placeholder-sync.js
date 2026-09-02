@@ -20,7 +20,7 @@ const { startUploadWatcher } = require("./upload-watcher");
 
 let child = null;
 let refreshTimer = null;
-let stopWatcher = null;
+let uploadWatcherHandle = null;
 // Mapa relativePath -> {fileId, fileSize} do que já se sabe sobre a
 // Nuvem — atualizado a cada ciclo de atualização (30s) E logo depois de
 // qualquer envio bem-sucedido, e consultado pelo upload-watcher pra
@@ -239,20 +239,65 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
     try {
       const freshEntries = await generateManifestEntries(apiClient);
       await writeManifestAtomic(manifestPath, freshEntries);
+
+      const freshMap = buildKnownCloudFilesMap(freshEntries);
+      const freshFolderMap = buildKnownCloudFoldersMap(freshEntries);
+
+      // Descobre o que sumiu da Nuvem desde a última vez (alguém apagou,
+      // aqui ou em outro computador) — pra também apagar localmente.
+      // Freio de segurança: se sumiu gente demais de uma vez só, é mais
+      // provável ser uma instabilidade temporária (rede, permissão) do
+      // que uma exclusão de verdade — não arrisca apagar nada local
+      // nesse caso, só avisa (a lista se corrige sozinha no próximo
+      // ciclo, se for só uma falha passageira).
+      const removedFiles = Array.from(knownCloudFiles.keys()).filter((k) => !freshMap.has(k));
+      const removedFolders = Array.from(knownCloudFolders.keys()).filter((k) => !freshFolderMap.has(k));
+      const totalRemoved = removedFiles.length + removedFolders.length;
+      const totalBefore = knownCloudFiles.size + knownCloudFolders.size;
+
+      if (totalRemoved > 0) {
+        const suspicious = totalBefore > 0 && totalRemoved > Math.max(10, totalBefore * 0.5);
+        if (suspicious) {
+          onLog(
+            `A Nuvem mostrou ${totalRemoved} item(ns) a menos de uma vez só — pode ser instabilidade ` +
+              "temporária, não apaguei nada localmente por segurança.",
+            "error"
+          );
+        } else {
+          for (const key of removedFiles) {
+            try {
+              await fs.unlink(path.join(folderPath, key.split("/").join(path.sep)));
+              onLog(`"${key}" apagado localmente (removido da Nuvem).`, "download");
+            } catch {
+              // Já não existia local (talvez a própria pessoa também
+              // tenha apagado aqui) — tudo bem.
+            }
+            knownCloudFiles.delete(key);
+          }
+          for (const key of removedFolders) {
+            try {
+              await fs.rm(path.join(folderPath, key.split("/").join(path.sep)), { recursive: true, force: true });
+              onLog(`Pasta "${key}" apagada localmente (removida da Nuvem).`, "download");
+            } catch {
+              // Idem.
+            }
+            knownCloudFolders.delete(key);
+          }
+        }
+      }
+
       // Atualiza o conhecimento sobre a Nuvem sem apagar registros de
       // arquivo que acabaram de subir por upload e ainda não voltaram
       // nesta busca (evita uma corrida rara onde o upload-watcher "esquece"
       // um arquivo que ele mesmo acabou de enviar).
-      const freshMap = buildKnownCloudFilesMap(freshEntries);
       for (const [key, value] of freshMap) knownCloudFiles.set(key, value);
-      const freshFolderMap = buildKnownCloudFoldersMap(freshEntries);
       for (const [key, value] of freshFolderMap) knownCloudFolders.set(key, value);
     } catch (error) {
       onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
     }
   }, MANIFEST_REFRESH_INTERVAL_MS);
 
-  stopWatcher = startUploadWatcher({
+  uploadWatcherHandle = startUploadWatcher({
     folderPath,
     apiClient,
     getKnownCloudFiles: () => knownCloudFiles,
@@ -326,9 +371,9 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
-      if (stopWatcher) {
-        stopWatcher();
-        stopWatcher = null;
+      if (uploadWatcherHandle) {
+        uploadWatcherHandle.stop();
+        uploadWatcherHandle = null;
       }
       if (!settled) {
         settled = true;
@@ -354,9 +399,9 @@ function stopPlaceholderSync() {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
-  if (stopWatcher) {
-    stopWatcher();
-    stopWatcher = null;
+  if (uploadWatcherHandle) {
+    uploadWatcherHandle.stop();
+    uploadWatcherHandle = null;
   }
   knownCloudFiles = new Map();
   knownCloudFolders = new Map();
@@ -370,10 +415,19 @@ function isPlaceholderSyncRunning() {
   return child !== null;
 }
 
+/** Retoma exclusões automáticas depois que o "freio de emergência" pausou
+ * por causa de exclusão em massa — chamado quando a pessoa clica em
+ * "Sincronizar agora", como uma confirmação explícita de que quer
+ * continuar. */
+function resumeDeletions() {
+  if (uploadWatcherHandle) uploadWatcherHandle.resumeDeletions();
+}
+
 module.exports = {
   generateManifestEntries,
   startPlaceholderSync,
   stopPlaceholderSync,
   isPlaceholderSyncRunning,
+  resumeDeletions,
   findExistingExe,
 };

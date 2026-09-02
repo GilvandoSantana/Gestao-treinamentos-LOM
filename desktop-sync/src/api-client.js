@@ -145,6 +145,30 @@ class ApiClient {
     return { id: data.id };
   }
 
+  /** Move um arquivo pra lixeira da Nuvem (não apaga de vez — dá pra
+   * recuperar depois pela tela do site). */
+  async deleteFile(fileId) {
+    const url = new URL("/api/trpc/cloud.deleteFile?batch=1", this.serverUrl).toString();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._authHeaders() },
+      body: JSON.stringify({ "0": { json: { id: fileId } } }),
+    });
+    await parseTrpcResponse(res);
+  }
+
+  /** Move uma pasta (e tudo dentro dela) pra lixeira da Nuvem — mesma
+   * garantia de recuperação do deleteFile. */
+  async deleteFolder(folderId) {
+    const url = new URL("/api/trpc/cloud.deleteFolder?batch=1", this.serverUrl).toString();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...this._authHeaders() },
+      body: JSON.stringify({ "0": { json: { id: folderId } } }),
+    });
+    await parseTrpcResponse(res);
+  }
+
   /** Envia um arquivo novo (que só existe localmente) pra Nuvem. */
   async uploadNewFile(folderId, name, buffer, mimeType) {
     const url = new URL("/api/trpc/cloud.upload?batch=1", this.serverUrl).toString();
