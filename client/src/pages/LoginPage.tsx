@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Shield, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { setSessionMarker } from '@/lib/session-marker';
 
@@ -76,8 +76,8 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
 
         <div className="bg-card rounded-2xl shadow-2xl p-7">
           <div className="flex flex-col items-center text-center mb-7">
-            <div className="bg-orange p-3 rounded-2xl shadow-lg mb-4">
-              <Shield size={30} className="text-white" />
+            <div className="w-[54px] h-[54px] rounded-2xl shadow-lg mb-4 overflow-hidden">
+              <img src="/gescon-logo.svg" alt="GesCon" className="w-full h-full object-contain" />
             </div>
             <h1 className="font-display font-bold text-2xl tracking-tight text-foreground">
               GesCon

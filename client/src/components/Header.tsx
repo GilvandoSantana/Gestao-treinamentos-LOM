@@ -14,7 +14,6 @@ import {
   Upload,
   RefreshCw,
   UserCog,
-  Shield,
   FileText,
   LayoutGrid,
   Rows3,
@@ -200,11 +199,11 @@ export default function Header({
           {/* Identificação */}
           <div className="flex items-center gap-3 min-w-0">
             <div
-              className={`bg-orange rounded-xl shadow-lg shrink-0 transition-all duration-300 ${
-                scrolled ? 'p-1.5 md:p-2.5' : 'p-2 md:p-2.5'
+              className={`rounded-xl shadow-lg shrink-0 transition-all duration-300 overflow-hidden ${
+                scrolled ? 'w-8 h-8 md:w-11 md:h-11' : 'w-9 h-9 md:w-11 md:h-11'
               }`}
             >
-              <Shield size={scrolled ? 20 : 24} className="text-white transition-all duration-300" />
+              <img src="/gescon-logo.svg" alt="GesCon" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
               <div
