@@ -297,7 +297,7 @@ async function syncFolderTree(
     return;
   }
 
-  const cloudFolders = listing.folders.filter((f) => f.hasAccess !== false);
+  const cloudFolders = listing.folders;
 
   await syncFilesInFolder(
     localDirPath,
@@ -324,6 +324,19 @@ async function syncFolderTree(
   for (const folder of cloudFolders) {
     const childLocalPath = path.join(localDirPath, folder.name);
     const childRelative = relativePrefix ? `${relativePrefix}/${folder.name}` : folder.name;
+
+    if (folder.hasAccess === false) {
+      // Mesmo comportamento do site: a pasta restrita a um grupo que a
+      // pessoa não participa APARECE na listagem, só não dá pra entrar e
+      // ver o conteúdo. Cria a pasta vazia, mas nunca desce nela.
+      try {
+        await fs.mkdir(childLocalPath, { recursive: true });
+      } catch (error) {
+        addLog(`Erro ao criar a pasta "${childRelative}": ${error instanceof Error ? error.message : "erro"}`, "error");
+      }
+      continue;
+    }
+
     await syncFolderTree(
       childLocalPath,
       folder.id,

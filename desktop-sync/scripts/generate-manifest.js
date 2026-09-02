@@ -46,9 +46,11 @@ async function run() {
       });
     }
     for (const folder of listing.folders) {
-      if (folder.hasAccess === false) continue;
       const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
       entries.push({ relativePath: childPath, isFolder: true });
+      // Pasta restrita a um grupo que a pessoa não participa: aparece
+      // (vazia), mas não desce nela — mesmo comportamento do site.
+      if (folder.hasAccess === false) continue;
       await walk(folder.id, childPath);
     }
   }

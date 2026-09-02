@@ -205,7 +205,9 @@ describe("sync-engine (desktop) — subpastas recursivas", () => {
     expect(content).toBe("bem no fundo");
   });
 
-  it("ignora pasta sem permissão de acesso (hasAccess: false)", async () => {
+  it("mostra a pasta sem permissão (vazia), mas nunca desce nela pra ver o conteúdo", async () => {
+    // Mesmo comportamento do site: a pasta APARECE na listagem (lá, meio
+    // apagada visualmente), só não dá pra entrar e ver o que tem dentro.
     const cloud = makeFakeCloud();
     const restrita = await cloud.createRemoteFolder(null, "Restrita");
     cloud._tree.get("root").folders.find((f) => f.id === restrita.id).hasAccess = false;
@@ -213,11 +215,11 @@ describe("sync-engine (desktop) — subpastas recursivas", () => {
 
     await runSyncTick(tmpDir, new Map(), cloud);
 
-    const existe = await fs
-      .stat(path.join(tmpDir, "Restrita"))
-      .then(() => true)
-      .catch(() => false);
-    expect(existe).toBe(false);
+    const stat = await fs.stat(path.join(tmpDir, "Restrita"));
+    expect(stat.isDirectory()).toBe(true);
+
+    const dentro = await fs.readdir(path.join(tmpDir, "Restrita"));
+    expect(dentro).toEqual([]);
   });
 
   it("mantém arquivos com o mesmo nome em pastas diferentes sem confundir um com o outro", async () => {

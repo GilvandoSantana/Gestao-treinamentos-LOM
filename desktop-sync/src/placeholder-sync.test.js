@@ -64,16 +64,23 @@ describe("generateManifestEntries", () => {
     expect(entries).toContainEqual({ relativePath: "Nivel1\\Nivel2", isFolder: true });
   });
 
-  it("ignora pasta sem permissão de acesso (hasAccess: false)", async () => {
-    const client = makeFakeApiClient({
-      root: {
-        folders: [{ id: "f1", name: "Restrita", hasAccess: false }],
-        files: [],
+  it("mostra a pasta sem permissão (vazia), mas nunca desce nela pra ver o conteúdo", async () => {
+    // Mesmo comportamento do site: a pasta APARECE na listagem (lá, meio
+    // apagada visualmente), só não dá pra entrar e ver o que tem dentro.
+    let calledListFolderForRestricted = false;
+    const client = {
+      listFolder: async (folderId) => {
+        if (folderId === "f1") calledListFolderForRestricted = true;
+        if (!folderId) {
+          return { folders: [{ id: "f1", name: "Restrita", hasAccess: false }], files: [] };
+        }
+        return { folders: [], files: [{ id: "nao-deveria-aparecer", name: "secreto.txt", fileSize: 1 }] };
       },
-    });
+    };
 
     const entries = await generateManifestEntries(client);
 
-    expect(entries).toEqual([]);
+    expect(entries).toEqual([{ relativePath: "Restrita", isFolder: true }]);
+    expect(calledListFolderForRestricted).toBe(false);
   });
 });

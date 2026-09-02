@@ -63,7 +63,6 @@ async function generateManifestEntries(apiClient) {
       });
     }
     for (const folder of listing.folders) {
-      if (folder.hasAccess === false) continue;
       const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
       // Marca a pasta em si (mesmo sem nenhum arquivo direto dentro dela)
       // — sem isso, uma pasta vazia (ou uma pasta cheia de OUTRAS pastas
@@ -71,6 +70,12 @@ async function generateManifestEntries(apiClient) {
       // "descobria" uma pasta ao ver um arquivo dentro dela. Achado real
       // (Gilvando, 01/09): a pasta "Pública" sumia por causa disso.
       entries.push({ relativePath: childPath, isFolder: true });
+
+      // Pasta restrita a um grupo que a pessoa não participa: no site,
+      // ela APARECE na listagem (meio apagada), só não dá pra entrar e
+      // ver o que tem dentro. Replica isso aqui — cria a pasta vazia,
+      // mas nunca desce nela pra buscar o conteúdo.
+      if (folder.hasAccess === false) continue;
       await walk(folder.id, childPath);
     }
   }
