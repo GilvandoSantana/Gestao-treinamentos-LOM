@@ -6,20 +6,27 @@
  * os placeholders — o próprio CloudFilterHost.exe busca o conteúdo de
  * verdade na Nuvem quando o Windows avisa que alguém abriu um arquivo.
  *
- * Só cobre o lado de DOWNLOAD (arquivo aparece, baixa quando abre). O
- * lado de ENVIAR edições de volta pra Nuvem ainda usa o mecanismo antigo
- * (sync-engine.js, baseado em conferir data de modificação) — são duas
- * responsabilidades diferentes, integradas em etapas separadas de
- * propósito.
+ * Cobre os dois lados agora: DOWNLOAD (arquivo aparece, baixa quando
+ * abre — CloudFilterHost.exe) e ENVIAR (criar/editar arquivo direto na
+ * pasta sobe sozinho — upload-watcher.js, vigiando mudança de arquivo em
+ * vez de checar data de modificação periodicamente).
  */
 
 const { spawn } = require("child_process");
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
+const { startUploadWatcher } = require("./upload-watcher");
 
 let child = null;
 let refreshTimer = null;
+let stopWatcher = null;
+// Mapa relativePath -> {fileId, fileSize} do que já se sabe sobre a
+// Nuvem — atualizado a cada ciclo de atualização (30s) E logo depois de
+// qualquer envio bem-sucedido, e consultado pelo upload-watcher pra
+// decidir se um arquivo que mudou é edição de verdade ou só o próprio
+// mecanismo de placeholder mexendo.
+let knownCloudFiles = new Map();
 const MANIFEST_REFRESH_INTERVAL_MS = 30_000;
 
 /** Escreve o manifesto de forma segura contra leitura no meio do
@@ -95,6 +102,20 @@ async function generateManifestEntries(apiClient) {
 
   await walk(null, "");
   return entries;
+}
+
+/** Constrói o mapa relativePath -> {fileId, fileSize} a partir das
+ * entradas do manifesto (só os arquivos, pastas não têm fileId) — usado
+ * pelo upload-watcher pra saber se um arquivo que mudou é edição de
+ * verdade ou só o próprio mecanismo de placeholder mexendo. */
+function buildKnownCloudFilesMap(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    if (!entry.isFolder) {
+      map.set(entry.relativePath.split("\\").join("/"), { fileId: entry.fileId, fileSize: entry.fileSize });
+    }
+  }
+  return map;
 }
 
 /** Acha o CloudFilterHost.exe — tanto rodando em desenvolvimento (várias
@@ -184,6 +205,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
   const entries = await generateManifestEntries(apiClient);
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
+  knownCloudFiles = buildKnownCloudFilesMap(entries);
 
   const manifestPath = path.join(os.tmpdir(), `gestao-nuvem-manifest-${Date.now()}.json`);
   await writeManifestAtomic(manifestPath, entries);
@@ -199,10 +221,24 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
     try {
       const freshEntries = await generateManifestEntries(apiClient);
       await writeManifestAtomic(manifestPath, freshEntries);
+      // Atualiza o conhecimento sobre a Nuvem sem apagar registros de
+      // arquivo que acabaram de subir por upload e ainda não voltaram
+      // nesta busca (evita uma corrida rara onde o upload-watcher "esquece"
+      // um arquivo que ele mesmo acabou de enviar).
+      const freshMap = buildKnownCloudFilesMap(freshEntries);
+      for (const [key, value] of freshMap) knownCloudFiles.set(key, value);
     } catch (error) {
       onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
     }
   }, MANIFEST_REFRESH_INTERVAL_MS);
+
+  stopWatcher = startUploadWatcher({
+    folderPath,
+    apiClient,
+    getKnownCloudFiles: () => knownCloudFiles,
+    onUploaded: () => {},
+    onLog,
+  });
 
   return new Promise((resolve) => {
     child = spawn(exePath, ["sync-tree", folderPath, manifestPath, serverUrl, token], {
@@ -269,6 +305,10 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
+      if (stopWatcher) {
+        stopWatcher();
+        stopWatcher = null;
+      }
       if (!settled) {
         settled = true;
         resolve(false);
@@ -293,6 +333,11 @@ function stopPlaceholderSync() {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
+  if (stopWatcher) {
+    stopWatcher();
+    stopWatcher = null;
+  }
+  knownCloudFiles = new Map();
   if (child) {
     child.kill();
     child = null;
