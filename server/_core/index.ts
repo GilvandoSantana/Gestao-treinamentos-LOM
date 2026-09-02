@@ -10,8 +10,11 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
-import { hasValidSiteSession } from "../site-auth";
+import { hasValidSiteSession, getSiteSession } from "../site-auth";
 import { csrfProtection } from "./csrf";
+import { uploadToR2, deleteFromR2, isR2Configured } from "../r2-storage";
+import { getCurrentInstaller, setCurrentInstaller } from "../db-desktop-installer";
+import { v4 as uuidv4 } from "uuid";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -184,7 +187,56 @@ async function startServer() {
       res.status(500).json({ error: error.message });
     }
   });
-  
+
+  // Upload do instalador do programa de sincronização com a Nuvem
+  // (Windows) — fora do tRPC de propósito: o arquivo passa de 80MB, e o
+  // limite de corpo JSON do servidor é 50MB (base64 ainda infla ~33% a
+  // mais). Corpo bruto (application/octet-stream), sem base64, com limite
+  // bem maior só nesta rota. Só o administrador principal pode enviar.
+  app.post(
+    "/api/desktop-installer/upload",
+    csrfProtection,
+    express.raw({ limit: "150mb", type: "application/octet-stream" }),
+    async (req, res) => {
+      const session = await getSiteSession(req);
+      if (!session.isSiteAdmin || session.role !== "admin") {
+        return res.status(403).json({ error: "Apenas o administrador principal pode enviar o instalador." });
+      }
+
+      const version = typeof req.query.version === "string" ? req.query.version.trim() : "";
+      const fileName = typeof req.query.fileName === "string" ? req.query.fileName.trim() : "";
+      if (!version || !fileName) {
+        return res.status(400).json({ error: "Informe a versão e o nome do arquivo." });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({ error: "Arquivo vazio ou não recebido." });
+      }
+      if (!isR2Configured) {
+        return res.status(400).json({ error: "Armazenamento em nuvem (R2) não configurado no servidor." });
+      }
+
+      try {
+        const previous = await getCurrentInstaller();
+        const r2Key = `_system/desktop-installer/${uuidv4()}-${fileName}`;
+        await uploadToR2(r2Key, req.body, "application/x-msdownload");
+        await setCurrentInstaller({
+          r2Key,
+          fileName,
+          version,
+          fileSize: req.body.length,
+          uploadedBy: session.username ?? "desconhecido",
+        });
+        if (previous) {
+          await deleteFromR2(previous.r2Key);
+        }
+        return res.status(200).json({ success: true, version, fileSize: req.body.length });
+      } catch (error) {
+        console.error("[DesktopInstaller] Erro ao enviar:", error);
+        return res.status(500).json({ error: "Falha ao enviar o instalador." });
+      }
+    }
+  );
+
   // tRPC API
   app.use(
     "/api/trpc",

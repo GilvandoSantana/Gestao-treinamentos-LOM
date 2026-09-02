@@ -676,3 +676,23 @@ export const osRoleConfig = mysqlTable("osRoleConfig", {
 
 export type OsRoleConfigRow = typeof osRoleConfig.$inferSelect;
 export type InsertOsRoleConfigRow = typeof osRoleConfig.$inferInsert;
+
+/**
+ * Guarda os metadados do instalador atual do programa de sincronização
+ * com a Nuvem (Windows) — o arquivo em si fica no R2, aqui só fica o
+ * "endereço" dele (r2Key) e informação pra mostrar na tela (versão,
+ * tamanho, quando foi enviado). Só existe uma linha por vez — enviar uma
+ * versão nova substitui a anterior (a antiga é removida do R2 junto).
+ */
+export const desktopInstaller = mysqlTable("desktopInstaller", {
+  id: int("id").autoincrement().primaryKey(),
+  r2Key: varchar("r2Key", { length: 255 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  version: varchar("version", { length: 50 }).notNull(),
+  fileSize: bigint("fileSize", { mode: "number" }).notNull(),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  uploadedBy: varchar("uploadedBy", { length: 255 }).notNull(),
+});
+
+export type DesktopInstallerRow = typeof desktopInstaller.$inferSelect;
+export type InsertDesktopInstallerRow = typeof desktopInstaller.$inferInsert;

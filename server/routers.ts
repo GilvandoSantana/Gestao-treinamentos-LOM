@@ -14,6 +14,7 @@ import { emailHistoryRouter } from "./routers/email-history";
 import { certificatesRouter } from "./routers/certificates";
 import { epiConfigRouter } from "./routers/epi-config";
 import { osConfigRouter } from "./routers/os-config";
+import { desktopInstallerRouter } from "./routers/desktop-installer";
 
 export const appRouter = router({
   system: systemRouter,
@@ -54,6 +55,10 @@ export const appRouter = router({
   // define, por função, os textos que preenchem a OS de quem exerce
   // aquela função.
   osConfig: osConfigRouter,
+
+  // Instalador do programa de sincronização com a Nuvem (Windows) —
+  // disponível pra download direto no site, dentro da aba da Nuvem.
+  desktopInstaller: desktopInstallerRouter,
 });
 
 export type AppRouter = typeof appRouter;

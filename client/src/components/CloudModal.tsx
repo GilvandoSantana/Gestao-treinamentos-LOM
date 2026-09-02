@@ -25,6 +25,7 @@ import { formatBytes } from '@shared/cloud';
 import CloudBrowser from '@/components/CloudBrowser';
 import CloudFlatList from '@/components/CloudFlatList';
 import CloudGroupsPanel from '@/components/CloudGroupsPanel';
+import DesktopInstallerPanel from '@/components/DesktopInstallerPanel';
 
 interface CloudModalProps {
   isOpen: boolean;
@@ -195,6 +196,8 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
               </div>
             </div>
           )}
+
+          <DesktopInstallerPanel isMasterAdmin={isMasterAdmin} />
         </div>
 
         {/* Conteúdo */}
