@@ -20,6 +20,34 @@ const os = require("os");
 
 let child = null;
 
+/** Roda um comando do CloudFilterHost.exe e espera terminar (pro comando
+ * "register", que precisa rodar e concluir ANTES de conectar — diferente
+ * do "sync-tree", que fica rodando pra sempre). */
+function runOneShotCommand(exePath, args, diagLog) {
+  return new Promise((resolve) => {
+    diagLog(`Executando: ${exePath} ${args.map((a) => `"${a}"`).join(" ")}`);
+    const proc = spawn(exePath, args, { windowsHide: true });
+    let output = "";
+    proc.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+    proc.stderr.on("data", (data) => {
+      output += data.toString();
+    });
+    proc.on("error", (err) => {
+      diagLog(`Falha ao executar: ${err.message}`);
+      resolve({ success: false, output: err.message });
+    });
+    proc.on("exit", (code) => {
+      for (const line of output.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed) diagLog(`(registro) ${trimmed}`);
+      }
+      resolve({ success: code === 0, output });
+    });
+  });
+}
+
 /** Percorre a Nuvem inteira (todas as subpastas) e monta a lista no mesmo
  * formato que o CloudFilterHost.exe espera no manifesto. */
 async function generateManifestEntries(apiClient) {
@@ -93,7 +121,7 @@ async function findExistingExe(onLog) {
  * @param {import('./api-client').ApiClient} opts.apiClient
  * @param {(message: string, kind: string) => void} opts.onLog
  */
-async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, onLog }) {
+async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, contractName, onLog }) {
   // Sempre manda pro terminal (visível rodando "npm start") E pro log da
   // tela — dobrado de propósito, porque descobrir "por que o modo novo
   // não ativou" só pelo log da tela às vezes corta informação.
@@ -111,6 +139,23 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, o
   }
   diagLog(`Usando: ${exePath}`);
   onLog(`Programa auxiliar encontrado: ${exePath}`, "info");
+
+  // Passo que faltava (achado depois de investigar o erro 0x80070186 num
+  // teste real, 01/09): CfConnectSyncRoot EXIGE que a pasta já esteja
+  // registrada como unidade de sincronização antes de conectar — nos
+  // testes manuais isso sempre rodava primeiro (comando "register"
+  // separado), mas o programa Electron nunca fazia esse passo sozinho.
+  onLog("Registrando a pasta como unidade de sincronização...", "info");
+  const displayName = contractName || "Gestão de Controle dos Contratos";
+  const registerResult = await runOneShotCommand(exePath, ["register", folderPath, displayName], diagLog);
+  if (!registerResult.success) {
+    onLog(
+      `Não foi possível registrar a pasta (${registerResult.output.trim() || "erro desconhecido"}) — ` +
+        "a sincronização vai continuar no modo antigo (baixa tudo de uma vez).",
+      "error"
+    );
+    return false;
+  }
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
   const entries = await generateManifestEntries(apiClient);

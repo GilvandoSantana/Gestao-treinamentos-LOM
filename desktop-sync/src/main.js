@@ -230,6 +230,7 @@ async function startSync() {
     serverUrl: apiClient.serverUrl,
     token: apiClient.token,
     apiClient,
+    contractName: state.contractName,
     onLog: (message, kind) => {
       pushLog([{ id: `ph-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
       broadcastStatus();
