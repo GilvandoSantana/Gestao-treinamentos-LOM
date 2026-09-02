@@ -207,6 +207,15 @@ export default function Header({
               <Shield size={scrolled ? 20 : 24} className="text-white transition-all duration-300" />
             </div>
             <div className="min-w-0">
+              <div
+                className={`overflow-hidden transition-all duration-300 ${
+                  scrolled ? 'max-h-0 opacity-0' : 'max-h-5 opacity-100'
+                }`}
+              >
+                <span className="font-technical text-[11px] uppercase tracking-wider text-orange-light">
+                  GesCon
+                </span>
+              </div>
               <h1
                 className={`font-display font-bold text-white tracking-tight leading-tight transition-all duration-300 ${
                   scrolled ? 'text-lg md:text-2xl' : 'text-xl md:text-3xl'

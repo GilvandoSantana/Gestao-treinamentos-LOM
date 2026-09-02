@@ -80,8 +80,11 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               <Shield size={30} className="text-white" />
             </div>
             <h1 className="font-display font-bold text-2xl tracking-tight text-foreground">
-              Gestão de Controle dos Contratos
+              GesCon
             </h1>
+            <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">
+              Gestão de Contratos
+            </p>
             <p className="text-muted-foreground text-sm mt-1.5">
               Entre para acessar os registros
             </p>
