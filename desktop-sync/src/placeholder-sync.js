@@ -17,6 +17,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
 const { startUploadWatcher } = require("./upload-watcher");
+const { ApiError } = require("./api-client");
 
 let child = null;
 let refreshTimer = null;
@@ -183,7 +184,7 @@ async function findExistingExe(onLog) {
  * @param {import('./api-client').ApiClient} opts.apiClient
  * @param {(message: string, kind: string) => void} opts.onLog
  */
-async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, contractName, onLog }) {
+async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, contractName, onLog, onAuthError }) {
   // Sempre manda pro terminal (visível rodando "npm start") E pro log da
   // tela — dobrado de propósito, porque descobrir "por que o modo novo
   // não ativou" só pelo log da tela às vezes corta informação.
@@ -293,6 +294,15 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
       for (const [key, value] of freshMap) knownCloudFiles.set(key, value);
       for (const [key, value] of freshFolderMap) knownCloudFolders.set(key, value);
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        // Token de 30 dias expirou (ou foi revogado) — sem isso, o
+        // programa ficaria tentando de novo a cada 30s pra sempre, sem
+        // nunca avisar a pessoa que precisa entrar de novo. Para tudo e
+        // avisa o processo principal, que reabre a tela de login.
+        onLog("Sessão expirada — é preciso entrar de novo.", "error");
+        if (onAuthError) onAuthError();
+        return;
+      }
       onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
     }
   }, MANIFEST_REFRESH_INTERVAL_MS);

@@ -67,6 +67,15 @@ app.on("window-all-closed", (event) => {
   event?.preventDefault?.();
 });
 
+// Sem isso, fechar o programa pelo "Sair" do menu da bandeja não avisava
+// o CloudFilterHost.exe pra encerrar — ele podia continuar rodando
+// escondido em segundo plano mesmo depois do ícone da bandeja sumir,
+// e a próxima vez que o programa abrisse tentaria conectar de novo na
+// mesma pasta enquanto a instância antiga ainda estivesse lá.
+app.on("before-quit", () => {
+  stopSync();
+});
+
 async function init() {
   app.setLoginItemSettings({ openAtLogin: true });
   createTray();
@@ -262,6 +271,14 @@ async function startSync() {
     onLog: (message, kind) => {
       pushLog([{ id: `ph-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
       broadcastStatus();
+    },
+    onAuthError: () => {
+      stopSync();
+      apiClient = null;
+      store.clearToken();
+      state.lastError = "Sessão expirada. Entre novamente.";
+      broadcastStatus();
+      openLoginWindow();
     },
   }).catch((error) => {
     pushLog([
