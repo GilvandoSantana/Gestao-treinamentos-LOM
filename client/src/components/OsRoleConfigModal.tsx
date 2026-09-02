@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { X, ClipboardList, Loader, Save, ChevronDown } from 'lucide-react';
+import { X, ClipboardList, Loader, Save, ChevronDown, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { PREDEFINED_ROLES } from '@/lib/types';
@@ -75,6 +75,7 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
     { enabled: isOpen && !!selectedRole }
   );
   const saveMutation = trpc.osConfig.saveForRole.useMutation();
+  const extractMutation = trpc.osConfig.extractFromPgr.useMutation();
 
   const allRoles = useMemo(
     () =>
@@ -137,6 +138,37 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
       toast.success(`Ordem de Serviço de "${selectedRole}" salva.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao salvar.');
+    }
+  };
+
+  const handleExtractFromPgr = async () => {
+    if (!selectedRole) return;
+    if (
+      (Object.values(draft).some((v) => v.trim().length > 0) || isDirty) &&
+      !confirm('Isso vai substituir o que está preenchido nos campos abaixo pelo que a IA encontrar no PGR. Continuar?')
+    ) {
+      return;
+    }
+    try {
+      const extracted = await extractMutation.mutateAsync({ role: selectedRole });
+      setDraft({
+        area: extracted.area,
+        setorTrabalho: extracted.setorTrabalho,
+        maquinasEquipamentos: extracted.maquinasEquipamentos,
+        tarefas: extracted.tarefas,
+        agentesFisicos: extracted.agentesFisicos,
+        agentesQuimicos: extracted.agentesQuimicos,
+        agentesBiologicos: extracted.agentesBiologicos,
+        agentesErgonomicos: extracted.agentesErgonomicos,
+        agentesAcidentes: extracted.agentesAcidentes,
+        medidasAdministrativas: extracted.medidasAdministrativas,
+        medidasEngenharia: extracted.medidasEngenharia,
+        episMinimos: extracted.episMinimos,
+      });
+      setIsDirty(true);
+      toast.success('Dados extraídos do PGR. Revise os campos antes de salvar.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao extrair dados do PGR.');
     }
   };
 
@@ -203,6 +235,29 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
           </div>
         ) : (
           <>
+            <div className="px-4 pt-1 pb-2">
+              <button
+                onClick={handleExtractFromPgr}
+                disabled={extractMutation.isPending}
+                className="w-full flex items-center justify-center gap-2 border-2 border-orange text-orange rounded-lg py-2 text-sm font-semibold hover:bg-orange/10 disabled:opacity-50 transition"
+              >
+                {extractMutation.isPending ? (
+                  <>
+                    <Loader size={15} className="animate-spin" />
+                    Lendo o PGR e extraindo os dados...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} />
+                    Extrair dados do PGR para "{selectedRole}"
+                  </>
+                )}
+              </button>
+              <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
+                A IA lê o PGR anexado no contrato e preenche os campos abaixo. Revise antes de salvar.
+              </p>
+            </div>
+
             <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {FIELDS.slice(0, 2).map(({ key, label }) => (

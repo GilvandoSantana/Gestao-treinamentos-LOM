@@ -7,4 +7,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // Usada para extrair automaticamente os dados de função (área, tarefas,
+  // agentes ambientais, EPIs) do PGR anexado no contrato, na Ordem de
+  // Serviço (Documentação). Ver server/pgr-extraction.ts.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
 };
