@@ -23,25 +23,29 @@ cada 20 segundos, enquanto o computador estiver ligado.
 ## Rodar em desenvolvimento
 
 **Toda vez que baixar o projeto de novo do zero** (ZIP novo do GitHub —
-`npm install` e `dotnet publish` não vêm junto, só o código-fonte),
-rode primeiro:
+`npm install` e a publicação do CloudFilterHost não vêm junto, só o
+código-fonte):
 
 ```
 cd desktop-sync
-setup.bat
-```
-
-Isso faz o `npm install` e o `dotnet publish` do CloudFilterHost de uma
-vez só. Depois:
-
-```
+npm install
 npm start
+```
+
+O `npm install` já publica o CloudFilterHost sozinho automaticamente
+(via um passo chamado "postinstall") — não precisa mais rodar nada
+separado. Se por algum motivo isso falhar (por exemplo, o .NET 8 SDK
+não estiver instalado), o `npm install` mesmo assim termina normal, só
+avisa — nesse caso, instale o .NET e rode:
+
+```
+npm run publish-cloudfilterhost
 ```
 
 **Dica pra evitar ter que repetir isso toda vez**: se instalar o Git no
 computador e usar `git clone` uma vez (em vez de baixar o ZIP), depois
 só precisa de `git pull` pra atualizar — a pasta continua a mesma, e só
-precisa rodar `setup.bat` de novo se `package.json` ou o código do
+precisa rodar `npm install` de novo se `package.json` ou o código do
 CloudFilterHost tiverem mudado.
 
 ## Rodar os testes

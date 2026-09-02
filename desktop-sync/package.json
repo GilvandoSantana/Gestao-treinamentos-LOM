@@ -6,7 +6,9 @@
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "node scripts/postinstall.js",
+    "publish-cloudfilterhost": "node scripts/postinstall.js"
   },
   "author": "Support Mining",
   "license": "UNLICENSED",
