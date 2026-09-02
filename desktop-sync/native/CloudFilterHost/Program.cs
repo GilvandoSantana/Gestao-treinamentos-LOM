@@ -641,116 +641,165 @@ try
                 }
                 Console.WriteLine("OK: conectado.");
 
-                // Agrupa os arquivos do manifesto por pasta (CfCreatePlaceholders
-                // exige uma chamada por pasta, não uma chamada só pra
-                // árvore inteira).
-                var fileEntries = manifest.Entries.Where(e => !e.IsFolder).ToList();
-                var folderEntries = manifest.Entries.Where(e => e.IsFolder).ToList();
+                // Controla o que já foi criado, pra nunca tentar de novo o
+                // que já existe quando checar a Nuvem de novo mais tarde
+                // (evita erro de "já existe" e trabalho repetido à toa).
+                var createdPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                // Cria as pastas marcadas explicitamente no manifesto —
-                // inclusive as vazias (ou que só têm outra pasta vazia
-                // dentro) — antes de mexer em qualquer arquivo.
-                // Directory.CreateDirectory já cria os pais que faltarem
-                // sozinho, então a ordem aqui não importa.
-                foreach (var folderEntry in folderEntries)
+                void ApplyManifest(ManifestRoot manifestToApply)
                 {
-                    Directory.CreateDirectory(Path.Combine(rootPath, folderEntry.RelativePath));
-                }
+                    // Agrupa os arquivos do manifesto por pasta
+                    // (CfCreatePlaceholders exige uma chamada por pasta,
+                    // não uma chamada só pra árvore inteira) — só os que
+                    // ainda não foram criados numa passada anterior.
+                    var fileEntries = manifestToApply.Entries!
+                        .Where(e => !e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .ToList();
+                    var folderEntries = manifestToApply.Entries!
+                        .Where(e => e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .ToList();
 
-                var byFolder = new Dictionary<string, List<ManifestEntryItem>>();
-                foreach (var entry in fileEntries)
-                {
-                    string dir = Path.GetDirectoryName(entry.RelativePath) ?? "";
-                    if (!byFolder.TryGetValue(dir, out var list))
+                    // Cria as pastas marcadas explicitamente no manifesto —
+                    // inclusive as vazias (ou que só têm outra pasta vazia
+                    // dentro) — antes de mexer em qualquer arquivo.
+                    // Directory.CreateDirectory já cria os pais que
+                    // faltarem sozinho, então a ordem aqui não importa.
+                    foreach (var folderEntry in folderEntries)
                     {
-                        list = new List<ManifestEntryItem>();
-                        byFolder[dir] = list;
+                        Directory.CreateDirectory(Path.Combine(rootPath, folderEntry.RelativePath));
+                        createdPaths.Add(folderEntry.RelativePath);
                     }
-                    list.Add(entry);
-                }
 
-                // Cria as pastas de verdade primeiro, da mais rasa pra
-                // mais funda, garantindo que a pasta pai sempre existe
-                // antes de tentar criar a filha.
-                foreach (var dir in byFolder.Keys.Where(d => !string.IsNullOrEmpty(d)).OrderBy(d => d.Split('\\').Length))
-                {
-                    Directory.CreateDirectory(Path.Combine(rootPath, dir));
-                }
-
-                int totalCreated = 0;
-                int totalErrors = 0;
-                foreach (var kvp in byFolder)
-                {
-                    string dir = kvp.Key;
-                    List<ManifestEntryItem> files = kvp.Value;
-                    string fullDirPath = string.IsNullOrEmpty(dir) ? rootPath : Path.Combine(rootPath, dir);
-                    var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
-
-                    // GCHandle (em vez de "fixed") porque aqui precisamos
-                    // fixar VÁRIOS blocos de memória diferentes (um por
-                    // arquivo) ao mesmo tempo, até a chamada terminar —
-                    // "fixed" só fixa um bloco por vez.
-                    var handles = new List<GCHandle>();
-                    try
+                    var byFolder = new Dictionary<string, List<ManifestEntryItem>>();
+                    foreach (var entry in fileEntries)
                     {
-                        var placeholders = new CF_PLACEHOLDER_CREATE_INFO[files.Count];
-                        for (int i = 0; i < files.Count; i++)
+                        string dir = Path.GetDirectoryName(entry.RelativePath) ?? "";
+                        if (!byFolder.TryGetValue(dir, out var list))
                         {
-                            byte[] idBytes = System.Text.Encoding.Unicode.GetBytes(files[i].FileId);
-                            var handle = GCHandle.Alloc(idBytes, GCHandleType.Pinned);
-                            handles.Add(handle);
+                            list = new List<ManifestEntryItem>();
+                            byFolder[dir] = list;
+                        }
+                        list.Add(entry);
+                    }
 
-                            placeholders[i] = new CF_PLACEHOLDER_CREATE_INFO
+                    // Cria as pastas de verdade primeiro, da mais rasa pra
+                    // mais funda, garantindo que a pasta pai sempre existe
+                    // antes de tentar criar a filha.
+                    foreach (var dir in byFolder.Keys.Where(d => !string.IsNullOrEmpty(d)).OrderBy(d => d.Split('\\').Length))
+                    {
+                        Directory.CreateDirectory(Path.Combine(rootPath, dir));
+                    }
+
+                    int totalCreatedNow = 0;
+                    int totalErrorsNow = 0;
+                    foreach (var kvp in byFolder)
+                    {
+                        string dir = kvp.Key;
+                        List<ManifestEntryItem> files = kvp.Value;
+                        string fullDirPath = string.IsNullOrEmpty(dir) ? rootPath : Path.Combine(rootPath, dir);
+                        var now = ToFileTime(DateTime.UtcNow.ToFileTimeUtc());
+
+                        // GCHandle (em vez de "fixed") porque aqui
+                        // precisamos fixar VÁRIOS blocos de memória
+                        // diferentes (um por arquivo) ao mesmo tempo, até a
+                        // chamada terminar — "fixed" só fixa um bloco por
+                        // vez.
+                        var handles = new List<GCHandle>();
+                        try
+                        {
+                            var placeholders = new CF_PLACEHOLDER_CREATE_INFO[files.Count];
+                            for (int i = 0; i < files.Count; i++)
                             {
-                                RelativeFileName = Path.GetFileName(files[i].RelativePath),
-                                FsMetadata = new CF_FS_METADATA
-                                {
-                                    FileSize = files[i].FileSize,
-                                    BasicInfo = new Kernel32.FILE_BASIC_INFO
-                                    {
-                                        CreationTime = now,
-                                        LastAccessTime = now,
-                                        LastWriteTime = now,
-                                        ChangeTime = now,
-                                        FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
-                                    },
-                                },
-                                FileIdentity = handle.AddrOfPinnedObject(),
-                                FileIdentityLength = (uint)idBytes.Length,
-                                Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
-                            };
-                        }
+                                byte[] idBytes = System.Text.Encoding.Unicode.GetBytes(files[i].FileId);
+                                var handle = GCHandle.Alloc(idBytes, GCHandleType.Pinned);
+                                handles.Add(handle);
 
-                        var createResult = CfCreatePlaceholders(
-                            fullDirPath,
-                            placeholders,
-                            (uint)placeholders.Length,
-                            CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
-                            out uint processed
-                        );
-                        if (createResult.Failed)
-                        {
-                            Console.WriteLine($"ERRO ao criar placeholders em \"{dir}\": 0x{(uint)createResult:X8}");
-                            totalErrors++;
-                            continue;
+                                placeholders[i] = new CF_PLACEHOLDER_CREATE_INFO
+                                {
+                                    RelativeFileName = Path.GetFileName(files[i].RelativePath),
+                                    FsMetadata = new CF_FS_METADATA
+                                    {
+                                        FileSize = files[i].FileSize,
+                                        BasicInfo = new Kernel32.FILE_BASIC_INFO
+                                        {
+                                            CreationTime = now,
+                                            LastAccessTime = now,
+                                            LastWriteTime = now,
+                                            ChangeTime = now,
+                                            FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
+                                        },
+                                    },
+                                    FileIdentity = handle.AddrOfPinnedObject(),
+                                    FileIdentityLength = (uint)idBytes.Length,
+                                    Flags = CF_PLACEHOLDER_CREATE_FLAGS.CF_PLACEHOLDER_CREATE_FLAG_NONE,
+                                };
+                            }
+
+                            var createResult = CfCreatePlaceholders(
+                                fullDirPath,
+                                placeholders,
+                                (uint)placeholders.Length,
+                                CF_CREATE_FLAGS.CF_CREATE_FLAG_NONE,
+                                out uint processed
+                            );
+                            if (createResult.Failed)
+                            {
+                                Console.WriteLine($"ERRO ao criar placeholders em \"{dir}\": 0x{(uint)createResult:X8}");
+                                totalErrorsNow++;
+                                continue;
+                            }
+                            totalCreatedNow += (int)processed;
+                            foreach (var f in files) createdPaths.Add(f.RelativePath);
                         }
-                        totalCreated += (int)processed;
+                        finally
+                        {
+                            foreach (var h in handles) h.Free();
+                        }
                     }
-                    finally
+
+                    if (totalCreatedNow > 0 || totalErrorsNow > 0)
                     {
-                        foreach (var h in handles) h.Free();
+                        Console.WriteLine($"OK: {totalCreatedNow} placeholder(s) novo(s) criado(s) ({totalErrorsNow} pasta(s) com erro).");
                     }
                 }
 
-                Console.WriteLine($"OK: {totalCreated} placeholder(s) criado(s) no total ({totalErrors} pasta(s) com erro).");
+                ApplyManifest(manifest);
+
                 Console.WriteLine();
                 Console.WriteLine("Navegue pela pasta e abra qualquer arquivo — deve baixar na hora.");
-                Console.WriteLine("Pressione Enter aqui para encerrar (e desconectar) quando terminar de testar.");
-                Console.ReadLine();
+                Console.WriteLine("Verificando a Nuvem de novo a cada 30 segundos, pra pegar arquivo/pasta novos...");
 
-                CfDisconnectSyncRoot(connectionKey);
-                Console.WriteLine("Desconectado.");
-                return 0;
+                // Fica rodando pra sempre, checando a Nuvem de novo
+                // periodicamente (o programa Electron reescreve o mesmo
+                // arquivo de manifesto com dados atualizados) — só termina
+                // quando o processo for encerrado por fora (o programa
+                // Electron, ao desconectar ou fechar). O próprio Windows
+                // cuida da limpeza da conexão automaticamente nesse caso,
+                // mesmo sem chamar CfDisconnectSyncRoot explicitamente.
+                while (true)
+                {
+                    Thread.Sleep(30_000);
+                    try
+                    {
+                        if (!File.Exists(manifestPath)) continue;
+                        var freshJson = File.ReadAllText(manifestPath);
+                        var freshManifest = JsonSerializer.Deserialize<ManifestRoot>(
+                            freshJson,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                        );
+                        if (freshManifest?.Entries != null)
+                        {
+                            ApplyManifest(freshManifest);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Provavelmente pegou o arquivo no meio de ser
+                        // reescrito pelo programa Electron — tenta de novo
+                        // no próximo ciclo, sem derrubar o processo.
+                        Console.WriteLine($"Aviso: falha ao reler o manifesto ({ex.GetType().Name}) — tentando de novo em 30s.");
+                    }
+                }
             }
             catch (Exception ex)
             {

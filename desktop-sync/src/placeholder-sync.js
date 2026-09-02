@@ -19,6 +19,19 @@ const path = require("path");
 const os = require("os");
 
 let child = null;
+let refreshTimer = null;
+const MANIFEST_REFRESH_INTERVAL_MS = 30_000;
+
+/** Escreve o manifesto de forma segura contra leitura no meio do
+ * caminho: grava num arquivo à parte e troca de nome no fim (operação
+ * atômica do sistema de arquivos) — o CloudFilterHost.exe relê esse
+ * mesmo arquivo periodicamente, e sem isso poderia pegar um conteúdo
+ * incompleto bem na hora de uma reescrita. */
+async function writeManifestAtomic(manifestPath, entries) {
+  const tempPath = `${manifestPath}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify({ entries }), "utf-8");
+  await fs.rename(tempPath, manifestPath);
+}
 
 /** Roda um comando do CloudFilterHost.exe e espera terminar (pro comando
  * "register", que precisa rodar e concluir ANTES de conectar — diferente
@@ -173,7 +186,23 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
 
   const manifestPath = path.join(os.tmpdir(), `gestao-nuvem-manifest-${Date.now()}.json`);
-  await fs.writeFile(manifestPath, JSON.stringify({ entries }), "utf-8");
+  await writeManifestAtomic(manifestPath, entries);
+
+  // O CloudFilterHost.exe só consulta a Nuvem uma vez, no momento em que
+  // cria os placeholders iniciais — sozinho, ele nunca saberia de um
+  // arquivo ou pasta adicionado por OUTRA pessoa depois disso. Esse timer
+  // busca a lista de novo periodicamente e reescreve o mesmo arquivo de
+  // manifesto; o programa auxiliar relê esse arquivo no mesmo ritmo e cria
+  // os placeholders que ainda não existem.
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(async () => {
+    try {
+      const freshEntries = await generateManifestEntries(apiClient);
+      await writeManifestAtomic(manifestPath, freshEntries);
+    } catch (error) {
+      onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+    }
+  }, MANIFEST_REFRESH_INTERVAL_MS);
 
   return new Promise((resolve) => {
     child = spawn(exePath, ["sync-tree", folderPath, manifestPath, serverUrl, token], {
@@ -205,7 +234,11 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
         // rodando só esperando os callbacks de abertura de arquivo.
         if (!settled && trimmed.startsWith("OK:") && trimmed.includes("placeholder")) {
           settled = true;
-          onLog("Pasta sincronizada — os arquivos aparecem na hora e baixam quando você abrir.", "info");
+          onLog(
+            "Pasta sincronizada — os arquivos aparecem na hora e baixam quando você abrir. " +
+              "A Nuvem é consultada de novo a cada 30 segundos, pra pegar arquivo ou pasta que outra pessoa adicionar.",
+            "info"
+          );
           resolve(true);
         }
       }
@@ -232,6 +265,10 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
         onLog(`Programa auxiliar encerrou de forma inesperada (código ${code}).`, "error");
       }
       child = null;
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
       if (!settled) {
         settled = true;
         resolve(false);
@@ -252,6 +289,10 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
 }
 
 function stopPlaceholderSync() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
   if (child) {
     child.kill();
     child = null;
