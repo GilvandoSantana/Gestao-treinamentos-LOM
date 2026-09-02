@@ -134,6 +134,16 @@ apt-get install -y --no-install-recommends wine32:i386
 - Um jeito de revogar um token de sincronização específico antes dos 30
   dias (hoje só trocando o `SESSION_SECRET` do servidor inteiro, o que
   derruba todas as sessões de uma vez)
+- **Upload do instalador pelo site em pedaços (chunked upload)** — a
+  Railway tem um limite rígido de 5 minutos por requisição HTTP, sem
+  exceção, não dá pra aumentar. Hoje o envio do `.exe` (~80MB) é feito
+  numa única requisição — funciona bem com internet razoável, mas numa
+  conexão lenta (ou se o instalador crescer bastante de tamanho no
+  futuro) pode passar dos 5 minutos e travar sem mensagem de erro
+  clara. Resolver isso significa dividir o arquivo em pedaços menores
+  no navegador e enviar cada um numa requisição separada (upload
+  multipart do próprio S3/R2, que já suporta isso nativamente) — fica
+  pra quando for necessário de verdade.
 
 ### Já resolvido (histórico, pra referência)
 
