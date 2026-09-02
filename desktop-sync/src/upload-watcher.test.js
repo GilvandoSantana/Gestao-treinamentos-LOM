@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideUploadAction, resolveParentFolder } from "./upload-watcher.js";
+import { decideUploadAction, resolveParentFolder, performUpload } from "./upload-watcher.js";
 
 describe("decideUploadAction", () => {
   it("arquivo sem nenhum registro na Nuvem → novo, deve subir", () => {
@@ -54,5 +54,54 @@ describe("resolveParentFolder", () => {
   it("arquivo numa pasta que a Nuvem NÃO tem registro → pasta desconhecida", () => {
     const result = resolveParentFolder("PastaNovaCriadaAgora\\arquivo.txt", new Map());
     expect(result).toEqual({ known: false });
+  });
+});
+
+describe("performUpload", () => {
+  // Bug real encontrado (Gilvando, 01/09): o envio de NOVA VERSÃO
+  // esquecia de mandar o nome do arquivo — o servidor exige esse campo,
+  // e sem ele a chamada falhava com "Invalid input: expected string,
+  // received undefined". A chamada de ARQUIVO NOVO já mandava certo,
+  // só a de nova versão que ficou faltando. Estes testes conferem os
+  // argumentos exatos recebidos pelo apiClient, pra esse tipo de erro
+  // não voltar a passar despercebido.
+
+  it("arquivo novo: chama uploadNewFile com pasta, nome e conteúdo certos", async () => {
+    const calls = [];
+    const fakeApiClient = {
+      uploadNewFile: async (folderId, name, buffer) => {
+        calls.push({ folderId, name, buffer });
+        return { id: "novo-id-123" };
+      },
+    };
+
+    const result = await performUpload(
+      "new",
+      { name: "bora.txt", buffer: Buffer.from("conteudo"), folderId: "pasta-publico-id" },
+      fakeApiClient
+    );
+
+    expect(calls).toEqual([{ folderId: "pasta-publico-id", name: "bora.txt", buffer: Buffer.from("conteudo") }]);
+    expect(result).toEqual({ fileId: "novo-id-123" });
+  });
+
+  it("nova versão: chama uploadNewVersion com id, conteúdo E NOME (o que faltava)", async () => {
+    const calls = [];
+    const fakeApiClient = {
+      uploadNewVersion: async (fileId, buffer, name) => {
+        calls.push({ fileId, buffer, name });
+      },
+    };
+
+    const result = await performUpload(
+      "update",
+      { name: "bora.txt", buffer: Buffer.from("conteudo editado"), fileId: "id-existente-456" },
+      fakeApiClient
+    );
+
+    expect(calls).toEqual([
+      { fileId: "id-existente-456", buffer: Buffer.from("conteudo editado"), name: "bora.txt" },
+    ]);
+    expect(result).toEqual({ fileId: "id-existente-456" });
   });
 });

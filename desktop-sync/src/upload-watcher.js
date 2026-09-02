@@ -74,6 +74,32 @@ function resolveParentFolder(relativePath, knownCloudFolders) {
 }
 
 /**
+ * Faz a chamada de upload certa (arquivo novo ou nova versão) a partir da
+ * decisão já tomada — separado do resto (leitura de arquivo, vigia de
+ * mudança) só pra dar pra testar com um apiClient fictício, sem precisar
+ * de sistema de arquivos de verdade. Foi assim que achei o bug real
+ * (Gilvando, 01/09) de esquecer de passar o nome do arquivo no envio de
+ * nova versão — a chamada de "arquivo novo" já passava certo, só a de
+ * "nova versão" que ficou faltando.
+ * @param {"new" | "update"} action
+ * @param {object} params
+ * @param {string} params.name
+ * @param {Buffer} params.buffer
+ * @param {string | null} [params.folderId]
+ * @param {string} [params.fileId]
+ * @param {import('./api-client').ApiClient} apiClient
+ * @returns {Promise<{fileId: string}>}
+ */
+async function performUpload(action, { name, buffer, folderId, fileId }, apiClient) {
+  if (action === "new") {
+    const result = await apiClient.uploadNewFile(folderId ?? null, name, buffer);
+    return { fileId: result.id };
+  }
+  await apiClient.uploadNewVersion(fileId, buffer, name);
+  return { fileId };
+}
+
+/**
  * @param {object} opts
  * @param {string} opts.folderPath
  * @param {import('./api-client').ApiClient} opts.apiClient
@@ -122,13 +148,13 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
           return;
         }
         const buffer = await fsp.readFile(fullPath);
-        const result = await apiClient.uploadNewFile(parentResolution.folderId, name, buffer);
-        getKnownCloudFiles().set(key, { fileId: result.id, fileSize: buffer.length });
-        onUploaded(key, result.id, buffer.length);
+        const { fileId } = await performUpload("new", { name, buffer, folderId: parentResolution.folderId }, apiClient);
+        getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length });
+        onUploaded(key, fileId, buffer.length);
         onLog(`Enviado "${key}" (novo no computador).`, "upload");
       } else if (decision.action === "update") {
         const buffer = await fsp.readFile(fullPath);
-        await apiClient.uploadNewVersion(decision.fileId, buffer);
+        await performUpload("update", { name, buffer, fileId: decision.fileId }, apiClient);
         getKnownCloudFiles().set(key, { fileId: decision.fileId, fileSize: buffer.length });
         onUploaded(key, decision.fileId, buffer.length);
         onLog(`Enviada nova versão de "${key}" (editado no computador).`, "upload");
@@ -170,4 +196,4 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   };
 }
 
-module.exports = { decideUploadAction, resolveParentFolder, startUploadWatcher };
+module.exports = { decideUploadAction, resolveParentFolder, performUpload, startUploadWatcher };
