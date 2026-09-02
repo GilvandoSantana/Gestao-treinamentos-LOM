@@ -48,6 +48,7 @@ async function run() {
     for (const folder of listing.folders) {
       if (folder.hasAccess === false) continue;
       const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
+      entries.push({ relativePath: childPath, isFolder: true });
       await walk(folder.id, childPath);
     }
   }

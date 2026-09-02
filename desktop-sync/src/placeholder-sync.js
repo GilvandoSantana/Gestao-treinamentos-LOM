@@ -65,6 +65,12 @@ async function generateManifestEntries(apiClient) {
     for (const folder of listing.folders) {
       if (folder.hasAccess === false) continue;
       const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
+      // Marca a pasta em si (mesmo sem nenhum arquivo direto dentro dela)
+      // — sem isso, uma pasta vazia (ou uma pasta cheia de OUTRAS pastas
+      // vazias) nunca aparecia no computador, porque o programa só
+      // "descobria" uma pasta ao ver um arquivo dentro dela. Achado real
+      // (Gilvando, 01/09): a pasta "Pública" sumia por causa disso.
+      entries.push({ relativePath: childPath, isFolder: true });
       await walk(folder.id, childPath);
     }
   }

@@ -535,7 +535,7 @@ try
                 Console.WriteLine("ERRO: manifesto inválido ou vazio.");
                 return 1;
             }
-            Console.WriteLine($"Manifesto lido: {manifest.Entries.Count} arquivo(s).");
+            Console.WriteLine($"Manifesto lido: {manifest.Entries.Count(e => !e.IsFolder)} arquivo(s), {manifest.Entries.Count(e => e.IsFolder)} pasta(s).");
 
             using var httpClient = new System.Net.Http.HttpClient();
 
@@ -644,8 +644,21 @@ try
                 // Agrupa os arquivos do manifesto por pasta (CfCreatePlaceholders
                 // exige uma chamada por pasta, não uma chamada só pra
                 // árvore inteira).
+                var fileEntries = manifest.Entries.Where(e => !e.IsFolder).ToList();
+                var folderEntries = manifest.Entries.Where(e => e.IsFolder).ToList();
+
+                // Cria as pastas marcadas explicitamente no manifesto —
+                // inclusive as vazias (ou que só têm outra pasta vazia
+                // dentro) — antes de mexer em qualquer arquivo.
+                // Directory.CreateDirectory já cria os pais que faltarem
+                // sozinho, então a ordem aqui não importa.
+                foreach (var folderEntry in folderEntries)
+                {
+                    Directory.CreateDirectory(Path.Combine(rootPath, folderEntry.RelativePath));
+                }
+
                 var byFolder = new Dictionary<string, List<ManifestEntryItem>>();
-                foreach (var entry in manifest.Entries)
+                foreach (var entry in fileEntries)
                 {
                     string dir = Path.GetDirectoryName(entry.RelativePath) ?? "";
                     if (!byFolder.TryGetValue(dir, out var list))
@@ -787,4 +800,9 @@ class ManifestEntryItem
     public string RelativePath { get; set; } = "";
     public string FileId { get; set; } = "";
     public long FileSize { get; set; }
+    // Pasta sem nenhum arquivo direto dentro dela (mas que existe na
+    // Nuvem, e pode ter subpastas por dentro) — sem marcar isso
+    // explicitamente, uma pasta vazia nunca aparecia no computador,
+    // porque o programa só "descobria" pasta ao ver arquivo dentro dela.
+    public bool IsFolder { get; set; }
 }
