@@ -49,28 +49,45 @@ function decideUploadAction(localSize, knownCloudEntry) {
 }
 
 /**
- * Decide, a partir do caminho relativo de um arquivo, qual pasta da
- * Nuvem usar como destino do upload — ou se a pasta onde ele apareceu
- * ainda não existe na Nuvem (caso em que não dá pra enviar ainda).
- *
- * Bug real encontrado (Gilvando, 01/09): a versão anterior só checava
- * "esse arquivo está dentro de alguma subpasta?" — tratando TODA
- * subpasta como se fosse nova, mesmo pastas que já existem há tempos
- * (como "Público"). Agora consulta de verdade o mapa de pastas que a
- * Nuvem confirmou que existem.
- * @param {string} relativePath - caminho relativo do arquivo (separador do SO)
- * @param {Map<string, string>} knownCloudFolders - caminho (com "/") -> folderId
- * @returns {{known: true, folderId: string | null} | {known: false}}
+ * Garante que uma pasta (e todos os pais dela que ainda não existirem)
+ * exista de verdade na Nuvem, criando o que faltar — sobe recursivamente
+ * até achar um ancestral que já existe (ou a raiz). Usa um "cache" de
+ * criações em andamento pra nunca criar a mesma pasta duas vezes se dois
+ * arquivos dentro dela aparecerem quase ao mesmo tempo.
+ * @param {string} relativeFolderPath - caminho com "/" (não separador do SO)
+ * @param {{apiClient: import('./api-client').ApiClient, knownCloudFolders: Map<string, string>, inFlight: Map<string, Promise<string|null>>, onLog: (message: string, kind: string) => void}} deps
+ * @returns {Promise<string|null>} o id da pasta na Nuvem (null = raiz)
  */
-function resolveParentFolder(relativePath, knownCloudFolders) {
-  const parentDir = path.dirname(relativePath).split(path.sep).join("/");
-  if (parentDir === ".") {
-    return { known: true, folderId: null };
+async function ensureCloudFolder(relativeFolderPath, deps) {
+  const { apiClient, knownCloudFolders, inFlight, onLog } = deps;
+
+  if (!relativeFolderPath || relativeFolderPath === "." || relativeFolderPath === "/") {
+    return null; // raiz do contrato — sempre existe
   }
-  if (knownCloudFolders.has(parentDir)) {
-    return { known: true, folderId: knownCloudFolders.get(parentDir) };
+  if (knownCloudFolders.has(relativeFolderPath)) {
+    return knownCloudFolders.get(relativeFolderPath);
   }
-  return { known: false };
+  if (inFlight.has(relativeFolderPath)) {
+    return inFlight.get(relativeFolderPath);
+  }
+
+  const parentPath = path.dirname(relativeFolderPath).split(path.sep).join("/");
+  const folderName = path.basename(relativeFolderPath);
+
+  const creationPromise = (async () => {
+    const parentId = await ensureCloudFolder(parentPath, deps);
+    const created = await apiClient.createRemoteFolder(parentId, folderName);
+    knownCloudFolders.set(relativeFolderPath, created.id);
+    onLog(`Criada a pasta "${relativeFolderPath}" na Nuvem (nova no computador).`, "upload");
+    return created.id;
+  })();
+
+  inFlight.set(relativeFolderPath, creationPromise);
+  try {
+    return await creationPromise;
+  } finally {
+    inFlight.delete(relativeFolderPath);
+  }
 }
 
 /**
@@ -112,6 +129,7 @@ async function performUpload(action, { name, buffer, folderId, fileId }, apiClie
 function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnownCloudFolders, onUploaded, onLog }) {
   const timers = new Map();
   const uploading = new Set();
+  const folderCreationInFlight = new Map();
 
   async function handleChange(relativePath) {
     const name = path.basename(relativePath);
@@ -127,28 +145,51 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
       // de propósito (evita perda de dado por engano), então não faz nada.
       return;
     }
-    if (!stat.isFile()) return; // pasta — tratada à parte, não aqui
 
     const key = relativePath.split(path.sep).join("/");
+
+    if (stat.isDirectory()) {
+      // Pasta nova criada direto no computador — garante que ela (e
+      // qualquer pai que também falte) existam na Nuvem. Os arquivos que
+      // forem colocados dentro dela disparam seus próprios eventos, que
+      // agora acham a pasta já resolvida.
+      if (getKnownCloudFolders().has(key)) return;
+      try {
+        await ensureCloudFolder(key, {
+          apiClient,
+          knownCloudFolders: getKnownCloudFolders(),
+          inFlight: folderCreationInFlight,
+          onLog,
+        });
+      } catch (error) {
+        onLog(`Erro ao criar a pasta "${key}" na Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+      }
+      return;
+    }
+
+    if (!stat.isFile()) return;
+
     const known = getKnownCloudFiles().get(key);
     const decision = decideUploadAction(stat.size, known);
 
     if (decision.action === "skip") return;
 
-    const parentResolution = resolveParentFolder(relativePath, getKnownCloudFolders());
-
     uploading.add(relativePath);
     try {
       if (decision.action === "new") {
-        if (!parentResolution.known) {
-          onLog(
-            `"${key}" está numa pasta nova que ainda não existe na Nuvem — por enquanto, crie a pasta pelo site antes de colocar arquivo nela.`,
-            "error"
-          );
-          return;
-        }
+        // Garante a pasta pai (e os pais dela, recursivamente) antes de
+        // enviar — cobre tanto uma pasta que já existia (não faz nada) 
+        // quanto uma pasta nova criada junto do arquivo (cria a cadeia
+        // inteira automaticamente, em vez de recusar o envio).
+        const parentPath = path.dirname(relativePath).split(path.sep).join("/");
+        const folderId = await ensureCloudFolder(parentPath, {
+          apiClient,
+          knownCloudFolders: getKnownCloudFolders(),
+          inFlight: folderCreationInFlight,
+          onLog,
+        });
         const buffer = await fsp.readFile(fullPath);
-        const { fileId } = await performUpload("new", { name, buffer, folderId: parentResolution.folderId }, apiClient);
+        const { fileId } = await performUpload("new", { name, buffer, folderId }, apiClient);
         getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length });
         onUploaded(key, fileId, buffer.length);
         onLog(`Enviado "${key}" (novo no computador).`, "upload");
@@ -196,4 +237,4 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   };
 }
 
-module.exports = { decideUploadAction, resolveParentFolder, performUpload, startUploadWatcher };
+module.exports = { decideUploadAction, ensureCloudFolder, performUpload, startUploadWatcher };

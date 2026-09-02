@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideUploadAction, resolveParentFolder, performUpload } from "./upload-watcher.js";
+import { decideUploadAction, ensureCloudFolder, performUpload } from "./upload-watcher.js";
 
 describe("decideUploadAction", () => {
   it("arquivo sem nenhum registro na Nuvem → novo, deve subir", () => {
@@ -27,33 +27,75 @@ describe("decideUploadAction", () => {
   });
 });
 
-describe("resolveParentFolder", () => {
-  it("arquivo direto na raiz → pasta conhecida (raiz sempre existe)", () => {
-    const result = resolveParentFolder("arquivo.txt", new Map());
-    expect(result).toEqual({ known: true, folderId: null });
+describe("ensureCloudFolder", () => {
+  function makeDeps(overrides = {}) {
+    const knownCloudFolders = overrides.knownCloudFolders || new Map();
+    const createdCalls = [];
+    let nextId = 1;
+    const apiClient = {
+      createRemoteFolder: async (parentId, name) => {
+        createdCalls.push({ parentId, name });
+        return { id: `novo-id-${nextId++}` };
+      },
+    };
+    const logs = [];
+    return {
+      apiClient,
+      knownCloudFolders,
+      inFlight: new Map(),
+      onLog: (message, kind) => logs.push({ message, kind }),
+      createdCalls,
+      logs,
+    };
+  }
+
+  it("raiz (\".\" ou vazio) não cria nada, devolve null", async () => {
+    const deps = makeDeps();
+    const result = await ensureCloudFolder(".", deps);
+    expect(result).toBeNull();
+    expect(deps.createdCalls).toEqual([]);
   });
 
-  it("arquivo numa pasta que a Nuvem confirma que existe → usa o id certo", () => {
-    // Bug real corrigido (Gilvando, 01/09): a pasta "Público" já existia
-    // há tempos, mas a lógica anterior tratava QUALQUER subpasta como se
-    // fosse nova, só por não estar na raiz.
-    const knownFolders = new Map([["Público", "folder-publico-123"]]);
-    const result = resolveParentFolder("Público\\funcionou.txt", knownFolders);
-    expect(result).toEqual({ known: true, folderId: "folder-publico-123" });
+  it("pasta já conhecida não cria de novo, só devolve o id que já tinha", async () => {
+    const deps = makeDeps({ knownCloudFolders: new Map([["Público", "id-existente"]]) });
+    const result = await ensureCloudFolder("Público", deps);
+    expect(result).toBe("id-existente");
+    expect(deps.createdCalls).toEqual([]);
   });
 
-  it("arquivo numa pasta de vários níveis, todos conhecidos → usa o id da mais funda", () => {
-    const knownFolders = new Map([
-      ["SSMA", "folder-ssma"],
-      ["SSMA/13. INSPEÇÕES", "folder-inspecoes"],
+  it("pasta nova de um nível só → cria uma vez na raiz", async () => {
+    const deps = makeDeps();
+    const result = await ensureCloudFolder("PastaNova", deps);
+    expect(result).toBe("novo-id-1");
+    expect(deps.createdCalls).toEqual([{ parentId: null, name: "PastaNova" }]);
+    expect(deps.knownCloudFolders.get("PastaNova")).toBe("novo-id-1");
+  });
+
+  it("pasta aninhada nova (dois níveis, nenhum existe ainda) → cria a cadeia inteira, na ordem certa", async () => {
+    const deps = makeDeps();
+    const result = await ensureCloudFolder("Nivel1/Nivel2", deps);
+    expect(result).toBe("novo-id-2");
+    expect(deps.createdCalls).toEqual([
+      { parentId: null, name: "Nivel1" },
+      { parentId: "novo-id-1", name: "Nivel2" },
     ]);
-    const result = resolveParentFolder("SSMA\\13. INSPEÇÕES\\relatorio.pdf", knownFolders);
-    expect(result).toEqual({ known: true, folderId: "folder-inspecoes" });
   });
 
-  it("arquivo numa pasta que a Nuvem NÃO tem registro → pasta desconhecida", () => {
-    const result = resolveParentFolder("PastaNovaCriadaAgora\\arquivo.txt", new Map());
-    expect(result).toEqual({ known: false });
+  it("pasta aninhada onde o pai já existe → cria só a que falta, usando o id certo do pai", async () => {
+    const deps = makeDeps({ knownCloudFolders: new Map([["Nivel1", "id-nivel1-existente"]]) });
+    const result = await ensureCloudFolder("Nivel1/Nivel2", deps);
+    expect(result).toBe("novo-id-1");
+    expect(deps.createdCalls).toEqual([{ parentId: "id-nivel1-existente", name: "Nivel2" }]);
+  });
+
+  it("duas chamadas simultâneas pra mesma pasta não criam ela duas vezes", async () => {
+    const deps = makeDeps();
+    const [resultA, resultB] = await Promise.all([
+      ensureCloudFolder("PastaCompartilhada", deps),
+      ensureCloudFolder("PastaCompartilhada", deps),
+    ]);
+    expect(resultA).toBe(resultB);
+    expect(deps.createdCalls).toHaveLength(1);
   });
 });
 
