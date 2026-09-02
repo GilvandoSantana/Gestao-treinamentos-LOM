@@ -63,6 +63,19 @@ npm install
 npm run build:win
 ```
 
+Como o `npm install` já publica o CloudFilterHost sozinho (via
+postinstall), e a configuração do instalador já sabe pegar esse arquivo
+publicado e colocar dentro do pacote final (`extraResources` no
+`package.json`), rodando esses três comandos nessa ordem, **numa
+máquina Windows de verdade**, o instalador gerado já sai com tudo
+funcionando — incluindo o modo "arquivo aparece na hora, baixa quando
+abre" — sem precisar de nenhum passo manual extra.
+
+**Importante**: gere o instalador final sempre numa máquina Windows de
+verdade (não aqui no ambiente de desenvolvimento) — só lá o
+`dotnet publish` produz o `CloudFilterHost.exe` de verdade, pronto pra
+ir dentro do instalador.
+
 O instalador sai em `dist-installer/Sincronização com a Nuvem Setup
 X.X.X.exe`. **Sem assinatura digital** (custa dinheiro e exige processo à
 parte) — o Windows vai avisar "protegido pelo computador" na primeira
@@ -82,13 +95,22 @@ apt-get install -y --no-install-recommends wine32:i386
 
 ## O que ainda falta / ideias pra próxima etapa
 
-- Sincronizar exclusão de arquivo (hoje não sincroniza de propósito, pra
-  evitar perda de dado por engano)
-- Descer em subpastas (hoje só sincroniza os arquivos direto dentro da
-  pasta escolhida)
-- Assinatura digital do instalador (elimina o aviso do Windows)
-- Atualização automática do programa (hoje precisa reinstalar na mão pra
-  atualizar)
+- **Sincronizar exclusão** de arquivo/pasta continua fora, por decisão
+  deliberada de segurança (evita perda de dado por engano) — não é uma
+  lacuna, é assim que deve ser
+- Assinatura digital do instalador (elimina o aviso do Windows na
+  instalação) — exige processo pago à parte, fora do escopo por agora
+- Atualização automática do programa em si (hoje precisa reinstalar na
+  mão pra atualizar pra uma versão nova)
 - Um jeito de revogar um token de sincronização específico antes dos 30
   dias (hoje só trocando o `SESSION_SECRET` do servidor inteiro, o que
   derruba todas as sessões de uma vez)
+
+### Já resolvido (histórico, pra referência)
+
+Unidade de sincronização com ícone próprio; arquivo aparece na hora e
+baixa quando abre (placeholder de verdade via CfAPI do Windows);
+estrutura inteira de pastas (inclusive vazias e restritas a grupo);
+atualização periódica pra pegar mudança de outra pessoa; criar/editar
+arquivo ou pasta local sobe sozinho pra Nuvem; empacotamento do
+CloudFilterHost.exe dentro do instalador final.
