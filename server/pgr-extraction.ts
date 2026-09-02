@@ -94,7 +94,6 @@ export async function extractOsFieldsFromPgr(pgrFileUrl: string, role: string): 
     body: JSON.stringify({
       model: "claude-sonnet-5",
       max_tokens: 2000,
-      temperature: 0,
       tools: [
         {
           name: TOOL_NAME,
