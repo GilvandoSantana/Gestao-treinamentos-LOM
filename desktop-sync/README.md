@@ -55,6 +55,40 @@ cd desktop-sync
 npm test
 ```
 
+## Publicar uma versão nova (pra atualização automática funcionar)
+
+O programa já instalado confere sozinho, ao abrir e a cada 6 horas, se
+existe uma versão mais nova publicada — e se existir, baixa e instala
+sozinho (perguntando antes de reiniciar). Isso só funciona se a versão
+nova for publicada do jeito certo:
+
+1. Aumente o número da versão em `desktop-sync/package.json` (campo
+   `"version"`) — por exemplo, de `"1.0.0"` pra `"1.1.0"`.
+2. Gere o instalador de novo (numa máquina Windows, como sempre):
+   ```
+   cd desktop-sync
+   npm install
+   npm run build:win
+   ```
+3. Na pasta `dist-installer/`, vão aparecer (entre outros) estes três
+   arquivos — são os que importam:
+   - `Sincronização com a Nuvem Setup X.Y.Z.exe`
+   - `Sincronização com a Nuvem Setup X.Y.Z.exe.blockmap`
+   - `latest.yml`
+4. No GitHub, vá em **Releases** (na página principal do repositório) →
+   **Draft a new release**. Crie uma tag no formato `vX.Y.Z` (com o "v"
+   na frente, batendo com a versão do `package.json` — por exemplo,
+   `v1.1.0`), escreva um título/descrição curta do que mudou, e
+   **anexe os três arquivos do passo 3** (arraste pra caixa de anexos).
+5. Clique em **Publish release**.
+
+A partir daí, qualquer instalação já existente do programa vai
+encontrar essa versão na próxima checagem (na hora, se a pessoa reabrir
+o programa, ou em até 6 horas se já estiver aberto) e se atualizar
+sozinha. **Sem os três arquivos anexados certinho** (principalmente o
+`latest.yml`), a atualização automática não encontra nada — o Release
+sozinho, sem os arquivos, não é o suficiente.
+
 ## Gerar o instalador do Windows
 
 ```
@@ -95,13 +129,8 @@ apt-get install -y --no-install-recommends wine32:i386
 
 ## O que ainda falta / ideias pra próxima etapa
 
-- **Sincronizar exclusão** de arquivo/pasta continua fora, por decisão
-  deliberada de segurança (evita perda de dado por engano) — não é uma
-  lacuna, é assim que deve ser
 - Assinatura digital do instalador (elimina o aviso do Windows na
   instalação) — exige processo pago à parte, fora do escopo por agora
-- Atualização automática do programa em si (hoje precisa reinstalar na
-  mão pra atualizar pra uma versão nova)
 - Um jeito de revogar um token de sincronização específico antes dos 30
   dias (hoje só trocando o `SESSION_SECRET` do servidor inteiro, o que
   derruba todas as sessões de uma vez)
@@ -112,5 +141,7 @@ Unidade de sincronização com ícone próprio; arquivo aparece na hora e
 baixa quando abre (placeholder de verdade via CfAPI do Windows);
 estrutura inteira de pastas (inclusive vazias e restritas a grupo);
 atualização periódica pra pegar mudança de outra pessoa; criar/editar
-arquivo ou pasta local sobe sozinho pra Nuvem; empacotamento do
-CloudFilterHost.exe dentro do instalador final.
+arquivo ou pasta local sobe sozinho pra Nuvem; sincronizar exclusão nos
+dois sentidos (com freio de emergência contra exclusão em massa);
+empacotamento do CloudFilterHost.exe dentro do instalador final;
+atualização automática do programa via Releases do GitHub.

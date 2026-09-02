@@ -17,7 +17,9 @@
     "electron-builder": "^25.1.8",
     "vitest": "^2.1.9"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "build": {
     "appId": "com.supportmining.gestao-nuvem-sync",
     "productName": "Sincronização com a Nuvem",
@@ -29,6 +31,11 @@
         "filter": ["CloudFilterHost.exe", "icon.ico"]
       }
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "GilvandoSantana",
+      "repo": "Gestao-treinamentos-LOM"
+    },
     "directories": {
       "output": "dist-installer"
     },

@@ -9,10 +9,12 @@ const {
   isPlaceholderSyncRunning,
   resumeDeletions,
 } = require("./placeholder-sync");
+const { setupAutoUpdater } = require("./auto-updater");
 const store = require("./store");
 
 const DEFAULT_SERVER_URL = "https://gestao-treinamentos-lom.up.railway.app";
 const SYNC_INTERVAL_MS = 20_000;
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 horas
 const MAX_LOG_ENTRIES = 50;
 
 let tray = null;
@@ -68,6 +70,27 @@ app.on("window-all-closed", (event) => {
 async function init() {
   app.setLoginItemSettings({ openAtLogin: true });
   createTray();
+
+  const updater = setupAutoUpdater({
+    onLog: (message, kind) => {
+      pushLog([{ id: `upd-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
+      broadcastStatus();
+    },
+    onUpdateReadyToInstall: async (version) => {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["Reiniciar agora", "Depois"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Atualização pronta",
+        message: `Uma nova versão (${version}) do programa foi baixada.`,
+        detail: 'Reiniciar agora pra instalar, ou continuar usando esta versão e instalar depois (na próxima vez que fechar o programa pelo "Sair" do menu).',
+      });
+      if (response === 0) updater.quitAndInstall();
+    },
+  });
+  updater.checkNow();
+  setInterval(() => updater.checkNow(), UPDATE_CHECK_INTERVAL_MS);
 
   const config = store.loadConfig();
   const token = store.loadToken();
