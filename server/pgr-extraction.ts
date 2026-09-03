@@ -24,9 +24,6 @@ export interface ExtractedOsFields {
   agentesBiologicos: string;
   agentesErgonomicos: string;
   agentesAcidentes: string;
-  medidasAdministrativas: string;
-  medidasEngenharia: string;
-  episMinimos: string;
 }
 
 const FIELD_DESCRIPTIONS: Record<keyof ExtractedOsFields, string> = {
@@ -38,9 +35,6 @@ const FIELD_DESCRIPTIONS: Record<keyof ExtractedOsFields, string> = {
   agentesBiologicos: "Agentes de risco biológico a que a função está exposta, conforme descrito no PGR. Se o PGR disser explicitamente que não há exposição, use 'NA.'.",
   agentesErgonomicos: "Agentes de risco ergonômico a que a função está exposta, conforme descrito no PGR.",
   agentesAcidentes: "Agentes de risco de acidente a que a função está exposta, conforme descrito no PGR.",
-  medidasAdministrativas: "Medidas administrativas de controle já existentes para a função, conforme descrito no PGR.",
-  medidasEngenharia: "Medidas de engenharia de controle já existentes para a função, conforme descrito no PGR.",
-  episMinimos: "Lista dos EPIs (Equipamentos de Proteção Individual) mínimos exigidos para a função, conforme descrito no PGR.",
 };
 
 const FIELD_KEYS = Object.keys(FIELD_DESCRIPTIONS) as (keyof ExtractedOsFields)[];

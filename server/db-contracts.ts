@@ -21,6 +21,9 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     pgrFileName: row.pgrFileName || null,
     pgrUploadedAt: row.pgrUploadedAt ? row.pgrUploadedAt.toISOString() : null,
     companyName: row.companyName || null,
+    osMedidasAdministrativas: row.osMedidasAdministrativas || null,
+    osMedidasEngenharia: row.osMedidasEngenharia || null,
+    osEpisMinimos: row.osEpisMinimos || null,
     deleted: row.deleted,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
@@ -96,6 +99,9 @@ export async function createContract(input: {
     pgrFileName: null,
     pgrUploadedAt: null,
     companyName: input.companyName?.trim() || null,
+    osMedidasAdministrativas: null,
+    osMedidasEngenharia: null,
+    osEpisMinimos: null,
     deleted: false,
     deletedAt: null,
     createdAt: new Date().toISOString(),
@@ -162,6 +168,27 @@ export async function removeContractPgr(id: string): Promise<void> {
   await db
     .update(contracts)
     .set({ pgrFileUrl: null, pgrFileName: null, pgrUploadedAt: null })
+    .where(eq(contracts.id, id));
+}
+
+/**
+ * "Medidas de Controle Existentes" da Ordem de Serviço — fixo dentro do
+ * contrato (não varia por função), configurado uma vez em Documentação →
+ * OS por Função.
+ */
+export async function setContractOsDefaults(
+  id: string,
+  input: { osMedidasAdministrativas: string; osMedidasEngenharia: string; osEpisMinimos: string }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(contracts)
+    .set({
+      osMedidasAdministrativas: input.osMedidasAdministrativas.trim(),
+      osMedidasEngenharia: input.osMedidasEngenharia.trim(),
+      osEpisMinimos: input.osEpisMinimos.trim(),
+    })
     .where(eq(contracts.id, id));
 }
 

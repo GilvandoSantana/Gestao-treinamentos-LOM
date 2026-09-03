@@ -2,7 +2,7 @@ import { siteAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getOsRoleConfig, countOsRoleConfigs, saveOsRoleConfig } from "../db-os";
-import { getContractBySlug } from "../db-contracts";
+import { getContractBySlug, setContractOsDefaults } from "../db-contracts";
 import { extractOsFieldsFromPgr } from "../pgr-extraction";
 
 // Documentação — Ordem de Serviço (NR-01) por função. Cada contrato
@@ -28,7 +28,10 @@ export const osConfigRouter = router({
         // Todos os campos da OS são obrigatórios — não é possível salvar a
         // configuração de uma função sem preencher tudo. "Setor de
         // Trabalho" é sempre digitado manualmente (a IA nunca preenche
-        // esse campo, ver pgr-extraction.ts).
+        // esse campo, ver pgr-extraction.ts). "Medidas de Controle
+        // Existentes" (Administrativas/Engenharia/EPI's Mínimos) NÃO é
+        // por função — é padrão do contrato, ver getContractDefaults/
+        // saveContractDefaults abaixo.
         area: z.string().trim().min(1, "Preencha a Área.").max(255),
         setorTrabalho: z.string().trim().min(1, "Preencha o Setor de Trabalho.").max(255),
         maquinasEquipamentos: z.string().trim().min(1, "Preencha Máquinas, Equipamentos e Ferramentas.").max(2000),
@@ -38,9 +41,6 @@ export const osConfigRouter = router({
         agentesBiologicos: z.string().trim().min(1, "Preencha os Agentes Biológicos (use 'NA.' se não houver).").max(2000),
         agentesErgonomicos: z.string().trim().min(1, "Preencha os Agentes Ergonômicos.").max(2000),
         agentesAcidentes: z.string().trim().min(1, "Preencha os Agentes de Acidentes.").max(2000),
-        medidasAdministrativas: z.string().trim().min(1, "Preencha as Medidas Administrativas.").max(2000),
-        medidasEngenharia: z.string().trim().min(1, "Preencha as Medidas de Engenharia.").max(2000),
-        episMinimos: z.string().trim().min(1, "Preencha os EPIs Mínimos.").max(2000),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -49,6 +49,45 @@ export const osConfigRouter = router({
       }
       const { role, ...rest } = input;
       await saveOsRoleConfig(ctx.siteContract, role, rest);
+      return { success: true };
+    }),
+
+  // "Medidas de Controle Existentes" padrão do contrato (mesmo texto pra
+  // todas as funções) — configurado uma vez, não por função. Aceita um
+  // slug explícito (para gerar documentos de colaboradores de outros
+  // contratos, fora do contrato ativo na sessão) com fallback pro
+  // contrato ativo quando omitido.
+  getContractDefaults: siteAdminProcedure
+    .input(z.object({ slug: z.string().optional() }).optional())
+    .query(async ({ input, ctx }) => {
+      const slug = input?.slug ?? ctx.siteContract;
+      if (!slug) return null;
+      const contract = await getContractBySlug(slug);
+      if (!contract) return null;
+      return {
+        osMedidasAdministrativas: contract.osMedidasAdministrativas,
+        osMedidasEngenharia: contract.osMedidasEngenharia,
+        osEpisMinimos: contract.osEpisMinimos,
+      };
+    }),
+
+  saveContractDefaults: requirePermission('editEmployees')
+    .input(
+      z.object({
+        osMedidasAdministrativas: z.string().trim().min(1, "Preencha as Medidas Administrativas.").max(2000),
+        osMedidasEngenharia: z.string().trim().min(1, "Preencha as Medidas de Engenharia.").max(2000),
+        osEpisMinimos: z.string().trim().min(1, "Preencha os EPI's Mínimos.").max(2000),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.siteContract) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+      }
+      const contract = await getContractBySlug(ctx.siteContract);
+      if (!contract) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+      }
+      await setContractOsDefaults(contract.id, input);
       return { success: true };
     }),
 

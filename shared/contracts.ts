@@ -25,6 +25,13 @@ export interface ContractInfo {
   pgrUploadedAt: string | null;
   /** Razão social impressa no cabeçalho da Ordem de Serviço (Documentação). */
   companyName: string | null;
+  /**
+   * "Medidas de Controle Existentes" da Ordem de Serviço — fixo dentro do
+   * contrato (mesmo texto pra todas as funções), configurado uma vez.
+   */
+  osMedidasAdministrativas: string | null;
+  osMedidasEngenharia: string | null;
+  osEpisMinimos: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

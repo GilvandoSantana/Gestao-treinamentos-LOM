@@ -238,6 +238,13 @@ export const contracts = mysqlTable("contracts", {
   pgrUploadedAt: timestamp("pgrUploadedAt"),
   // Razão social impressa no cabeçalho da Ordem de Serviço (Documentação).
   companyName: varchar("companyName", { length: 255 }),
+  // "Medidas de Controle Existentes" da Ordem de Serviço — fixo dentro do
+  // contrato (mesmo texto pra todas as funções), mas varia entre
+  // contratos diferentes. Configurado uma vez em Documentação → OS por
+  // Função → "padrão do contrato".
+  osMedidasAdministrativas: text("osMedidasAdministrativas"),
+  osMedidasEngenharia: text("osMedidasEngenharia"),
+  osEpisMinimos: text("osEpisMinimos"),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

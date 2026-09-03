@@ -2,14 +2,17 @@
  * Ordem de Serviço (NR-01).
  *
  * Gera uma página por colaborador, preenchendo automaticamente Nome, CPF,
- * Cargo, Gerência e Contrato (igual à Ficha de EPI e ao crachá) — o
- * restante (área, tarefas, agentes ambientais, medidas de controle, EPIs
- * mínimos) vem da configuração da função do colaborador dentro do
- * contrato (ver OsRoleConfigModal).
+ * Cargo, Gerência e Contrato (igual à Ficha de EPI e ao crachá) — área,
+ * tarefas e agentes ambientais vêm da configuração da função do
+ * colaborador dentro do contrato (ver OsRoleConfigModal); "Medidas de
+ * Controle Existentes" (Administrativas, Engenharia, EPI's Mínimos) vem
+ * do padrão do contrato (mesmo texto pra todas as funções).
  *
- * Pré-requisito: o contrato do colaborador precisa ter o PGR anexado no
- * cadastro do contrato (ContractsModal) — sem isso, a geração é bloqueada
- * com uma mensagem explicando o motivo.
+ * Pré-requisitos, ambos bloqueiam a geração com mensagem explicando o
+ * motivo se não estiverem prontos:
+ * - o contrato precisa ter o PGR anexado no cadastro do contrato;
+ * - o contrato precisa ter as "Medidas de Controle Existentes" padrão
+ *   configuradas.
  *
  * O layout de verdade fica em os-form-render.ts.
  */
@@ -25,14 +28,18 @@ import { renderOsFormPage, type OsPageData } from '@/lib/os-form-render';
  * caso contrário cria um documento novo e já baixa.
  *
  * Lança um erro com mensagem explicativa se o contrato do colaborador não
- * tiver PGR anexado — a Documentação exibe essa mensagem ao usuário.
+ * tiver PGR anexado, ou não tiver as Medidas de Controle Existentes
+ * configuradas — a Documentação exibe essa mensagem ao usuário.
  */
 export const generateOsFormPDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
-  const [contractInfo, roleConfig] = await Promise.all([
+  const [contractInfo, roleConfig, osDefaults] = await Promise.all([
     employee.contract
       ? trpcClient.contracts.getManagerName.query({ slug: employee.contract }).catch(() => null)
       : Promise.resolve(null),
     trpcClient.osConfig.getByRole.query({ role: employee.role }).catch(() => null),
+    employee.contract
+      ? trpcClient.osConfig.getContractDefaults.query({ slug: employee.contract }).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const contractName = contractInfo?.contractName ?? employee.contract ?? '';
@@ -40,6 +47,16 @@ export const generateOsFormPDF = async (employee: Employee, sharedDoc?: jsPDF): 
   if (!contractInfo?.pgrFileUrl) {
     throw new Error(
       `Não é possível gerar a Ordem de Serviço de ${employee.name}: o contrato "${contractName || employee.contract}" ainda não possui o PGR anexado. Anexe o PGR no cadastro do contrato antes de continuar.`
+    );
+  }
+
+  const hasOsDefaults =
+    !!osDefaults?.osMedidasAdministrativas?.trim() &&
+    !!osDefaults?.osMedidasEngenharia?.trim() &&
+    !!osDefaults?.osEpisMinimos?.trim();
+  if (!hasOsDefaults) {
+    throw new Error(
+      `Não é possível gerar a Ordem de Serviço de ${employee.name}: o contrato "${contractName || employee.contract}" ainda não tem as "Medidas de Controle Existentes" configuradas. Configure em Documentação → Configurar OS por função → "padrão do contrato" antes de continuar.`
     );
   }
 
@@ -54,6 +71,11 @@ export const generateOsFormPDF = async (employee: Employee, sharedDoc?: jsPDF): 
     contractName,
     companyName: contractInfo?.companyName ?? '',
     role: roleConfig ?? null,
+    osDefaults: {
+      medidasAdministrativas: osDefaults?.osMedidasAdministrativas ?? null,
+      medidasEngenharia: osDefaults?.osMedidasEngenharia ?? null,
+      episMinimos: osDefaults?.osEpisMinimos ?? null,
+    },
   };
 
   await renderOsFormPage(doc, pageData);

@@ -36,9 +36,6 @@ export interface OsRoleData {
   agentesBiologicos: string | null;
   agentesErgonomicos: string | null;
   agentesAcidentes: string | null;
-  medidasAdministrativas: string | null;
-  medidasEngenharia: string | null;
-  episMinimos: string | null;
 }
 
 export type OsPageData = {
@@ -46,17 +43,38 @@ export type OsPageData = {
   contractName: string;
   companyName: string;
   role: OsRoleData | null;
+  /**
+   * "Medidas de Controle Existentes" — fixo dentro do contrato (mesmo
+   * texto pra todas as funções), configurado uma vez em Documentação →
+   * OS por Função → "padrão do contrato".
+   */
+  osDefaults: {
+    medidasAdministrativas: string | null;
+    medidasEngenharia: string | null;
+    episMinimos: string | null;
+  };
 };
 
+// Texto fixo — nunca editável pelo admin nem tocado pela IA (ver
+// OsRoleConfigModal e pgr-extraction.ts, que não incluem estes campos).
 const OBRIGACOES_EMPREGADO = [
-  'Cumprir todas as normas expedidas pelo Empregador, inclusive esta ordem de serviço;',
-  'Comunicar todas as condições inseguras presentes no ambiente ao supervisor imediato;',
-  'Usar obrigatoriamente os Equipamentos de Proteção Individual indicado para a função;',
-  'Manter a ordem, disciplina, higiene e segurança no trabalho;',
-  'Participar de treinamentos relacionados à segurança e saúde ocupacional;',
+  'Cumprir as disposições legais e regulamentares sobre segurança e saúde no trabalho, inclusive as ordens de serviço expedidas pelo empregador;',
+  'Submeter-se aos exames médicos previstos nas NR;',
+  'Colaborar com a organização na aplicação das NR;',
+  'Usar o equipamento de proteção individual fornecido pelo empregador;',
+  'Constitui ato faltoso a recusa injustificada do empregado ao cumprimento do disposto nas alíneas do subitem anterior;',
+  'O trabalhador poderá interromper suas atividades quando constatar uma situação de trabalho onde, a seu ver, envolva um risco grave e iminente para a sua vida e saúde, informando imediatamente ao seu superior hierárquico;',
+  'Comprovada pelo empregador a situação de grave e iminente risco, não poderá ser exigida a volta dos trabalhadores à atividade, enquanto não sejam tomadas as medidas corretivas;',
+  'Comunicar todas as condições inseguras presentes no ambiente de trabalho;',
+  'Elaborar a Análise Preliminar de Riscos antes do início das atividades, salvo quando houver procedimento específico para estas; o empregado deve estudar previamente os riscos associados à tarefa e, se as tarefas ou as circunstâncias nas quais estiver trabalhando mudarem, deverá parar o que estiver fazendo para reavaliar os riscos;',
+  'Usar obrigatoriamente os equipamentos de proteção individual conforme indicados para a função;',
+  'Manter a ordem, disciplina, higiene e segurança no seu ambiente de trabalho;',
+  'Participar de treinamentos de integração, específicos para função e relacionados aos padrões operacionais, saúde, segurança e higiene ocupacional;',
   'Executar as tarefas que lhe forem delegadas após treinamento específico para execução da mesma;',
-  'Acompanhar as atividades realizadas em seu ambiente de trabalho e orientar os empregados que estiverem em situação de risco;',
-  'Colaborar com a empresa na aplicação das Normas Regulamentadoras – NR’s.',
+  'Acompanhar as atividades realizadas em seu ambiente de trabalho e orientar os companheiros de trabalho que se exporem a situações de risco;',
+  'Colaborar com a Empresa na aplicação das normas regulamentadoras expedidas pela Secretaria do Trabalho do Ministério da Economia;',
+  'Qualquer dúvida ou anormalidade antes da execução das atividades no ambiente de trabalho, paralisar a atividade e solicitar orientações ao seu superior hierárquico e/ou líder imediato;',
+  'Em caso de contato/exposição a situação de risco grave e iminente, exercer o direito de recusa, envolver a liderança imediata e buscar interdisciplinarmente uma alternativa segura para a execução das atividades.',
 ];
 
 function formatDateBR(date: Date): string {
@@ -188,7 +206,7 @@ class Cursor {
 }
 
 export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<void> {
-  const { employee, contractName, companyName, role } = data;
+  const { employee, contractName, companyName, role, osDefaults } = data;
   const cursor = new Cursor(doc);
   const today = formatDateBR(new Date());
 
@@ -322,13 +340,13 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
   }
   cursor.gap(2);
 
+  // Fixo por contrato (não por função) — configurado uma vez em
+  // Documentação → OS por Função → "padrão do contrato". EPI's Mínimos
+  // fica dentro desta mesma seção, sem cabeçalho próprio.
   cursor.sectionHeader('Medidas de Controle Existentes');
-  cursor.textBlock('Medidas Administrativas:', role?.medidasAdministrativas || '—');
-  cursor.textBlock('Medidas de Engenharia:', role?.medidasEngenharia || '—');
-  cursor.gap(2);
-
-  cursor.sectionHeader("EPI's Mínimos");
-  cursor.textBlock('', role?.episMinimos || '—');
+  cursor.textBlock('Medidas Administrativas:', osDefaults.medidasAdministrativas || '—');
+  cursor.textBlock('Medidas de Engenharia:', osDefaults.medidasEngenharia || '—');
+  cursor.textBlock("EPI's Mínimos:", osDefaults.episMinimos || '—');
   cursor.gap(2);
 
   // ── Assinaturas ──
