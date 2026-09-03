@@ -44,7 +44,11 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
         admissionDate: employee.admissionDate,
         role: employee.role,
         phone: employee.phone,
-        gerencia: employee.gerencia,
+        // Campo "gerencia" não vem mais do formulário de colaborador (virou
+        // um campo do contrato) — só inclui na atualização se for
+        // explicitamente enviado, pra não apagar o que já estava salvo em
+        // quem ainda tem esse dado antigo (ainda usado no crachá).
+        ...(employee.gerencia !== undefined ? { gerencia: employee.gerencia } : {}),
         cnhNumero: employee.cnhNumero,
         cnhValidade: employee.cnhValidade,
         cnhCategoria: employee.cnhCategoria,

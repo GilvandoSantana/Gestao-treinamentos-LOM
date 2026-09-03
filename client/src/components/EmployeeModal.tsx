@@ -33,7 +33,7 @@ interface EmployeeModalProps {
   /** Ao criar um novo colaborador a partir de "Duplicar": função e
    * treinamentos vêm pré-preenchidos deste colaborador de origem. */
   duplicateFrom?: Employee | null;
-  onSave: (employee: Employee) => void;
+  onSave: (employee: Employee) => void | Promise<void>;
   onClose: () => void;
   isAdmin?: boolean;
   /** Só o administrador principal pode reatribuir o colaborador a outro contrato. */
@@ -55,7 +55,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const [admissionDate, setAdmissionDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
-  const [gerencia, setGerencia] = useState('');
   const [cnhNumero, setCnhNumero] = useState('');
   const [cnhValidade, setCnhValidade] = useState('');
   const [cnhCategoria, setCnhCategoria] = useState('');
@@ -116,7 +115,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setAdmissionDate(employee.admissionDate || '');
       setRole(employee.role);
       setPhone(employee.phone || '');
-      setGerencia(employee.gerencia || '');
       setCnhNumero(employee.cnhNumero || '');
       setCnhValidade(employee.cnhValidade || '');
       setCnhCategoria(employee.cnhCategoria || '');
@@ -138,9 +136,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setAdmissionDate('');
       setRole(duplicateFrom?.role || '');
       setPhone('');
-      // Gerência costuma se repetir entre quem faz a mesma função — vem
-      // junto. CNH é dado pessoal, nunca duplica.
-      setGerencia(duplicateFrom?.gerencia || '');
+      // CNH é dado pessoal, nunca duplica.
       setCnhNumero('');
       setCnhValidade('');
       setCnhCategoria('');
@@ -162,7 +158,13 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
     // skipDirtyCheck evita que isso seja confundido com uma edição do usuário.
     setIsDirty(false);
     skipDirtyCheck.current = true;
-  }, [employee, duplicateFrom, isOpen]);
+    // customRolesQuery.data nas dependências: sem isso, se o modal abrir
+    // antes da lista de funções personalizadas terminar de carregar, o
+    // cálculo de "é uma função personalizada?" ficava travado no
+    // resultado de quando o efeito rodou a primeira vez, mesmo depois da
+    // lista completa chegar (achado real ao investigar o bug relatado
+    // por Gilvando em 03/09).
+  }, [employee, duplicateFrom, isOpen, customRolesQuery.data]);
 
   // Detecta alteração em qualquer campo do formulário, para avisar antes de
   // fechar sem salvar. Ignora a primeira passada logo após abrir/popular.
@@ -172,7 +174,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, gerencia, cnhNumero, cnhValidade, cnhCategoria, cpf, trainings, photoPreview, reassignContract, customFieldValues]);
+  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, cnhNumero, cnhValidade, cnhCategoria, cpf, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -428,8 +430,10 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         }
       }
 
-      // 3. Save employee
-      onSave({
+      // 3. Save employee — espera terminar de verdade (onSave devolve uma
+      // Promise agora) antes de seguir, pra o botão de salvar só liberar
+      // depois da gravação confirmada, e não antes.
+      await onSave({
         id: employeeId,
         name: name.trim(),
         registration: registration.trim() || undefined,
@@ -439,7 +443,6 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         admissionDate: admissionDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
-        gerencia: gerencia.trim() || undefined,
         cnhNumero: cnhNumero.trim() || undefined,
         cnhValidade: cnhValidade.trim() || undefined,
         cnhCategoria: cnhCategoria.trim() || undefined,
@@ -675,21 +678,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 placeholder="(XX) XXXXX-XXXX"
               />
             </div>
-          </div>
-
-          {/* Gerência e CPF — Gerência aparece no crachá; CPF é usado na Ordem de Serviço */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-foreground font-semibold mb-2 text-sm">Gerência</label>
-              <input
-                type="text"
-                value={gerencia}
-                onChange={(e) => setGerencia(e.target.value)}
-                className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
-                placeholder="Ex: Engª Manutenção"
-              />
-            </div>
-            <div>
+            <div className={isMasterAdmin && employee ? '' : 'sm:col-span-2'}>
               <label className="block text-foreground font-semibold mb-2 text-sm">CPF</label>
               <input
                 type="text"
@@ -716,7 +705,11 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
               </div>
               <div>
                 <label className="block text-foreground font-medium mb-2 text-xs">Validade</label>
-                <DateInputBR value={cnhValidade} onChange={setCnhValidade} />
+                <DateInputBR
+                  value={cnhValidade}
+                  onChange={setCnhValidade}
+                  className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                />
               </div>
               <div>
                 <label className="block text-foreground font-medium mb-2 text-xs">Categoria</label>

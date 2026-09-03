@@ -234,7 +234,34 @@ export default function Home() {
       // Bloqueia o listQuery de sobrescrever enquanto salvamos
       isSavingRef.current = true;
 
-      // Atualiza estado local imediatamente para UI responsiva
+      // Salva no servidor PRIMEIRO — só depois de confirmado é que a
+      // tela mostra sucesso e fecha o formulário. Antes, a ordem era
+      // invertida (fechava e mostrava "sucesso" antes do envio real
+      // terminar) — se a pessoa desse F5 logo em seguida, o navegador
+      // cancelava a requisição ainda em andamento, e a edição nunca
+      // chegava a ser salva de verdade, mesmo a tela tendo mostrado
+      // sucesso (achado real, Gilvando 03/09 — reproduzido ao trocar
+      // uma função personalizada por uma já existente e dar F5 logo
+      // depois de salvar).
+      await upsertOneMutation.mutateAsync({
+        id: employeeData.id,
+        name: employeeData.name,
+        registration: employeeData.registration,
+        educationLevel: employeeData.educationLevel,
+        age: employeeData.age,
+        birthDate: employeeData.birthDate,
+        role: employeeData.role,
+        phone: employeeData.phone,
+        gerencia: employeeData.gerencia,
+        cnhNumero: employeeData.cnhNumero,
+        cnhValidade: employeeData.cnhValidade,
+        cnhCategoria: employeeData.cnhCategoria,
+        cpf: employeeData.cpf,
+        customFields: employeeData.customFields,
+        trainings: employeeData.trainings,
+      });
+
+      // Só agora, com o servidor já confirmado, atualiza a tela.
       setEmployees(prev => {
         const index = prev.findIndex(e => e.id === employeeData.id);
         if (index >= 0) {
@@ -256,39 +283,15 @@ export default function Home() {
         editingEmployee ? 'Colaborador atualizado com sucesso!' : 'Colaborador cadastrado com sucesso!'
       );
 
-      // Salva apenas este colaborador no servidor (evita sobrescrever dados de outros)
-      try {
-        await upsertOneMutation.mutateAsync({
-          id: employeeData.id,
-          name: employeeData.name,
-          registration: employeeData.registration,
-          educationLevel: employeeData.educationLevel,
-          age: employeeData.age,
-          birthDate: employeeData.birthDate,
-          role: employeeData.role,
-          phone: employeeData.phone,
-          gerencia: employeeData.gerencia,
-          cnhNumero: employeeData.cnhNumero,
-          cnhValidade: employeeData.cnhValidade,
-          cnhCategoria: employeeData.cnhCategoria,
-          cpf: employeeData.cpf,
-          customFields: employeeData.customFields,
-          trainings: employeeData.trainings,
-        });
-        setLastSyncTime(new Date());
-        setSyncError(null);
-        await listQuery.refetch();
-      } catch (err) {
-        console.error('Erro ao sincronizar:', err);
-        setSyncError('Falha na sincronização');
-      } finally {
-        // Libera o bloqueio após 3s para o listQuery voltar a funcionar
-        setTimeout(() => { isSavingRef.current = false; }, 3000);
-      }
+      setLastSyncTime(new Date());
+      setSyncError(null);
+      await listQuery.refetch();
     } catch (error) {
-      isSavingRef.current = false;
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
+    } finally {
+      // Libera o bloqueio após 3s para o listQuery voltar a funcionar
+      setTimeout(() => { isSavingRef.current = false; }, 3000);
     }
   };
 

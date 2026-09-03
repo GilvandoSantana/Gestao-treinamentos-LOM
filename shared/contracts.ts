@@ -19,6 +19,9 @@ export interface ContractInfo {
   alertWhatsapp: string | null;
   /** Nome de quem gerencia este contrato — usado no crachá padrão. */
   managerName: string | null;
+  /** Gerência do contrato inteiro (mesma pra todo colaborador) — usada na
+   * Ordem de Serviço e no crachá padrão. */
+  gerencia: string | null;
   /** PGR anexado no cadastro do contrato — pré-requisito para gerar uma Ordem de Serviço. */
   pgrFileUrl: string | null;
   pgrFileName: string | null;
@@ -32,8 +35,6 @@ export interface ContractInfo {
   osMedidasAdministrativas: string | null;
   osMedidasEngenharia: string | null;
   osEpisMinimos: string | null;
-  /** Gerência padrão deste contrato — usada na Ordem de Serviço. */
-  gerencia: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

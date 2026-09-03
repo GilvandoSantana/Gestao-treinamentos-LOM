@@ -68,17 +68,21 @@ const generateQRCode = async (text: string): Promise<string> => {
 export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): Promise<jsPDF> => {
   const toastId = toast.loading(`Gerando crachá para ${employee.name}...`);
 
-  // Nome do gestor deste contrato — cadastrado em Gerenciar Contratos.
-  // Se não conseguir buscar (ou não estiver preenchido), mostra "—" em vez
+  // Nome do gestor e Gerência deste contrato — cadastrados em Gerenciar
+  // Contratos, uma vez só pro contrato inteiro (não por colaborador). Se
+  // não conseguir buscar (ou não estiver preenchido), mostra "—" em vez
   // de travar a geração do crachá.
   let managerName: string | null = null;
+  let gerencia: string | null = null;
   try {
     if (employee.contract) {
       const result = await trpcClient.contracts.getManagerName.query({ slug: employee.contract });
       managerName = result.managerName;
+      gerencia = result.gerencia;
     }
   } catch {
     managerName = null;
+    gerencia = null;
   }
 
   try {
@@ -188,13 +192,15 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
     doc.setFont('helvetica', 'normal');
     doc.text('Support Mining', 27.5, yInfo + 3);
 
-    // Gerência do colaborador — dado próprio de cada um (antes era um texto
-    // fixo igual pra todo mundo; agora vem do cadastro).
+    // Gerência do CONTRATO — mesma pra todo mundo daquele contrato,
+    // cadastrada uma vez em "Gerenciar Contratos" (antes era um campo
+    // repetido em cada colaborador; unificado igual já era feito com o
+    // nome do gestor, buscada junto na mesma chamada acima).
     yInfo += 8.5;
     doc.setFont('helvetica', 'bold');
     doc.text('Gerência', 27.5, yInfo);
     doc.setFont('helvetica', 'normal');
-    const splitGerencia = doc.splitTextToSize(employee.gerencia || '—', 25);
+    const splitGerencia = doc.splitTextToSize(gerencia || '—', 25);
     doc.text(splitGerencia, 27.5, yInfo + 3);
 
     // Dados de CNH — sempre aparecem no layout novo, pra todo mundo, com
