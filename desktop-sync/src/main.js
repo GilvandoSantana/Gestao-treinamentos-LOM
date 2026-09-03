@@ -116,12 +116,16 @@ async function init() {
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
       state.folderPath = config.folderPath;
 
-      // Confere de novo a pasta salva antes de sincronizar sozinho — não
-      // é só na hora de escolher que isso importa: se a pasta salva de
-      // uma sessão anterior virou perigosa por algum motivo (ou já era,
-      // de antes desta proteção existir), não inicia nada sozinho sem a
-      // pessoa confirmar de novo.
-      const safety = config.folderPath ? await checkFolderSafety(config.folderPath) : { safe: true };
+      // Confere de novo a pasta salva antes de sincronizar sozinho — só a
+      // parte de "é uma pasta perigosa do sistema" (checkEmpty: false).
+      // A pasta JÁ TER ARQUIVO dentro é esperado e seguro aqui — é a
+      // mesma pasta que o próprio programa vem gerenciando há tempos,
+      // diferente da hora de ESCOLHER uma pasta pela primeira vez (onde
+      // "já tem arquivo" é sinal de alerta). Sem essa distinção, o
+      // programa nunca sincronizava sozinho depois de reiniciar o
+      // Windows (achado real, Gilvando 03/09) — toda pasta em uso de
+      // verdade tem conteúdo, então SEMPRE seria barrada.
+      const safety = config.folderPath ? await checkFolderSafety(config.folderPath, { checkEmpty: false }) : { safe: true };
       if (!safety.safe) {
         state.lastError = "A pasta salva precisa de confirmação antes de sincronizar de novo — abra o programa e escolha a pasta.";
         openSettingsWindow();
@@ -296,6 +300,7 @@ async function startSync() {
     console.log("[main] Modo placeholder ativado com sucesso.");
     state.syncMode = "placeholder";
     state.lastSyncAt = new Date().toISOString();
+    state.lastError = null;
     broadcastStatus();
     return;
   }
@@ -435,7 +440,7 @@ function getKnownSystemFolders() {
   return result;
 }
 
-async function checkFolderSafety(folderPath) {
+async function checkFolderSafety(folderPath, { checkEmpty = true } = {}) {
   const normalized = path.resolve(folderPath).toLowerCase();
   for (const dangerous of getKnownSystemFolders()) {
     if (normalized === dangerous.toLowerCase()) {
@@ -448,6 +453,8 @@ async function checkFolderSafety(folderPath) {
       };
     }
   }
+
+  if (!checkEmpty) return { safe: true };
 
   try {
     const entries = await fs.readdir(folderPath, { withFileTypes: true });

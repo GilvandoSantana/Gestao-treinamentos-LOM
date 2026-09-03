@@ -56,7 +56,17 @@ function setupAutoUpdater({ onLog, onUpdateReadyToInstall }) {
   });
 
   autoUpdater.on("error", (error) => {
-    onLog(`Falha ao verificar atualização do programa: ${error?.message || "erro desconhecido"}`, "error");
+    const message = error?.message || "";
+    // 404 aqui quase sempre significa "ainda não existe nenhum Release
+    // publicado no GitHub" — um estado normal e esperado (não configuramos
+    // isso ainda), não um problema de verdade. Sem essa distinção, isso
+    // aparecia como "Erro" alarmante toda vez que o programa abria, mesmo
+    // sem nada estar errado (achado real, Gilvando 03/09).
+    if (message.includes("404")) {
+      onLog("Nenhuma versão publicada encontrada ainda (normal, se ainda não foi publicado nenhum Release).", "info");
+      return;
+    }
+    onLog(`Falha ao verificar atualização do programa: ${message || "erro desconhecido"}`, "error");
   });
 
   return {
