@@ -49,6 +49,43 @@ const FIELD_KEYS = Object.keys(FIELD_DESCRIPTIONS) as (keyof ExtractedOsFields)[
 
 const TOOL_NAME = "preencher_os_por_funcao";
 
+// Limite de custo: cada chamada manda o PGR inteiro (até 32MB) pra API
+// paga da Anthropic — sem limite nenhum, um clique repetido (por
+// impaciência, ou testando várias funções seguidas) vira custo real sem
+// controle. 20 por contrato a cada hora dá espaço de sobra pra configurar
+// várias funções de uma vez, mas põe um teto contra uso descontrolado.
+const EXTRACTION_LIMIT = 20;
+const EXTRACTION_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+const extractionAttempts = new Map<string, { count: number; firstAttemptAt: number }>();
+
+export function checkExtractionRateLimit(contractSlug: string): number | null {
+  const now = Date.now();
+  for (const [key, record] of Array.from(extractionAttempts.entries())) {
+    if (now - record.firstAttemptAt > EXTRACTION_WINDOW_MS) extractionAttempts.delete(key);
+  }
+
+  const record = extractionAttempts.get(contractSlug);
+  if (!record) return null;
+  if (now - record.firstAttemptAt > EXTRACTION_WINDOW_MS) {
+    extractionAttempts.delete(contractSlug);
+    return null;
+  }
+  if (record.count >= EXTRACTION_LIMIT) {
+    return EXTRACTION_WINDOW_MS - (now - record.firstAttemptAt);
+  }
+  return null;
+}
+
+export function registerExtractionAttempt(contractSlug: string): void {
+  const now = Date.now();
+  const record = extractionAttempts.get(contractSlug);
+  if (!record || now - record.firstAttemptAt > EXTRACTION_WINDOW_MS) {
+    extractionAttempts.set(contractSlug, { count: 1, firstAttemptAt: now });
+  } else {
+    record.count += 1;
+  }
+}
+
 function buildToolSchema() {
   const properties: Record<string, unknown> = {};
   for (const key of FIELD_KEYS) {
@@ -65,12 +102,26 @@ function buildToolSchema() {
  * Baixa o PGR (PDF) do contrato e pede pra IA extrair, especificamente para
  * a função informada, os campos que preenchem a Ordem de Serviço.
  */
-export async function extractOsFieldsFromPgr(pgrFileUrl: string, role: string): Promise<ExtractedOsFields> {
+export async function extractOsFieldsFromPgr(
+  pgrFileUrl: string,
+  role: string,
+  contractSlug: string
+): Promise<ExtractedOsFields> {
   if (!ENV.anthropicApiKey) {
     throw new Error(
       "A extração automática não está configurada neste servidor (falta a variável ANTHROPIC_API_KEY)."
     );
   }
+
+  const remainingMs = checkExtractionRateLimit(contractSlug);
+  if (remainingMs !== null) {
+    const minutes = Math.ceil(remainingMs / 60000);
+    throw new Error(
+      `Limite de extrações automáticas atingido pra este contrato (protege contra custo descontrolado). ` +
+        `Tente de novo em ${minutes} minuto${minutes !== 1 ? "s" : ""}, ou preencha manualmente por enquanto.`
+    );
+  }
+  registerExtractionAttempt(contractSlug);
 
   const pdfResponse = await fetch(pgrFileUrl);
   if (!pdfResponse.ok) {

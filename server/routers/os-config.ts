@@ -66,7 +66,7 @@ export const osConfigRouter = router({
         });
       }
       try {
-        return await extractOsFieldsFromPgr(contract.pgrFileUrl, input.role);
+        return await extractOsFieldsFromPgr(contract.pgrFileUrl, input.role, ctx.siteContract);
       } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
