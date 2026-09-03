@@ -46,28 +46,32 @@ export default function EmployeeViewModal({ isOpen, employee, onClose }: Employe
         className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            {employee.photoUrl ? (
-              <img
-                src={employee.photoUrl}
-                alt={employee.name}
-                className="w-12 h-12 rounded-full object-cover border border-border shrink-0"
-              />
-            ) : (
-              <span className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <User size={22} className="text-muted-foreground" />
-              </span>
-            )}
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">{employee.name}</h2>
-              <p className="text-sm text-muted-foreground truncate">{employee.role}</p>
+        <div className="relative bg-gradient-to-r from-navy to-navy-light p-5 pt-6 shrink-0">
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              {employee.photoUrl ? (
+                <img
+                  src={employee.photoUrl}
+                  alt={employee.name}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white/30 shrink-0"
+                />
+              ) : (
+                <span className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                  <User size={22} className="text-white/70" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-bold text-white truncate">{employee.name}</h2>
+                <p className="text-sm text-white/60 truncate">{employee.role}</p>
+              </div>
             </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white shrink-0">
+              <X size={23} />
+            </button>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X size={23} />
-          </button>
         </div>
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Dados pessoais — só consulta */}

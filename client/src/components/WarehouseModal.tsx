@@ -121,8 +121,8 @@ export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdm
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[94vh] max-w-6xl flex flex-col sm:flex-row overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-1.5 sm:p-3">
+      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[97vh] sm:w-[97vw] max-w-none flex flex-col sm:flex-row overflow-hidden">
         {/* Cabeçalho — só no celular, a versão desktop fica dentro do painel lateral */}
         <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -135,8 +135,9 @@ export default function WarehouseModal({ isOpen, onClose, canManage, isMasterAdm
         </div>
 
         {/* Barra lateral de navegação — vira barra de abas horizontal no celular */}
-        <div className="flex sm:flex-col sm:w-64 shrink-0 bg-navy sm:bg-navy/95 text-white">
-          <div className="hidden sm:flex items-center gap-2.5 p-5 border-b border-white/10">
+        <div className="relative flex sm:flex-col sm:w-64 shrink-0 bg-navy sm:bg-navy/95 text-white">
+          <div className="hidden sm:absolute sm:block left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10 z-10" />
+          <div className="hidden sm:flex items-center gap-2.5 p-5 pt-6 border-b border-dashed border-white/15">
             <Warehouse className="text-orange shrink-0" size={22} />
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold leading-tight">Almoxarifado</h2>

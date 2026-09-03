@@ -119,30 +119,34 @@ export default function RenewTrainingModal({ isOpen, onClose, employees }: Renew
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <RefreshCw className="text-orange shrink-0" size={21} />
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">
-                Renovar treinamento em lote
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {selectedIds.size === 0
-                  ? 'Escolha o treinamento, as datas e os colaboradores'
-                  : `${selectedIds.size} colaborador(es) selecionado(s)`}
-              </p>
+        <div className="relative bg-gradient-to-r from-navy to-navy-light p-5 pt-6">
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <RefreshCw className="text-orange-light shrink-0" size={21} />
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-bold text-white truncate">
+                  Renovar treinamento em lote
+                </h2>
+                <p className="text-xs text-white/60">
+                  {selectedIds.size === 0
+                    ? 'Escolha o treinamento, as datas e os colaboradores'
+                    : `${selectedIds.size} colaborador(es) selecionado(s)`}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => {
+                reset();
+                onClose();
+              }}
+              className="text-white/60 hover:text-white shrink-0"
+            >
+              ✕
+            </button>
           </div>
-          <button
-            onClick={() => {
-              reset();
-              onClose();
-            }}
-            className="text-muted-foreground hover:text-foreground shrink-0"
-          >
-            ✕
-          </button>
         </div>
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         <div className="px-4 pt-3 space-y-3">
           <div>

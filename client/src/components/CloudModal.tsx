@@ -144,8 +144,8 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
   const storagePct = storage && storage.limitBytes > 0 ? Math.min(100, (storage.usedBytes / storage.limitBytes) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[94vh] max-w-6xl flex flex-col sm:flex-row overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-1.5 sm:p-3">
+      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[97vh] sm:w-[97vw] max-w-none flex flex-col sm:flex-row overflow-hidden">
         {/* Cabeçalho — só no celular */}
         <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -158,8 +158,9 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
         </div>
 
         {/* Barra lateral */}
-        <div className="flex flex-col sm:w-60 shrink-0 bg-navy sm:bg-navy/95 text-white">
-          <div className="hidden sm:flex items-center gap-2.5 p-5 border-b border-white/10">
+        <div className="relative flex flex-col sm:w-60 shrink-0 bg-navy sm:bg-navy/95 text-white">
+          <div className="hidden sm:absolute sm:block left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10 z-10" />
+          <div className="hidden sm:flex items-center gap-2.5 p-5 pt-6 border-b border-dashed border-white/15">
             <Cloud className="text-orange shrink-0" size={22} />
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold leading-tight">Nuvem</h2>

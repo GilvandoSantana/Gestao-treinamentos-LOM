@@ -185,20 +185,24 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <ClipboardList className="text-orange shrink-0" size={21} />
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">Ordem de Serviço por Função</h2>
-              <p className="text-xs text-muted-foreground">
-                Define o que sai pronto na Ordem de Serviço de cada função
-              </p>
+        <div className="relative bg-gradient-to-r from-navy to-navy-light p-5 pt-6">
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <ClipboardList className="text-orange-light shrink-0" size={21} />
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-bold text-white truncate">Ordem de Serviço por Função</h2>
+                <p className="text-xs text-white/60">
+                  Define o que sai pronto na Ordem de Serviço de cada função
+                </p>
+              </div>
             </div>
+            <button onClick={handleClose} className="text-white/60 hover:text-white shrink-0">
+              <X size={23} />
+            </button>
           </div>
-          <button onClick={handleClose} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X size={23} />
-          </button>
         </div>
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         {/* Escolha da função */}
         <div className="p-4 pb-2">

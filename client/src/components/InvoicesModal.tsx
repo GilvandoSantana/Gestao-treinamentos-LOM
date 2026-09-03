@@ -36,20 +36,24 @@ export default function InvoicesModal({ isOpen, onClose, canManage, isMasterAdmi
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 pb-3 border-b border-border">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Receipt className="text-orange shrink-0" size={21} />
-            <div className="min-w-0">
-              <h2 className="font-display text-lg font-bold text-foreground truncate">Notas Fiscais</h2>
-              <p className="text-xs text-muted-foreground truncate">Cadastro, dashboard, relatórios e alertas</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-1.5 sm:p-3">
+      <div className="bg-card rounded-2xl shadow-2xl w-full h-full sm:h-[97vh] sm:w-[97vw] max-w-none flex flex-col">
+        <div className="relative bg-gradient-to-r from-navy to-navy-light p-5 pt-6">
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Receipt className="text-orange-light shrink-0" size={21} />
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-bold text-white truncate">Notas Fiscais</h2>
+                <p className="text-xs text-white/60 truncate">Cadastro, dashboard, relatórios e alertas</p>
+              </div>
             </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white shrink-0">
+              <X size={23} />
+            </button>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
-            <X size={23} />
-          </button>
         </div>
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         <div className="flex gap-2 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map(({ key, label, icon: Icon }) => (
