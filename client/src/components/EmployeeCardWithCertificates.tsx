@@ -113,11 +113,13 @@ export default function EmployeeCardWithCertificates({
   return (
     <>
       <div
-        className={`bg-card rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
+        className={`relative bg-card rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
         style={{ animationDelay: `${index * 60}ms` }}
       >
         {/* Header */}
-        <div className="relative bg-gradient-to-br from-navy via-navy to-navy-light p-5">
+        <div className="relative bg-gradient-to-br from-navy via-navy to-navy-light p-5 pt-6">
+          {/* Ilhós do crachá */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
           {/* Marcas de canto (desenho técnico) — mesma linguagem do cabeçalho */}
           <div className="absolute top-2.5 left-2.5 w-2.5 h-2.5 border-t border-l border-white/20 pointer-events-none" />
           <div className="absolute bottom-2.5 right-2.5 w-2.5 h-2.5 border-b border-r border-white/20 pointer-events-none" />
@@ -306,6 +308,9 @@ export default function EmployeeCardWithCertificates({
             </div>
           )}
         </div>
+
+        {/* Costura perfurada entre o cabeçalho e o corpo do crachá */}
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         {/* Trainings */}
         <div className="p-4">

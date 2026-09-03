@@ -40,12 +40,17 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onDism
 
   return (
     <div
-      className={`bg-card rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
+      className={`relative bg-card rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4 ${statusBorderMap[worstStatus]} animate-fade-in-up group`}
       style={{ animationDelay: `${index * 60}ms` }}
     >
       {/* Header */}
-      <div className="bg-gradient-to-r from-navy to-navy-light p-4">
-        <div className="flex items-start justify-between">
+      <div className="relative bg-gradient-to-r from-navy to-navy-light p-4 pt-5">
+        {/* Furo de crachá (ilhós) */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
+        <div className="absolute top-3 right-3">
+          <ComplianceStamp status={worstStatus === 'none' ? 'unknown' : worstStatus} label="" size="sm" />
+        </div>
+        <div className="flex items-start justify-between pr-14">
           <div className="flex items-center gap-3 min-w-0">
             <div className="bg-white/15 p-2 rounded-lg shrink-0">
               <User size={20} className="text-white" />
@@ -137,6 +142,12 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onDism
           )}
         </div>
       </div>
+
+      {/* Costura perfurada entre o cabeçalho e o corpo do crachá */}
+      <div
+        className="h-0 border-t border-dashed border-border/70"
+        aria-hidden="true"
+      />
 
       {/* Trainings */}
       <div className="p-4">

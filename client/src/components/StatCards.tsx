@@ -1,9 +1,9 @@
 /*
- * Design: Industrial Blueprint — Neo-Industrial
- * StatCards: Dashboard statistics with left border accent, navy/orange/teal/red palette
+ * Design: Crachá oficial
+ * StatCards: cada indicador vira um selo de latão gravado, não um card de
+ * ícone genérico — reforça a linguagem de credencial/registro oficial.
  */
 
-import { Calendar, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 import type { Statistics } from '@/lib/types';
 
 interface StatCardsProps {
@@ -13,56 +13,44 @@ interface StatCardsProps {
 export default function StatCards({ stats }: StatCardsProps) {
   const cards = [
     {
-      label: 'Total de Treinamentos',
+      label: 'Total',
       value: stats.total,
-      icon: Calendar,
-      borderColor: 'border-l-navy',
-      iconColor: 'text-navy',
-      bgIcon: 'bg-navy/10',
+      ring: 'border-navy text-navy',
     },
     {
       label: 'Válidos',
       value: stats.valid,
-      icon: CheckCircle,
-      borderColor: 'border-l-teal',
-      iconColor: 'text-teal',
-      bgIcon: 'bg-teal/10',
+      ring: 'border-teal text-teal',
     },
     {
-      label: 'Próximos a Vencer',
+      label: 'Vencendo',
       value: stats.expiring,
-      icon: Clock,
-      borderColor: 'border-l-warning',
-      iconColor: 'text-warning',
-      bgIcon: 'bg-warning/10',
+      ring: 'border-warning text-warning',
     },
     {
       label: 'Vencidos',
       value: stats.expired,
-      icon: AlertTriangle,
-      borderColor: 'border-l-danger',
-      iconColor: 'text-danger',
-      bgIcon: 'bg-danger/10',
+      ring: 'border-danger text-danger',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       {cards.map((card, i) => (
         <div
           key={card.label}
-          className={`bg-card rounded-xl border-l-4 ${card.borderColor} p-5 shadow-sm hover:shadow-md transition-all duration-200 animate-fade-in-up`}
+          className="bg-card rounded-xl border border-border/70 py-5 px-3 shadow-sm hover:shadow-md transition-all duration-200 animate-fade-in-up flex flex-col items-center text-center gap-2.5"
           style={{ animationDelay: `${i * 80}ms` }}
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-muted-foreground text-sm font-medium">{card.label}</p>
-              <p className="text-3xl font-display font-bold text-card-foreground mt-1">{card.value}</p>
-            </div>
-            <div className={`${card.bgIcon} p-3 rounded-xl`}>
-              <card.icon className={card.iconColor} size={28} strokeWidth={2} />
-            </div>
+          <div
+            className={`w-16 h-16 rounded-full border-2 ${card.ring} flex items-center justify-center shrink-0`}
+            style={{ borderStyle: 'double' }}
+          >
+            <span className="font-display font-bold text-xl">{card.value}</span>
           </div>
+          <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground">
+            {card.label}
+          </p>
         </div>
       ))}
     </div>

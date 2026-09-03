@@ -16,6 +16,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [justAuthorized, setJustAuthorized] = useState(false);
 
   const loginMutation = trpc.auth.siteLogin.useMutation();
   const isLoading = loginMutation.isPending;
@@ -49,7 +50,10 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       // servidor recusa o cookie recém-criado.
       if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
       setPassword('');
-      onSuccess();
+      // Carimba o crachá de "acesso liberado" antes de trocar de tela — o
+      // único momento de animação orquestrado desta página.
+      setJustAuthorized(true);
+      setTimeout(onSuccess, 620);
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : 'Não foi possível entrar.');
       setPassword('');
@@ -74,89 +78,113 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
         <div className="absolute -bottom-2 -left-2 w-4 h-4 border-b border-l border-white/25" />
         <div className="absolute -bottom-2 -right-2 w-4 h-4 border-b border-r border-white/25" />
 
-        <div className="bg-card rounded-2xl shadow-2xl p-7">
-          <div className="flex flex-col items-center text-center mb-7">
-            <div className="w-[54px] h-[54px] rounded-2xl shadow-lg mb-4 overflow-hidden">
-              <img src="/gescon-logo.svg" alt="GesCon" className="w-full h-full object-contain" />
+        <div className="relative bg-card rounded-2xl shadow-2xl overflow-hidden">
+          {/* Ilhós do crachá */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-2.5 w-3 h-3 rounded-full bg-navy border border-black/20 z-10" />
+
+          <div className="p-7 pb-5">
+            <div className="flex flex-col items-center text-center mb-6 pt-2">
+              <div className="w-[54px] h-[54px] rounded-2xl shadow-lg mb-4 overflow-hidden">
+                <img src="/gescon-logo.svg" alt="GesCon" className="w-full h-full object-contain" />
+              </div>
+              <h1 className="font-display font-bold text-2xl tracking-tight text-foreground">
+                GesCon
+              </h1>
+              <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">
+                Gestão de Contratos
+              </p>
             </div>
-            <h1 className="font-display font-bold text-2xl tracking-tight text-foreground">
-              GesCon
-            </h1>
-            <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">
-              Gestão de Contratos
-            </p>
-            <p className="text-muted-foreground text-sm mt-1.5">
-              Entre para acessar os registros
-            </p>
+
+            {/* Friso de latão — acabamento da credencial */}
+            <div className="h-px bg-gradient-to-r from-transparent via-brass to-transparent mb-6" />
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="login-username"
+                  className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5"
+                >
+                  Usuário
+                </label>
+                <input
+                  id="login-username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="seu.usuario"
+                  autoComplete="username"
+                  autoFocus
+                  disabled={isLoading}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="login-password"
+                  className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5"
+                >
+                  Senha
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  disabled={isLoading}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
+                />
+              </div>
+
+              {error && (
+                <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading || justAuthorized}
+                className="w-full bg-orange text-white font-semibold py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 size={17} className="animate-spin" />
+                    Entrando...
+                  </>
+                ) : (
+                  'Entrar'
+                )}
+              </button>
+            </form>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="login-username"
-                className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5"
-              >
-                Usuário
-              </label>
-              <input
-                id="login-username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="seu.usuario"
-                autoComplete="username"
-                autoFocus
-                disabled={isLoading}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
-              />
-            </div>
+          {/* Canhoto destacável do crachá */}
+          <div className="border-t border-dashed border-border/70 bg-muted/40 px-7 py-2.5 flex items-center justify-between">
+            <span className="font-technical text-[10px] text-muted-foreground/70 tracking-wide">
+              Criado por Gilvando Santana
+            </span>
+            <span className="font-technical text-[10px] text-muted-foreground/50">GC-01</span>
+          </div>
 
-            <div>
-              <label
-                htmlFor="login-password"
-                className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5"
-              >
-                Senha
-              </label>
-              <input
-                id="login-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                disabled={isLoading}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
-              />
-            </div>
-
-            {error && (
-              <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-orange text-white font-semibold py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+          {/* Selo de acesso liberado */}
+          {justAuthorized && (
+            <div
+              className="absolute inset-0 bg-navy/80 flex items-center justify-center z-20"
+              aria-hidden="true"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 size={17} className="animate-spin" />
-                  Entrando...
-                </>
-              ) : (
-                'Entrar'
-              )}
-            </button>
-          </form>
-
+              <div className="w-28 h-28 rounded-full border-4 border-double border-teal flex items-center justify-center -rotate-6 animate-stamp-punch">
+                <span className="font-display font-bold text-teal text-xs text-center leading-tight px-2">
+                  ACESSO
+                  <br />
+                  LIBERADO
+                </span>
+              </div>
+            </div>
+          )}
         </div>
-
-        <p className="text-center text-white/30 text-xs mt-5 font-technical tracking-wide">
-          Criado por Gilvando Santana
-        </p>
       </div>
     </div>
   );

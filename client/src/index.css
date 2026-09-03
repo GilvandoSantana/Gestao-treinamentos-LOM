@@ -60,6 +60,14 @@
   --color-success-light: oklch(0.92 0.04 170);
   --color-warm-gray: oklch(0.95 0.005 80);
   --color-warm-gray-dark: oklch(0.90 0.008 80);
+
+  /* Crachá oficial — credential-card tokens */
+  --color-cardstock: oklch(0.93 0.02 80);
+  --color-cardstock-foreground: oklch(0.28 0.03 250);
+  --color-brass: oklch(0.72 0.14 75);
+  --color-brass-dark: oklch(0.55 0.12 70);
+  --color-bordeaux: oklch(0.40 0.11 20);
+  --color-bordeaux-light: oklch(0.55 0.13 20);
 }
 
 :root {
