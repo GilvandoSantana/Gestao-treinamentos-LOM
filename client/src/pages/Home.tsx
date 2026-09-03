@@ -58,9 +58,6 @@ export default function Home() {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Impede que o listQuery sobrescreva dados logo após um save
-  const isSavingRef = useRef(false);
-
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -146,7 +143,6 @@ export default function Home() {
   // um "cache" de colaboradores no localStorage do navegador para evitar
   // mostrar uma contagem antiga/de teste antes da real).
   useEffect(() => {
-    if (isSavingRef.current) return;
     if (!session.isLoggedIn) return;
     if (listQuery.isSuccess) {
       setEmployees((listQuery.data ?? []) as Employee[]);
@@ -231,9 +227,6 @@ export default function Home() {
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
-      // Bloqueia o listQuery de sobrescrever enquanto salvamos
-      isSavingRef.current = true;
-
       // Salva no servidor PRIMEIRO — só depois de confirmado é que a
       // tela mostra sucesso e fecha o formulário. Antes, a ordem era
       // invertida (fechava e mostrava "sucesso" antes do envio real
@@ -285,13 +278,18 @@ export default function Home() {
 
       setLastSyncTime(new Date());
       setSyncError(null);
+      // Busca a lista de novo do servidor pra confirmar visualmente o que
+      // ficou salvo — sem nenhum bloqueio artificial impedindo esse
+      // resultado de aparecer na tela (havia um antes, "isSavingRef", que
+      // segurava a atualização por 3s inteiros; como agora o servidor já
+      // é confirmado ANTES de mexer na tela, esse bloqueio só atrapalhava:
+      // podia impedir justamente ESTE refetch de aparecer, fazendo a
+      // mudança "sumir" até a próxima ação do usuário, ou até um F5 —
+      // achado real, Gilvando 03/09, segunda parte do mesmo problema).
       await listQuery.refetch();
     } catch (error) {
       toast.error('Erro ao salvar colaborador. Tente novamente.');
       console.error(error);
-    } finally {
-      // Libera o bloqueio após 3s para o listQuery voltar a funcionar
-      setTimeout(() => { isSavingRef.current = false; }, 3000);
     }
   };
 
