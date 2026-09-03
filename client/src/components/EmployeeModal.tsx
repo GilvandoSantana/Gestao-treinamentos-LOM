@@ -483,7 +483,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] flex flex-col animate-fade-in-up overflow-hidden"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-navy to-navy-light p-5 flex justify-between items-center shrink-0">
+        <div className="relative bg-gradient-to-r from-navy to-navy-light p-5 pt-6 flex justify-between items-center shrink-0">
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-3.5 h-3.5 rounded-full bg-background border border-black/10" />
           <div className="flex items-center gap-3">
             <div className="bg-white/15 p-2 rounded-lg">
               <User size={22} className="text-white" />
@@ -507,6 +508,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
             <X size={22} />
           </button>
         </div>
+        <div className="h-0 border-t border-dashed border-border/70" aria-hidden="true" />
 
         {/* Form Body */}
         <div className="overflow-y-auto flex-1 p-5 sm:p-6 space-y-6">
