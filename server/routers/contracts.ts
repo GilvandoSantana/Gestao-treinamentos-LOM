@@ -33,6 +33,7 @@ export const contractsRouter = router({
           managerName: contract?.managerName ?? null,
           contractName: contract?.name ?? null,
           companyName: contract?.companyName ?? null,
+          gerencia: contract?.gerencia ?? null,
           pgrFileUrl: contract?.pgrFileUrl ?? null,
         };
       }),
@@ -52,6 +53,7 @@ export const contractsRouter = router({
           alertWhatsapp: z.string().optional().or(z.literal("")),
           managerName: z.string().trim().max(120).nullish(),
           companyName: z.string().trim().max(255).nullish(),
+          gerencia: z.string().trim().max(150).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -63,6 +65,7 @@ export const contractsRouter = router({
           alertWhatsapp: input.alertWhatsapp || null,
           managerName: input.managerName,
           companyName: input.companyName,
+          gerencia: input.gerencia,
         });
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -85,6 +88,7 @@ export const contractsRouter = router({
           alertWhatsapp: z.string().optional().or(z.literal("")),
           managerName: z.string().trim().max(120).nullish(),
           companyName: z.string().trim().max(255).nullish(),
+          gerencia: z.string().trim().max(150).nullish(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -99,6 +103,7 @@ export const contractsRouter = router({
           alertWhatsapp: input.alertWhatsapp || null,
           managerName: input.managerName,
           companyName: input.companyName,
+          gerencia: input.gerencia,
         });
         void logActivity({
           username: ctx.siteAdminUsername,

@@ -21,6 +21,7 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     pgrFileName: row.pgrFileName || null,
     pgrUploadedAt: row.pgrUploadedAt ? row.pgrUploadedAt.toISOString() : null,
     companyName: row.companyName || null,
+    gerencia: row.gerencia || null,
     osMedidasAdministrativas: row.osMedidasAdministrativas || null,
     osMedidasEngenharia: row.osMedidasEngenharia || null,
     osEpisMinimos: row.osEpisMinimos || null,
@@ -63,6 +64,7 @@ export async function createContract(input: {
   alertWhatsapp?: string | null;
   managerName?: string | null;
   companyName?: string | null;
+  gerencia?: string | null;
 }): Promise<ContractInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -85,6 +87,7 @@ export async function createContract(input: {
     alertWhatsapp: input.alertWhatsapp?.trim() || null,
     managerName: input.managerName?.trim() || null,
     companyName: input.companyName?.trim() || null,
+    gerencia: input.gerencia?.trim() || null,
   });
 
   return {
@@ -99,6 +102,7 @@ export async function createContract(input: {
     pgrFileName: null,
     pgrUploadedAt: null,
     companyName: input.companyName?.trim() || null,
+    gerencia: input.gerencia?.trim() || null,
     osMedidasAdministrativas: null,
     osMedidasEngenharia: null,
     osEpisMinimos: null,
@@ -117,6 +121,7 @@ export async function updateContract(
     alertWhatsapp?: string | null;
     managerName?: string | null;
     companyName?: string | null;
+    gerencia?: string | null;
   }
 ): Promise<void> {
   const db = await getDb();
@@ -132,6 +137,7 @@ export async function updateContract(
       alertWhatsapp: input.alertWhatsapp?.trim() || null,
       managerName: input.managerName?.trim() || null,
       companyName: input.companyName?.trim() || null,
+      gerencia: input.gerencia?.trim() || null,
     })
     .where(eq(contracts.id, id));
 }

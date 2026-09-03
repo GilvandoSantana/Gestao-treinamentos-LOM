@@ -49,6 +49,8 @@ export type OsPageData = {
   employee: Employee;
   contractName: string;
   companyName: string;
+  /** Gerência padrão do contrato — a mesma pra todos os colaboradores. */
+  gerencia: string;
   role: OsRoleData | null;
   /**
    * "Medidas de Controle Existentes" — fixo dentro do contrato (mesmo
@@ -169,8 +171,9 @@ class Cursor {
   }
 
   /**
-   * Uma barra de título em azul marinho com texto branco em negrito —
-   * mesmo visual das seções do modelo (fill FF002060).
+   * Uma barra de título em azul marinho com texto branco em negrito,
+   * centralizado na largura da página — mesmo visual das seções do
+   * modelo (fill FF002060).
    */
   sectionHeader(text: string) {
     const height = this.s(5.6);
@@ -183,7 +186,7 @@ class Cursor {
       doc.setFont(FONT_NAME, 'bold');
       doc.setFontSize(this.s(8.3));
       doc.setTextColor(...WHITE);
-      doc.text(text, MARGIN + this.s(2), this.y + height / 2 + this.s(1.2));
+      doc.text(text, MARGIN + CONTENT_WIDTH / 2, this.y + height / 2 + this.s(1.2), { align: 'center' });
       doc.setTextColor(...BLACK);
     }
     this.y += height;
@@ -288,7 +291,7 @@ class Cursor {
 
 /** Todo o conteúdo da Ordem de Serviço, desenhado através do cursor dado. */
 function layoutDocument(cursor: Cursor, data: OsPageData, today: string) {
-  const { employee, contractName, companyName, role, osDefaults } = data;
+  const { employee, contractName, companyName, gerencia, role, osDefaults } = data;
 
   cursor.mainHeader(`Data: ${today}`);
 
@@ -312,7 +315,7 @@ function layoutDocument(cursor: Cursor, data: OsPageData, today: string) {
   ]);
   cursor.cellRow([
     { text: 'Gerência:', width: 30, bold: true },
-    { text: employee.gerencia || '—', width: 90 },
+    { text: gerencia || '—', width: 90 },
     { text: 'Contrato:', width: 22, bold: true },
     { text: contractName || '—', width: CONTENT_WIDTH - 30 - 90 - 22 },
   ]);
@@ -386,7 +389,16 @@ function layoutDocument(cursor: Cursor, data: OsPageData, today: string) {
     { text: employee.role, width: CONTENT_WIDTH - 30 },
   ]);
   cursor.sectionHeader('Responsável Setor de Segurança');
-  cursor.cellRow([{ text: '', width: CONTENT_WIDTH }], { minHeight: 8 });
+  cursor.cellRow([
+    { text: 'Nome:', width: 30, bold: true },
+    { text: '', width: CONTENT_WIDTH - 30 - 55 },
+    { text: 'Data:', width: 20, bold: true },
+    { text: '', width: 35 },
+  ]);
+  cursor.cellRow([
+    { text: 'Cargo / Função:', width: 30, bold: true },
+    { text: '', width: CONTENT_WIDTH - 30 },
+  ]);
 
   cursor.textBlock(
     '',

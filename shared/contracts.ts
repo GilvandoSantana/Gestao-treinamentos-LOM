@@ -32,6 +32,8 @@ export interface ContractInfo {
   osMedidasAdministrativas: string | null;
   osMedidasEngenharia: string | null;
   osEpisMinimos: string | null;
+  /** Gerência padrão deste contrato — usada na Ordem de Serviço. */
+  gerencia: string | null;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

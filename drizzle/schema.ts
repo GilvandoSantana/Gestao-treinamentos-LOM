@@ -245,6 +245,11 @@ export const contracts = mysqlTable("contracts", {
   osMedidasAdministrativas: text("osMedidasAdministrativas"),
   osMedidasEngenharia: text("osMedidasEngenharia"),
   osEpisMinimos: text("osEpisMinimos"),
+  // Gerência padrão deste contrato — usada na Ordem de Serviço (mesmo
+  // texto pra todas as funções, evita digitar de novo em cada
+  // colaborador). Independente do campo "gerencia" de cada colaborador
+  // (usado no crachá).
+  gerencia: varchar("gerencia", { length: 150 }),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

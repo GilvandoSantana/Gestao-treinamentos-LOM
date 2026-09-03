@@ -2,11 +2,13 @@
  * Ordem de Serviço (NR-01).
  *
  * Gera uma página por colaborador, preenchendo automaticamente Nome, CPF,
- * Cargo, Gerência e Contrato (igual à Ficha de EPI e ao crachá) — área,
- * tarefas e agentes ambientais vêm da configuração da função do
- * colaborador dentro do contrato (ver OsRoleConfigModal); "Medidas de
- * Controle Existentes" (Administrativas, Engenharia, EPI's Mínimos) vem
- * do padrão do contrato (mesmo texto pra todas as funções).
+ * Cargo e Contrato (igual à Ficha de EPI e ao crachá) — Gerência e Empresa
+ * vêm do cadastro do contrato (mesmo texto pra todos os colaboradores,
+ * evita digitar de novo em cada um); área, tarefas e agentes ambientais
+ * vêm da configuração da função do colaborador dentro do contrato (ver
+ * OsRoleConfigModal); "Medidas de Controle Existentes" (Administrativas,
+ * Engenharia, EPI's Mínimos) vem do padrão do contrato (mesmo texto pra
+ * todas as funções).
  *
  * Pré-requisitos, ambos bloqueiam a geração com mensagem explicando o
  * motivo se não estiverem prontos:
@@ -70,6 +72,7 @@ export const generateOsFormPDF = async (employee: Employee, sharedDoc?: jsPDF): 
     employee,
     contractName,
     companyName: contractInfo?.companyName ?? '',
+    gerencia: contractInfo?.gerencia ?? '',
     role: roleConfig ?? null,
     osDefaults: {
       medidasAdministrativas: osDefaults?.osMedidasAdministrativas ?? null,

@@ -57,6 +57,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [alertWhatsapp, setAlertWhatsapp] = useState('');
   const [managerName, setManagerName] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [contractGerencia, setContractGerencia] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -195,6 +196,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setAlertWhatsapp('');
     setManagerName('');
     setCompanyName('');
+    setContractGerencia('');
     setPgrFile(null);
   };
 
@@ -207,6 +209,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setAlertWhatsapp(contract.alertWhatsapp ?? '');
     setManagerName(contract.managerName ?? '');
     setCompanyName(contract.companyName ?? '');
+    setContractGerencia(contract.gerencia ?? '');
     setShowForm(true);
   };
 
@@ -214,10 +217,10 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     e.preventDefault();
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName, companyName });
+        await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName, companyName, gerencia: contractGerencia });
         toast.success('Contrato atualizado.');
       } else {
-        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName, companyName });
+        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName, companyName, gerencia: contractGerencia });
         toast.success('Contrato cadastrado.');
       }
       resetForm();
@@ -443,6 +446,23 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Aparece no cabeçalho da Ordem de Serviço deste contrato.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block font-technical text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                      Gerência (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={contractGerencia}
+                      onChange={(e) => setContractGerencia(e.target.value)}
+                      placeholder="Ex: ENGENHARIA DE MANUTENÇÃO E CONFIABILIDADE"
+                      disabled={isSubmitting}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aparece no campo "Gerência" da Ordem de Serviço — a mesma pra todos os
+                      colaboradores deste contrato, sem precisar digitar em cada um.
                     </p>
                   </div>
                   <div>
