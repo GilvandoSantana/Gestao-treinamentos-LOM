@@ -3,22 +3,29 @@
  * planilha enviado pelo administrador: barras de título em azul marinho
  * (RGB 0,32,96) com texto branco em negrito, campos em caixas com borda
  * dispostos em grade (como uma planilha), e uma tabela de Agentes
- * Ambientais com cabeçalho.
+ * Ambientais com cabeçalho. Fonte Caladea (compatível com Cambria).
  *
- * O conteúdo por função (tarefas, agentes, medidas, EPIs) tem tamanho
- * livre — o admin escreve o quanto quiser — por isso a altura de cada
- * caixa se ajusta ao texto e o desenho flui para uma nova página sozinho
- * quando necessário, em vez de forçar tudo em uma página só.
+ * SEMPRE UMA PÁGINA SÓ: como o conteúdo por função/contrato tem tamanho
+ * livre (o admin escreve o quanto quiser), o desenho roda em duas
+ * passadas — a primeira só mede a altura total que o conteúdo ocuparia
+ * em tamanho normal, a segunda desenha de verdade já aplicando a escala
+ * necessária pra caber tudo numa folha A4 (mesma ideia do "ajustar à
+ * página" do Excel, que a planilha original já usava, a 64%).
  */
 
 import { jsPDF } from 'jspdf';
 import type { Employee } from '@/lib/types';
+import { registerCaladeaFont, FONT_NAME } from '@/lib/fonts/caladea-font';
 
-const MARGIN = 14;
+const MARGIN = 8; // margem pequena — usa quase toda a folha A4
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const BOTTOM_LIMIT = PAGE_HEIGHT - 14;
+const BOTTOM_LIMIT = PAGE_HEIGHT - MARGIN;
+// Nunca deixa o texto menor que isso, mesmo que o conteúdo seja extenso
+// demais pra uma página — nesse caso extremo, deixa a 2ª página como
+// último recurso em vez de gerar algo ilegível.
+const MIN_SCALE = 0.6;
 
 // Azul marinho exato do modelo em planilha (fill FF002060).
 const NAVY: [number, number, number] = [0, 32, 96];
@@ -87,18 +94,25 @@ interface CellSpec {
   text: string;
   width: number;
   bold?: boolean;
-  fontSize?: number;
-  color?: [number, number, number];
-  fill?: [number, number, number];
   align?: 'left' | 'center';
 }
 
-/** Estado de "cursor" do desenho — a posição Y atual na página. */
+/**
+ * Cursor de desenho. Em modo `dryRun`, nunca desenha nem quebra página —
+ * só soma a altura em `y` pra sabermos o quanto o conteúdo ocuparia. Em
+ * modo real, desenha de verdade com todos os tamanhos multiplicados por
+ * `scale` (calculado depois da primeira passada).
+ */
 class Cursor {
   y = MARGIN;
-  constructor(private doc: jsPDF) {}
+  constructor(private doc: jsPDF, private scale: number, private dryRun: boolean) {}
+
+  private s(mm: number): number {
+    return mm * this.scale;
+  }
 
   ensureSpace(height: number) {
+    if (this.dryRun) return; // a passada de medição nunca quebra página
     if (this.y + height > BOTTOM_LIMIT) {
       this.doc.addPage('a4', 'portrait');
       this.y = MARGIN;
@@ -106,140 +120,178 @@ class Cursor {
   }
 
   gap(mm: number) {
-    this.y += mm;
+    this.y += this.s(mm);
+  }
+
+  private measureLines(text: string, usableWidth: number, fontSize: number): string[] {
+    this.doc.setFontSize(fontSize);
+    return this.doc.splitTextToSize(text, usableWidth) as string[];
+  }
+
+  /** Cabeçalho principal: barra azul marinho com título + Nº/Data à direita. */
+  mainHeader(dateLabel: string) {
+    const height = this.s(11);
+    this.ensureSpace(height);
+    if (!this.dryRun) {
+      const { doc } = this;
+      doc.setFillColor(...NAVY);
+      doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'F');
+      doc.setDrawColor(...BORDER_GRAY);
+      doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'S');
+      const numDataX = MARGIN + CONTENT_WIDTH - this.s(40);
+      doc.line(numDataX, this.y, numDataX, this.y + height);
+
+      doc.setTextColor(...WHITE);
+      doc.setFont(FONT_NAME, 'bold');
+      doc.setFontSize(this.s(10.5));
+      doc.text(
+        'ORDEM DE SERVIÇO CONFORME NR 01 - DISPOSIÇÕES GERAIS',
+        MARGIN + (CONTENT_WIDTH - this.s(40)) / 2,
+        this.y + this.s(5),
+        { align: 'center' }
+      );
+      doc.setFont(FONT_NAME, 'normal');
+      doc.setFontSize(this.s(6.3));
+      doc.text(
+        'Conforme item 1.4 - Direitos e Deveres do Empregador e do Empregado',
+        MARGIN + (CONTENT_WIDTH - this.s(40)) / 2,
+        this.y + this.s(8.7),
+        { align: 'center' }
+      );
+
+      doc.setFont(FONT_NAME, 'bold');
+      doc.setFontSize(this.s(7.8));
+      doc.text('Nº:', numDataX + this.s(2), this.y + this.s(4.7));
+      doc.text(dateLabel, numDataX + this.s(2), this.y + this.s(8.7));
+      doc.setTextColor(...BLACK);
+    }
+    this.y += height;
   }
 
   /**
    * Uma barra de título em azul marinho com texto branco em negrito —
    * mesmo visual das seções do modelo (fill FF002060).
    */
-  sectionHeader(text: string, opts?: { fontSize?: number }) {
-    const height = 6.5;
+  sectionHeader(text: string) {
+    const height = this.s(5.6);
     this.ensureSpace(height);
-    const { doc } = this;
-    doc.setFillColor(...NAVY);
-    doc.setDrawColor(...NAVY);
-    doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(opts?.fontSize ?? 9.5);
-    doc.setTextColor(...WHITE);
-    doc.text(text, MARGIN + 2, this.y + height / 2 + 1.4);
-    doc.setTextColor(...BLACK);
+    if (!this.dryRun) {
+      const { doc } = this;
+      doc.setFillColor(...NAVY);
+      doc.setDrawColor(...NAVY);
+      doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'FD');
+      doc.setFont(FONT_NAME, 'bold');
+      doc.setFontSize(this.s(8.3));
+      doc.setTextColor(...WHITE);
+      doc.text(text, MARGIN + this.s(2), this.y + height / 2 + this.s(1.2));
+      doc.setTextColor(...BLACK);
+    }
     this.y += height;
   }
 
-  /** Mede quantas linhas um texto ocupa numa largura útil (descontando o padding). */
-  private measureLines(text: string, usableWidth: number, fontSize: number): string[] {
-    this.doc.setFontSize(fontSize);
-    return this.doc.splitTextToSize(text, usableWidth) as string[];
-  }
-
   /**
-   * Uma linha de caixas com borda lado a lado (label em negrito + valor),
-   * repetida quantas vezes precisar — mesma ideia da grade da planilha.
+   * Uma linha de caixas com borda lado a lado (label em negrito + valor).
    * Todas as caixas da linha compartilham a mesma altura (a maior delas).
    */
-  cellRow(cells: CellSpec[], opts?: { minHeight?: number; padding?: number }) {
-    const padding = opts?.padding ?? 1.6;
-    const fontSize = 8.3;
-    const lineHeight = 3.6;
+  cellRow(cells: CellSpec[], opts?: { minHeight?: number }) {
+    const padding = this.s(1.4);
+    const fontSize = this.s(7.2);
+    const lineHeight = this.s(3.05);
 
-    const lineSets = cells.map((cell) => this.measureLines(cell.text, cell.width - padding * 2, cell.fontSize ?? fontSize));
+    const lineSets = cells.map((cell) => this.measureLines(cell.text, cell.width - padding * 2, fontSize));
     const maxLines = Math.max(1, ...lineSets.map((lines) => lines.length));
-    const height = Math.max(opts?.minHeight ?? 0, maxLines * lineHeight + padding * 2);
+    const height = Math.max(this.s(opts?.minHeight ?? 0), maxLines * lineHeight + padding * 2);
 
     this.ensureSpace(height);
-    const { doc } = this;
-    let x = MARGIN;
-    cells.forEach((cell, i) => {
-      if (cell.fill) {
-        doc.setFillColor(...cell.fill);
-        doc.rect(x, this.y, cell.width, height, 'F');
-      }
-      doc.setDrawColor(...BORDER_GRAY);
-      doc.rect(x, this.y, cell.width, height, 'S');
-
-      doc.setFont('helvetica', cell.bold ? 'bold' : 'normal');
-      doc.setFontSize(cell.fontSize ?? fontSize);
-      doc.setTextColor(...(cell.color ?? BLACK));
-      const lines = lineSets[i];
-      const textX = cell.align === 'center' ? x + cell.width / 2 : x + padding;
-      lines.forEach((line, li) => {
-        doc.text(line, textX, this.y + padding + lineHeight * (li + 1) - 1, {
-          align: cell.align === 'center' ? 'center' : 'left',
+    if (!this.dryRun) {
+      const { doc } = this;
+      let x = MARGIN;
+      cells.forEach((cell, i) => {
+        doc.setDrawColor(...BORDER_GRAY);
+        doc.rect(x, this.y, cell.width, height, 'S');
+        doc.setFont(FONT_NAME, cell.bold ? 'bold' : 'normal');
+        doc.setFontSize(fontSize);
+        doc.setTextColor(...BLACK);
+        const lines = lineSets[i];
+        const textX = cell.align === 'center' ? x + cell.width / 2 : x + padding;
+        lines.forEach((line, li) => {
+          doc.text(line, textX, this.y + padding + lineHeight * (li + 1) - this.s(0.8), {
+            align: cell.align === 'center' ? 'center' : 'left',
+          });
         });
+        x += cell.width;
       });
-      x += cell.width;
-    });
-    doc.setTextColor(...BLACK);
+    }
     this.y += height;
   }
 
   /** Uma caixa larga (label acima, texto corrido abaixo) — pra blocos longos. */
   textBlock(label: string, value: string, opts?: { minHeight?: number }) {
-    const padding = 2;
-    const fontSize = 8.3;
-    const lineHeight = 3.7;
+    const padding = this.s(1.7);
+    const fontSize = this.s(7.2);
+    const lineHeight = this.s(3.15);
     const lines = this.measureLines(value, CONTENT_WIDTH - padding * 2, fontSize);
-    const labelHeight = label ? 4.2 : 0;
-    const height = Math.max(opts?.minHeight ?? 0, labelHeight + lines.length * lineHeight + padding * 2);
+    const labelHeight = label ? this.s(3.6) : 0;
+    const height = Math.max(this.s(opts?.minHeight ?? 0), labelHeight + lines.length * lineHeight + padding * 2);
 
     this.ensureSpace(height);
-    const { doc } = this;
-    doc.setDrawColor(...BORDER_GRAY);
-    doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'S');
+    if (!this.dryRun) {
+      const { doc } = this;
+      doc.setDrawColor(...BORDER_GRAY);
+      doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'S');
 
-    let textY = this.y + padding;
-    if (label) {
-      doc.setFont('helvetica', 'bold');
+      let textY = this.y + padding;
+      if (label) {
+        doc.setFont(FONT_NAME, 'bold');
+        doc.setFontSize(fontSize);
+        doc.text(label, MARGIN + padding, textY + this.s(2.5));
+        textY += labelHeight;
+      }
+      doc.setFont(FONT_NAME, 'normal');
       doc.setFontSize(fontSize);
-      doc.text(label, MARGIN + padding, textY + 3);
-      textY += labelHeight;
+      lines.forEach((line, li) => {
+        doc.text(line, MARGIN + padding, textY + lineHeight * (li + 1) - this.s(0.8));
+      });
     }
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(fontSize);
-    lines.forEach((line, li) => {
-      doc.text(line, MARGIN + padding, textY + lineHeight * (li + 1) - 1);
-    });
+    this.y += height;
+  }
+
+  /** Caixa com borda contendo uma lista numerada (Obrigações do Empregado). */
+  numberedBox(items: string[]) {
+    const padding = this.s(1.5);
+    const fontSize = this.s(7);
+    const lineHeight = this.s(3.05);
+    const numbered = items.map((text, i) => `${String(i + 1).padStart(2, '0')} - ${text}`);
+    this.doc.setFontSize(fontSize);
+    const allLines = numbered.map((t) => this.doc.splitTextToSize(t, CONTENT_WIDTH - padding * 2) as string[]);
+    const totalLines = allLines.reduce((sum, l) => sum + l.length, 0);
+    const height = totalLines * lineHeight + padding * 2;
+
+    this.ensureSpace(height);
+    if (!this.dryRun) {
+      const { doc } = this;
+      doc.setDrawColor(...BORDER_GRAY);
+      doc.rect(MARGIN, this.y, CONTENT_WIDTH, height, 'S');
+      doc.setFont(FONT_NAME, 'normal');
+      doc.setFontSize(fontSize);
+      let ty = this.y + padding;
+      allLines.forEach((lines) => {
+        lines.forEach((line) => {
+          doc.text(line, MARGIN + padding, ty + lineHeight - this.s(0.7));
+          ty += lineHeight;
+        });
+      });
+    }
     this.y += height;
   }
 }
 
-export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<void> {
+/** Todo o conteúdo da Ordem de Serviço, desenhado através do cursor dado. */
+function layoutDocument(cursor: Cursor, data: OsPageData, today: string) {
   const { employee, contractName, companyName, role, osDefaults } = data;
-  const cursor = new Cursor(doc);
-  const today = formatDateBR(new Date());
 
-  // ── Cabeçalho: barra azul marinho com título + Nº/Data à direita ──
-  const HEADER_HEIGHT = 13;
-  cursor.ensureSpace(HEADER_HEIGHT);
-  doc.setFillColor(...NAVY);
-  doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, HEADER_HEIGHT, 'F');
-  doc.setDrawColor(...BORDER_GRAY);
-  doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, HEADER_HEIGHT, 'S');
-  const numDataX = MARGIN + CONTENT_WIDTH - 45;
-  doc.line(numDataX, cursor.y, numDataX, cursor.y + HEADER_HEIGHT);
+  cursor.mainHeader(`Data: ${today}`);
 
-  doc.setTextColor(...WHITE);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('ORDEM DE SERVIÇO CONFORME NR 01 - DISPOSIÇÕES GERAIS', MARGIN + (CONTENT_WIDTH - 45) / 2, cursor.y + 6, {
-    align: 'center',
-  });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text('Conforme item 1.4 - Direitos e Deveres do Empregador e do Empregado', MARGIN + (CONTENT_WIDTH - 45) / 2, cursor.y + 10.5, {
-    align: 'center',
-  });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text('Nº:', numDataX + 2, cursor.y + 5.5);
-  doc.text(`Data: ${today}`, numDataX + 2, cursor.y + 10.5);
-  doc.setTextColor(...BLACK);
-  cursor.gap(HEADER_HEIGHT);
-
-  // ── Dados do colaborador / contrato, em caixas pareadas ──
   cursor.cellRow([
     { text: 'Empresa:', width: 30, bold: true },
     { text: companyName || '—', width: 90 },
@@ -264,67 +316,39 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
     { text: 'Contrato:', width: 22, bold: true },
     { text: contractName || '—', width: CONTENT_WIDTH - 30 - 90 - 22 },
   ]);
-  cursor.cellRow([
-    { text: 'Observações:', width: 30, bold: true },
-    { text: '', width: CONTENT_WIDTH - 30 },
-  ]);
-  cursor.gap(2);
+  cursor.gap(1);
 
   cursor.sectionHeader('Conceito Legal da Norma Regulamentadora NR 1 - Disposições Gerais');
   cursor.textBlock(
     '',
     'Conforme estabelecido pelo item 1.4 da NR 01 - Disposições Gerais cabe ao Empregador elaborar Ordem de Serviço e informar aos trabalhadores os riscos ocupacionais existentes nos locais de trabalho, as medidas de controle adotadas pela empresa para reduzir ou eliminar tais riscos, os resultados dos exames médicos e de exames complementares de diagnóstico aos quais os próprios trabalhadores forem submetidos e os resultados das avaliações ambientais realizadas nos locais de trabalho.'
   );
-  cursor.gap(2);
+  cursor.gap(1);
 
   cursor.sectionHeader('Objetivos');
   cursor.textBlock(
     '',
     'Informar os Trabalhadores sobre os agentes ambientais de risco Físico, Químico, Biológico, Ergonômico e Acidentes bem como dar ciência aos trabalhadores sobre as doenças ocupacionais relativas ao ambiente de trabalho exposto. Instruí-los quanto a forma de eliminar, neutralizar ou minimizar os efeitos pelo contato com os riscos através da conscientização, medidas administrativas, medidas de controle coletivo e o fornecimento, manutenção e controle da periodicidade de troca dos Equipamentos de Proteção Individual.'
   );
-  cursor.gap(2);
+  cursor.gap(1);
 
   cursor.sectionHeader('Obrigações do Empregado');
-  {
-    const padding = 1.8;
-    const fontSize = 8;
-    const lineHeight = 3.6;
-    const numbered = OBRIGACOES_EMPREGADO.map((text, i) => `${String(i + 1).padStart(2, '0')} - ${text}`);
-    doc.setFontSize(fontSize);
-    const allLines = numbered.map((t) => doc.splitTextToSize(t, CONTENT_WIDTH - padding * 2) as string[]);
-    const totalLines = allLines.reduce((sum, l) => sum + l.length, 0);
-    const boxHeight = totalLines * lineHeight + padding * 2;
-    cursor.ensureSpace(boxHeight);
-    doc.setDrawColor(...BORDER_GRAY);
-    doc.rect(MARGIN, cursor.y, CONTENT_WIDTH, boxHeight, 'S');
-    doc.setFont('helvetica', 'normal');
-    let ty = cursor.y + padding;
-    allLines.forEach((lines) => {
-      lines.forEach((line) => {
-        doc.text(line, MARGIN + padding, ty + lineHeight - 1);
-        ty += lineHeight;
-      });
-    });
-    cursor.gap(boxHeight);
-  }
-  cursor.gap(2);
+  cursor.numberedBox(OBRIGACOES_EMPREGADO);
+  cursor.gap(1);
 
   cursor.sectionHeader('Descrição das atividades do Setor / Frente de Serviço');
   cursor.textBlock('Tarefa:', role?.tarefas || '—');
-  cursor.gap(2);
+  cursor.gap(1);
 
   cursor.sectionHeader('Relação de Insumos do Setor de Trabalho');
   cursor.textBlock('Máquinas, Equipamentos e Ferramentas:', role?.maquinasEquipamentos || '—');
-  cursor.gap(2);
+  cursor.gap(1);
 
   cursor.sectionHeader('Agentes Ambientais');
-  cursor.cellRow(
-    [
-      { text: 'Tipo de Agente', width: 40, bold: true },
-      { text: 'Descrição do Agente', width: CONTENT_WIDTH - 40, bold: true },
-    ],
-    { minHeight: 5.5 }
-  );
+  cursor.cellRow([
+    { text: 'Tipo de Agente', width: 40, bold: true },
+    { text: 'Descrição do Agente', width: CONTENT_WIDTH - 40, bold: true },
+  ]);
   const agentRows: [string, string][] = [
     ['Físicos:', role?.agentesFisicos || '—'],
     ['Químicos:', role?.agentesQuimicos || '—'],
@@ -338,7 +362,7 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
       { text: value, width: CONTENT_WIDTH - 40 },
     ]);
   }
-  cursor.gap(2);
+  cursor.gap(1);
 
   // Fixo por contrato (não por função) — configurado uma vez em
   // Documentação → OS por Função → "padrão do contrato". EPI's Mínimos
@@ -347,7 +371,7 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
   cursor.textBlock('Medidas Administrativas:', osDefaults.medidasAdministrativas || '—');
   cursor.textBlock('Medidas de Engenharia:', osDefaults.medidasEngenharia || '—');
   cursor.textBlock("EPI's Mínimos:", osDefaults.episMinimos || '—');
-  cursor.gap(2);
+  cursor.gap(1);
 
   // ── Assinaturas ──
   cursor.sectionHeader('Assinatura do Empregado');
@@ -362,10 +386,29 @@ export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<vo
     { text: employee.role, width: CONTENT_WIDTH - 30 },
   ]);
   cursor.sectionHeader('Responsável Setor de Segurança');
-  cursor.cellRow([{ text: '', width: CONTENT_WIDTH }], { minHeight: 10 });
+  cursor.cellRow([{ text: '', width: CONTENT_WIDTH }], { minHeight: 8 });
 
   cursor.textBlock(
     '',
     'Confirmo ter recebido e entendido todas as informações expostas na estrutura deste documento através de minha assinatura acima.'
   );
+}
+
+export async function renderOsFormPage(doc: jsPDF, data: OsPageData): Promise<void> {
+  registerCaladeaFont(doc);
+  const today = formatDateBR(new Date());
+
+  // Passada 1: mede quanto o conteúdo ocuparia em tamanho normal (escala 1),
+  // sem desenhar nada e sem nunca quebrar página.
+  const measureCursor = new Cursor(doc, 1, true);
+  layoutDocument(measureCursor, data, today);
+  const contentHeight = measureCursor.y - MARGIN;
+  const availableHeight = PAGE_HEIGHT - MARGIN * 2;
+
+  // Passada 2: desenha de verdade, encolhendo o quanto for preciso pra
+  // caber numa página só (nunca frente e verso) — só ultrapassa o limite
+  // mínimo de escala em casos extremos de conteúdo excepcionalmente longo.
+  const scale = Math.max(MIN_SCALE, Math.min(1, availableHeight / contentHeight));
+  const cursor = new Cursor(doc, scale, false);
+  layoutDocument(cursor, data, today);
 }
