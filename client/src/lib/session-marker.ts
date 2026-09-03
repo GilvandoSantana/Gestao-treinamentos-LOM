@@ -1,34 +1,23 @@
 /**
  * Marcador da sessão do navegador.
  *
- * Fica no sessionStorage, que o navegador apaga quando a sessão dele termina.
- * O servidor exige que esse valor acompanhe o cookie de login, então reabrir o
- * site depois de fechá-lo pede login de novo — mesmo quando o navegador
- * restaura o cookie sozinho (comportamento padrão no celular).
+ * Fica só em memória (variável do módulo), não em sessionStorage. Isso
+ * significa que ele some ao recarregar a página (F5) e não só ao fechar a
+ * aba — o servidor exige esse valor junto com o cookie de login, então sem
+ * ele o acesso cai e pede login de novo em qualquer um dos dois casos,
+ * mesmo quando o cookie continua válido.
  */
 
-const KEY = 'training-manager:session-marker';
+let marker: string | null = null;
 
 export function getSessionMarker(): string | null {
-  try {
-    return sessionStorage.getItem(KEY);
-  } catch {
-    return null;
-  }
+  return marker;
 }
 
-export function setSessionMarker(marker: string): void {
-  try {
-    sessionStorage.setItem(KEY, marker);
-  } catch {
-    // Navegador sem sessionStorage (modo restrito): segue sem o marcador.
-  }
+export function setSessionMarker(value: string): void {
+  marker = value;
 }
 
 export function clearSessionMarker(): void {
-  try {
-    sessionStorage.removeItem(KEY);
-  } catch {
-    // ignora
-  }
+  marker = null;
 }

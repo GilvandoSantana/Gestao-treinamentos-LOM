@@ -13,7 +13,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8 horas (uma jornada de trabalho)
 
 // Token de longa duração pro programa de sincronização de pasta (Windows) -
 // diferente do cookie do navegador: sem o mecanismo de "marcador" (que só
-// faz sentido dentro de uma aba, ligado ao sessionStorage) e com validade
+// faz sentido dentro de uma aba, guardado em memória no cliente) e com validade
 // bem mais longa, já que o programa roda sozinho, sem ninguém pra logar de
 // novo toda hora. 30 dias é um meio-termo: dá pra deixar o computador
 // ligado o mes inteiro sem precisar reconectar, mas limita por quanto tempo
@@ -71,9 +71,9 @@ export const SESSION_MARKER_HEADER = "x-session-marker";
 
 /**
  * Gera um marcador aleatório vinculado à sessão. O cliente guarda esse valor
- * no sessionStorage do navegador, que é apagado quando a sessão do navegador
- * termina de verdade. Sem ele, o cookie sozinho continuaria valendo — é o que
- * fazia o site entrar direto ao ser reaberto.
+ * só em memória (variável do módulo no navegador), que se perde ao recarregar
+ * a página ou fechá-la. Sem ele, o cookie sozinho continuaria valendo — é o
+ * que fazia o site entrar direto ao dar F5 ou reabrir a aba.
  */
 export function generateSessionMarker(): string {
   return randomUUID();
@@ -193,9 +193,9 @@ export async function getSiteSession(req: Request): Promise<SiteSession> {
     const { payload } = await jwtVerify(token, getSecretKey());
     if (payload.scope !== "site-admin") return { ...EMPTY_SESSION };
 
-    // O marcador precisa bater com o que o navegador enviou. Se o navegador
-    // encerrou a sessão (sessionStorage limpo), ele não chega e o acesso cai,
-    // mesmo que o cookie tenha sido restaurado.
+    // O marcador precisa bater com o que o navegador enviou. Ele só existe em
+    // memória no cliente, então some ao recarregar a página ou fechar a aba —
+    // sem ele, o acesso cai mesmo que o cookie continue valendo.
     if (payload.marker) {
       const headerValue = req.headers[SESSION_MARKER_HEADER];
       const provided = Array.isArray(headerValue) ? headerValue[0] : headerValue;
