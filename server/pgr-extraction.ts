@@ -17,7 +17,6 @@ import { ENV } from "./_core/env";
 
 export interface ExtractedOsFields {
   area: string;
-  setorTrabalho: string;
   maquinasEquipamentos: string;
   tarefas: string;
   agentesFisicos: string;
@@ -32,17 +31,16 @@ export interface ExtractedOsFields {
 
 const FIELD_DESCRIPTIONS: Record<keyof ExtractedOsFields, string> = {
   area: "Área ou setor de atuação da função, conforme o PGR.",
-  setorTrabalho: "Setor de trabalho específico da função.",
   maquinasEquipamentos: "Máquinas, equipamentos e ferramentas utilizados por quem exerce a função.",
-  tarefas: "Descrição das atividades/tarefas realizadas pela função.",
-  agentesFisicos: "Agentes de risco físico (ruído, calor, vibração, etc.) a que a função está exposta.",
-  agentesQuimicos: "Agentes de risco químico a que a função está exposta.",
-  agentesBiologicos: "Agentes de risco biológico a que a função está exposta. Se não houver exposição, use 'NA.'.",
-  agentesErgonomicos: "Agentes de risco ergonômico a que a função está exposta.",
-  agentesAcidentes: "Agentes de risco de acidente a que a função está exposta.",
-  medidasAdministrativas: "Medidas administrativas de controle já existentes para a função.",
-  medidasEngenharia: "Medidas de engenharia de controle já existentes para a função.",
-  episMinimos: "Lista dos EPIs (Equipamentos de Proteção Individual) mínimos exigidos para a função.",
+  tarefas: "Descrição das atividades/tarefas realizadas pela função — copie/resuma fielmente o que o PGR descreve, sem adicionar nada que não esteja lá.",
+  agentesFisicos: "Agentes de risco físico (ruído, calor, vibração, etc.) a que a função está exposta, conforme descrito no PGR.",
+  agentesQuimicos: "Agentes de risco químico a que a função está exposta, conforme descrito no PGR.",
+  agentesBiologicos: "Agentes de risco biológico a que a função está exposta, conforme descrito no PGR. Se o PGR disser explicitamente que não há exposição, use 'NA.'.",
+  agentesErgonomicos: "Agentes de risco ergonômico a que a função está exposta, conforme descrito no PGR.",
+  agentesAcidentes: "Agentes de risco de acidente a que a função está exposta, conforme descrito no PGR.",
+  medidasAdministrativas: "Medidas administrativas de controle já existentes para a função, conforme descrito no PGR.",
+  medidasEngenharia: "Medidas de engenharia de controle já existentes para a função, conforme descrito no PGR.",
+  episMinimos: "Lista dos EPIs (Equipamentos de Proteção Individual) mínimos exigidos para a função, conforme descrito no PGR.",
 };
 
 const FIELD_KEYS = Object.keys(FIELD_DESCRIPTIONS) as (keyof ExtractedOsFields)[];
@@ -166,9 +164,11 @@ export async function extractOsFieldsFromPgr(
               type: "text",
               text:
                 `Este é o PGR (Programa de Gerenciamento de Riscos) de um contrato. ` +
-                `Encontre a parte referente especificamente à função "${role}" e extraia dela ` +
-                `os campos pedidos pela ferramenta. Se alguma informação não existir no documento ` +
-                `para essa função, deixe o campo como string vazia — nunca invente dados. ` +
+                `Encontre a parte referente especificamente à função "${role}" e extraia dela, ` +
+                `de forma completa e fiel ao que está escrito no documento, os campos pedidos pela ` +
+                `ferramenta. Use o texto e os dados reais do PGR — nunca invente, resuma de menos ` +
+                `nem complete com informação que não esteja no documento. Se alguma informação ` +
+                `realmente não existir no PGR para essa função, deixe o campo como string vazia. ` +
                 `Responda só chamando a ferramenta fornecida.`,
             },
           ],

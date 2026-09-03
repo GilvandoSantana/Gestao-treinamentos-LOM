@@ -25,18 +25,22 @@ export const osConfigRouter = router({
     .input(
       z.object({
         role: z.string().min(1),
-        area: z.string().max(255).nullish(),
-        setorTrabalho: z.string().max(255).nullish(),
-        maquinasEquipamentos: z.string().max(2000).nullish(),
-        tarefas: z.string().max(4000).nullish(),
-        agentesFisicos: z.string().max(2000).nullish(),
-        agentesQuimicos: z.string().max(2000).nullish(),
-        agentesBiologicos: z.string().max(2000).nullish(),
-        agentesErgonomicos: z.string().max(2000).nullish(),
-        agentesAcidentes: z.string().max(2000).nullish(),
-        medidasAdministrativas: z.string().max(2000).nullish(),
-        medidasEngenharia: z.string().max(2000).nullish(),
-        episMinimos: z.string().max(2000).nullish(),
+        // Todos os campos da OS são obrigatórios — não é possível salvar a
+        // configuração de uma função sem preencher tudo. "Setor de
+        // Trabalho" é sempre digitado manualmente (a IA nunca preenche
+        // esse campo, ver pgr-extraction.ts).
+        area: z.string().trim().min(1, "Preencha a Área.").max(255),
+        setorTrabalho: z.string().trim().min(1, "Preencha o Setor de Trabalho.").max(255),
+        maquinasEquipamentos: z.string().trim().min(1, "Preencha Máquinas, Equipamentos e Ferramentas.").max(2000),
+        tarefas: z.string().trim().min(1, "Preencha a Descrição das atividades / Tarefas.").max(4000),
+        agentesFisicos: z.string().trim().min(1, "Preencha os Agentes Físicos.").max(2000),
+        agentesQuimicos: z.string().trim().min(1, "Preencha os Agentes Químicos.").max(2000),
+        agentesBiologicos: z.string().trim().min(1, "Preencha os Agentes Biológicos (use 'NA.' se não houver).").max(2000),
+        agentesErgonomicos: z.string().trim().min(1, "Preencha os Agentes Ergonômicos.").max(2000),
+        agentesAcidentes: z.string().trim().min(1, "Preencha os Agentes de Acidentes.").max(2000),
+        medidasAdministrativas: z.string().trim().min(1, "Preencha as Medidas Administrativas.").max(2000),
+        medidasEngenharia: z.string().trim().min(1, "Preencha as Medidas de Engenharia.").max(2000),
+        episMinimos: z.string().trim().min(1, "Preencha os EPIs Mínimos.").max(2000),
       })
     )
     .mutation(async ({ input, ctx }) => {

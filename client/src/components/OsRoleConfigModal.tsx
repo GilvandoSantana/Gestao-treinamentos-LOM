@@ -47,20 +47,30 @@ const EMPTY_DRAFT: Draft = {
   episMinimos: '',
 };
 
-const FIELDS: { key: keyof Draft; label: string; placeholder?: string; rows?: number }[] = [
+const FIELDS: { key: keyof Draft; label: string; placeholder?: string; rows?: number; hint?: string }[] = [
   { key: 'area', label: 'Área' },
-  { key: 'setorTrabalho', label: 'Setor de Trabalho' },
+  {
+    key: 'setorTrabalho',
+    label: 'Setor de Trabalho',
+    hint: 'Preenchimento manual — a IA não preenche este campo.',
+  },
   { key: 'maquinasEquipamentos', label: 'Máquinas, Equipamentos e Ferramentas', rows: 2 },
   { key: 'tarefas', label: 'Descrição das atividades / Tarefas', rows: 4 },
   { key: 'agentesFisicos', label: 'Agentes Físicos', rows: 2 },
   { key: 'agentesQuimicos', label: 'Agentes Químicos', rows: 2 },
-  { key: 'agentesBiologicos', label: 'Agentes Biológicos', rows: 2, placeholder: 'Ex: NA.' },
+  { key: 'agentesBiologicos', label: 'Agentes Biológicos', rows: 2, placeholder: "Ex: NA., se não houver exposição" },
   { key: 'agentesErgonomicos', label: 'Agentes Ergonômicos', rows: 2 },
   { key: 'agentesAcidentes', label: 'Agentes de Acidentes', rows: 2 },
   { key: 'medidasAdministrativas', label: 'Medidas Administrativas', rows: 3 },
   { key: 'medidasEngenharia', label: 'Medidas de Engenharia', rows: 2 },
   { key: 'episMinimos', label: "EPI's Mínimos", rows: 3 },
 ];
+
+// Todos os campos são obrigatórios — não é possível salvar a OS de uma
+// função sem preencher tudo.
+function getMissingFieldLabels(draft: Draft): string[] {
+  return FIELDS.filter((f) => draft[f.key].trim().length === 0).map((f) => f.label);
+}
 
 export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModalProps) {
   const [selectedRole, setSelectedRole] = useState('');
@@ -128,6 +138,11 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
   };
 
   const handleSave = async () => {
+    const missing = getMissingFieldLabels(draft);
+    if (missing.length > 0) {
+      toast.error(`Preencha todos os campos antes de salvar. Faltando: ${missing.join(', ')}.`);
+      return;
+    }
     try {
       await saveMutation.mutateAsync({ role: selectedRole, ...draft });
       await Promise.all([
@@ -144,16 +159,19 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
   const handleExtractFromPgr = async () => {
     if (!selectedRole) return;
     if (
-      (Object.values(draft).some((v) => v.trim().length > 0) || isDirty) &&
-      !confirm('Isso vai substituir o que está preenchido nos campos abaixo pelo que a IA encontrar no PGR. Continuar?')
+      (Object.entries(draft).some(([key, v]) => key !== 'setorTrabalho' && v.trim().length > 0) || isDirty) &&
+      !confirm(
+        'Isso vai substituir o que está preenchido nos campos abaixo pelo que a IA encontrar no PGR (exceto "Setor de Trabalho", que é sempre manual). Continuar?'
+      )
     ) {
       return;
     }
     try {
       const extracted = await extractMutation.mutateAsync({ role: selectedRole });
-      setDraft({
+      // "Setor de Trabalho" nunca vem da IA — mantém o que já estava digitado.
+      setDraft((prev) => ({
+        ...prev,
         area: extracted.area,
-        setorTrabalho: extracted.setorTrabalho,
         maquinasEquipamentos: extracted.maquinasEquipamentos,
         tarefas: extracted.tarefas,
         agentesFisicos: extracted.agentesFisicos,
@@ -164,9 +182,9 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
         medidasAdministrativas: extracted.medidasAdministrativas,
         medidasEngenharia: extracted.medidasEngenharia,
         episMinimos: extracted.episMinimos,
-      });
+      }));
       setIsDirty(true);
-      toast.success('Dados extraídos do PGR. Revise os campos antes de salvar.');
+      toast.success('Dados extraídos do PGR. Revise os campos (e preencha o Setor de Trabalho) antes de salvar.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao extrair dados do PGR.');
     }
@@ -258,27 +276,33 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
                 )}
               </button>
               <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
-                A IA lê o PGR anexado no contrato e preenche os campos abaixo. Revise antes de salvar.
+                A IA lê o PGR anexado no contrato e preenche os campos abaixo (exceto "Setor de Trabalho",
+                sempre manual). Revise antes de salvar.
               </p>
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {FIELDS.slice(0, 2).map(({ key, label }) => (
+                {FIELDS.slice(0, 2).map(({ key, label, hint }) => (
                   <div key={key}>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">{label}</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                      {label} <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="text"
                       value={draft[key]}
                       onChange={(e) => updateField(key, e.target.value)}
                       className="w-full border-2 border-input rounded-lg p-2 text-sm focus:border-orange focus:outline-none bg-background text-foreground"
                     />
+                    {hint && <p className="text-[10.5px] text-muted-foreground mt-1">{hint}</p>}
                   </div>
                 ))}
               </div>
               {FIELDS.slice(2).map(({ key, label, placeholder, rows }) => (
                 <div key={key}>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1">{label}</label>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                    {label} <span className="text-red-500">*</span>
+                  </label>
                   <textarea
                     value={draft[key]}
                     onChange={(e) => updateField(key, e.target.value)}
@@ -288,12 +312,15 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
                   />
                 </div>
               ))}
+              <p className="text-[11px] text-muted-foreground pt-1">
+                <span className="text-red-500">*</span> Todos os campos são obrigatórios para salvar.
+              </p>
             </div>
 
             <div className="p-4 border-t border-border">
               <button
                 onClick={handleSave}
-                disabled={saveMutation.isPending || !isDirty}
+                disabled={saveMutation.isPending}
                 className="w-full flex items-center justify-center gap-2 bg-orange text-white rounded-xl py-3 font-bold hover:opacity-90 disabled:opacity-50 transition"
               >
                 {saveMutation.isPending ? (
@@ -304,7 +331,7 @@ export default function OsRoleConfigModal({ isOpen, onClose }: OsRoleConfigModal
                 ) : (
                   <>
                     <Save size={17} />
-                    {isDirty ? `Salvar OS de "${selectedRole}"` : 'Nada para salvar'}
+                    {`Salvar OS de "${selectedRole}"`}
                   </>
                 )}
               </button>
