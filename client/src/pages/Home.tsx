@@ -243,6 +243,7 @@ export default function Home() {
         educationLevel: employeeData.educationLevel,
         age: employeeData.age,
         birthDate: employeeData.birthDate,
+        admissionDate: employeeData.admissionDate,
         role: employeeData.role,
         phone: employeeData.phone,
         gerencia: employeeData.gerencia,
