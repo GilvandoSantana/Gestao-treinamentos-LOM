@@ -12,7 +12,14 @@ import { sendTrainingAlerts } from "../email-service";
 import { nanoid } from "nanoid";
 import { hasValidSiteSession, getSiteSession } from "../site-auth";
 import { csrfProtection } from "./csrf";
-import { uploadToR2, deleteFromR2, isR2Configured } from "../r2-storage";
+import {
+  deleteFromR2,
+  isR2Configured,
+  createMultipartUpload,
+  uploadPartToR2,
+  completeMultipartUpload,
+  abortMultipartUpload,
+} from "../r2-storage";
 import { getCurrentInstaller, setCurrentInstaller } from "../db-desktop-installer";
 import { v4 as uuidv4 } from "uuid";
 
@@ -189,53 +196,139 @@ async function startServer() {
   });
 
   // Upload do instalador do programa de sincronização com a Nuvem
-  // (Windows) — fora do tRPC de propósito: o arquivo passa de 80MB, e o
-  // limite de corpo JSON do servidor é 50MB (base64 ainda infla ~33% a
-  // mais). Corpo bruto (application/octet-stream), sem base64, com limite
-  // bem maior só nesta rota. Só o administrador principal pode enviar.
-  app.post(
-    "/api/desktop-installer/upload",
-    csrfProtection,
-    express.raw({ limit: "150mb", type: "application/octet-stream" }),
-    async (req, res) => {
-      const session = await getSiteSession(req);
-      if (!session.isSiteAdmin || session.role !== "admin") {
-        return res.status(403).json({ error: "Apenas o administrador principal pode enviar o instalador." });
-      }
+  // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
+  // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e
+  // o instalador passa de 80MB — numa conexão mais lenta, uma única
+  // requisição podia passar desse limite e travar sem erro claro (achado
+  // real, 03/09). Dividido em pedaços de poucos MB cada, cada requisição
+  // fica bem dentro do limite, não importa a velocidade da conexão.
+  //
+  // Fora do tRPC de propósito, mesma razão de sempre: corpo bruto
+  // (application/octet-stream) por pedaço, sem base64 (que infla ~33% o
+  // tamanho). Só o administrador principal pode enviar.
 
-      const version = typeof req.query.version === "string" ? req.query.version.trim() : "";
-      const fileName = typeof req.query.fileName === "string" ? req.query.fileName.trim() : "";
-      if (!version || !fileName) {
-        return res.status(400).json({ error: "Informe a versão e o nome do arquivo." });
+  // uploadId -> dados do envio em andamento — pra confirmar, na hora de
+  // enviar cada parte ou finalizar, que é o mesmo envio que foi iniciado
+  // (evita mistura entre dois envios ao mesmo tempo, embora isso não
+  // deva acontecer na prática de um sistema pequeno como este).
+  const activeMultipartUploads = new Map();
+  const MULTIPART_UPLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 horas
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [uploadId, info] of Array.from(activeMultipartUploads.entries())) {
+      if (now - info.startedAt > MULTIPART_UPLOAD_TIMEOUT_MS) {
+        activeMultipartUploads.delete(uploadId);
+        abortMultipartUpload(info.r2Key, uploadId);
+      }
+    }
+  }, 30 * 60 * 1000).unref();
+
+  async function requireMasterAdminForInstaller(req: express.Request, res: express.Response) {
+    const session = await getSiteSession(req);
+    if (!session.isSiteAdmin || session.role !== "admin") {
+      res.status(403).json({ error: "Apenas o administrador principal pode enviar o instalador." });
+      return null;
+    }
+    return session;
+  }
+
+  app.post("/api/desktop-installer/upload/start", csrfProtection, async (req, res) => {
+    const session = await requireMasterAdminForInstaller(req, res);
+    if (!session) return;
+
+    const version = typeof req.body?.version === "string" ? req.body.version.trim() : "";
+    const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
+    if (!version || !fileName) {
+      return res.status(400).json({ error: "Informe a versão e o nome do arquivo." });
+    }
+    if (!isR2Configured) {
+      return res.status(400).json({ error: "Armazenamento em nuvem (R2) não configurado no servidor." });
+    }
+
+    try {
+      const r2Key = `_system/desktop-installer/${uuidv4()}-${fileName}`;
+      const uploadId = await createMultipartUpload(r2Key, "application/x-msdownload");
+      activeMultipartUploads.set(uploadId, {
+        r2Key,
+        version,
+        fileName,
+        startedBy: session.username ?? "desconhecido",
+        startedAt: Date.now(),
+      });
+      return res.status(200).json({ uploadId, r2Key });
+    } catch (error) {
+      console.error("[DesktopInstaller] Erro ao iniciar envio em partes:", error);
+      return res.status(500).json({ error: "Falha ao iniciar o envio." });
+    }
+  });
+
+  app.post(
+    "/api/desktop-installer/upload/part",
+    csrfProtection,
+    express.raw({ limit: "20mb", type: "application/octet-stream" }),
+    async (req, res) => {
+      const session = await requireMasterAdminForInstaller(req, res);
+      if (!session) return;
+
+      const uploadId = typeof req.query.uploadId === "string" ? req.query.uploadId : "";
+      const partNumber = Number(req.query.partNumber);
+      const info = activeMultipartUploads.get(uploadId);
+      if (!info) {
+        return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+      }
+      if (!Number.isInteger(partNumber) || partNumber < 1) {
+        return res.status(400).json({ error: "Número de parte inválido." });
       }
       if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-        return res.status(400).json({ error: "Arquivo vazio ou não recebido." });
-      }
-      if (!isR2Configured) {
-        return res.status(400).json({ error: "Armazenamento em nuvem (R2) não configurado no servidor." });
+        return res.status(400).json({ error: "Parte vazia ou não recebida." });
       }
 
       try {
-        const previous = await getCurrentInstaller();
-        const r2Key = `_system/desktop-installer/${uuidv4()}-${fileName}`;
-        await uploadToR2(r2Key, req.body, "application/x-msdownload");
-        await setCurrentInstaller({
-          r2Key,
-          fileName,
-          version,
-          fileSize: req.body.length,
-          uploadedBy: session.username ?? "desconhecido",
-        });
-        if (previous) {
-          await deleteFromR2(previous.r2Key);
-        }
-        return res.status(200).json({ success: true, version, fileSize: req.body.length });
+        const etag = await uploadPartToR2(info.r2Key, uploadId, partNumber, req.body);
+        return res.status(200).json({ etag });
       } catch (error) {
-        console.error("[DesktopInstaller] Erro ao enviar:", error);
-        return res.status(500).json({ error: "Falha ao enviar o instalador." });
+        console.error("[DesktopInstaller] Erro ao enviar parte:", error);
+        return res.status(500).json({ error: "Falha ao enviar essa parte — tente de novo." });
       }
     }
   );
+
+  app.post("/api/desktop-installer/upload/complete", csrfProtection, async (req, res) => {
+    const session = await requireMasterAdminForInstaller(req, res);
+    if (!session) return;
+
+    const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId : "";
+    const parts = Array.isArray(req.body?.parts) ? req.body.parts : null;
+    const info = activeMultipartUploads.get(uploadId);
+    if (!info) {
+      return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+    }
+    if (!parts || parts.length === 0) {
+      return res.status(400).json({ error: "Nenhuma parte enviada." });
+    }
+
+    try {
+      const previous = await getCurrentInstaller();
+      await completeMultipartUpload(info.r2Key, uploadId, parts);
+      const fileSize = req.body?.fileSize && Number.isFinite(req.body.fileSize) ? req.body.fileSize : 0;
+      await setCurrentInstaller({
+        r2Key: info.r2Key,
+        fileName: info.fileName,
+        version: info.version,
+        fileSize,
+        uploadedBy: info.startedBy,
+      });
+      activeMultipartUploads.delete(uploadId);
+      if (previous) {
+        await deleteFromR2(previous.r2Key);
+      }
+      return res.status(200).json({ success: true, version: info.version, fileSize });
+    } catch (error) {
+      console.error("[DesktopInstaller] Erro ao concluir envio:", error);
+      return res.status(500).json({ error: "Falha ao concluir o envio." });
+    }
+  });
 
   // tRPC API
   app.use(

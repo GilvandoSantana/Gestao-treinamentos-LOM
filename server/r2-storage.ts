@@ -8,7 +8,16 @@
  * assinada de curta duração, gerada aqui, nunca um link público fixo.
  */
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const accountId = process.env.R2_ACCOUNT_ID || "";
@@ -44,6 +53,71 @@ export async function uploadToR2(key: string, buffer: Buffer, contentType: strin
       ContentType: contentType,
     })
   );
+}
+
+/**
+ * Upload em partes (multipart) — pra arquivo grande demais pra mandar
+ * numa requisição só. Usado especialmente pelo instalador do programa de
+ * sincronização (~80MB+): a Railway tem um limite rígido de 5 minutos por
+ * requisição HTTP, sem exceção — numa conexão mais lenta, uma única
+ * requisição de 80MB podia passar disso e travar sem erro claro. Dividido
+ * em pedaços de alguns MB cada, cada um bem dentro do limite, não importa
+ * a velocidade da conexão.
+ */
+export async function createMultipartUpload(key: string, contentType: string): Promise<string> {
+  const result = await requireClient().send(
+    new CreateMultipartUploadCommand({ Bucket: R2_BUCKET_NAME, Key: key, ContentType: contentType })
+  );
+  if (!result.UploadId) throw new Error("Falha ao iniciar o envio em partes (sem UploadId).");
+  return result.UploadId;
+}
+
+/** Envia uma parte (pedaço) do arquivo — precisa do ETag devolvido aqui
+ * pra completar o envio depois (completeMultipartUpload). */
+export async function uploadPartToR2(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  buffer: Buffer
+): Promise<string> {
+  const result = await requireClient().send(
+    new UploadPartCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+      Body: buffer,
+    })
+  );
+  if (!result.ETag) throw new Error(`Falha ao enviar a parte ${partNumber} (sem ETag).`);
+  return result.ETag;
+}
+
+/** Junta todas as partes já enviadas num arquivo só, de verdade, no R2. */
+export async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: { partNumber: number; etag: string }[]
+): Promise<void> {
+  await requireClient().send(
+    new CompleteMultipartUploadCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+    })
+  );
+}
+
+/** Cancela um envio em partes que não vai ser completado (ex: a pessoa
+ * fechou a página no meio do envio) — evita partes órfãs ocupando espaço
+ * no R2 sem nunca virar um arquivo de verdade. */
+export async function abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+  try {
+    await requireClient().send(new AbortMultipartUploadCommand({ Bucket: R2_BUCKET_NAME, Key: key, UploadId: uploadId }));
+  } catch (error) {
+    console.error(`[R2] Falha ao cancelar envio em partes de "${key}":`, error);
+  }
 }
 
 export async function deleteFromR2(key: string): Promise<void> {
