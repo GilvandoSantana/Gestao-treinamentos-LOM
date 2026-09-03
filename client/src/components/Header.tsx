@@ -29,7 +29,6 @@ import {
   Building2,
   FileStack,
   ChevronDown,
-  Zap,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -42,7 +41,6 @@ import NotificationBell from '@/components/NotificationBell';
 
 interface HeaderProps {
   onNewEmployee: () => void;
-  onQuickCommand?: () => void;
   onExport: () => void;
   onExportPDF: () => void;
   isSyncing: boolean;
@@ -77,7 +75,6 @@ interface HeaderProps {
 
 export default function Header({
   onNewEmployee,
-  onQuickCommand,
   onExport,
   onExportPDF,
   isSyncing,
@@ -352,16 +349,6 @@ export default function Header({
                 title={compactTable ? 'Linhas normais' : 'Linhas compactas (cabem mais na tela)'}
               >
                 <Rows3 size={17} />
-              </button>
-            )}
-
-            {onQuickCommand && (
-              <button
-                onClick={onQuickCommand}
-                className="hidden sm:flex p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all"
-                title="Comando rápido (Ctrl+K) — ex: &quot;crachá do João&quot;"
-              >
-                <Zap size={17} />
               </button>
             )}
 

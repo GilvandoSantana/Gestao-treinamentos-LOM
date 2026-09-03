@@ -30,7 +30,6 @@ import SyncStatus from '@/components/SyncStatus';
 import EmployeeCard from '@/components/EmployeeCardWithCertificates';
 import EmployeeTable from '@/components/EmployeeTable';
 import EmployeeViewModal from '@/components/EmployeeViewModal';
-import QuickCommandBar from '@/components/QuickCommandBar';
 import EmployeeModal from '@/components/EmployeeModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
 import EmptyState from '@/components/EmptyState';
@@ -88,7 +87,6 @@ export default function Home() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
   const [selectedEmployeeForAudit, setSelectedEmployeeForAudit] = useState<Employee | null>(null);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
-  const [showQuickCommand, setShowQuickCommand] = useState(false);
   const [searchBy, setSearchBy] = useState<'name' | 'all'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [compactTable, setCompactTable] = useState(() => localStorage.getItem('compactTable') === '1');
@@ -522,7 +520,6 @@ export default function Home() {
   useKeyboardShortcuts({
     enabled: session.isLoggedIn && !showModal,
     onNewEmployee: session.can('editEmployees') ? () => openModal() : undefined,
-    onQuickCommand: () => setShowQuickCommand((prev) => !prev),
   });
 
   // Memoizado para evitar recálculo em cada re-render
@@ -639,7 +636,6 @@ export default function Home() {
 
         <Header
           onNewEmployee={() => openModal()}
-          onQuickCommand={() => setShowQuickCommand(true)}
           onExport={exportData}
           onExportPDF={handleExportPDF}
           isSyncing={isSyncing}
@@ -915,14 +911,6 @@ export default function Home() {
         isOpen={!!viewingEmployee}
         employee={viewingEmployee}
         onClose={() => setViewingEmployee(null)}
-      />
-
-      <QuickCommandBar
-        isOpen={showQuickCommand}
-        onClose={() => setShowQuickCommand(false)}
-        employees={activeEmployees}
-        onViewEmployee={(emp) => setViewingEmployee(emp)}
-        onEditEmployee={(emp) => openModal(emp)}
       />
 
       {showWarehouse && (
