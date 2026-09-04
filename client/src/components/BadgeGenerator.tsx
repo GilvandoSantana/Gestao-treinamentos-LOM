@@ -1,7 +1,7 @@
 /**
  * BadgeGenerator Component
  * Gera o crachá "Padrão" (frente e verso) para um colaborador, no modelo de
- * carteirinha "EMPREGADO AUTORIZADO" fornecido pela empresa (Support Mining).
+ * carteirinha "COLABORADOR AUTORIZADO" fornecido pela empresa (Support Mining).
  *
  * Campos variáveis por colaborador — frente: foto, nome, matrícula,
  * gerência, gestor, função, dados de CNH (nº, validade, categoria).
@@ -239,12 +239,12 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
       doc.text('FOTO', photoBoxX + photoBoxW / 2, photoBoxY + photoBoxH / 2, { align: 'center' });
     }
 
-    // "EMPREGADO AUTORIZADO"
+    // "COLABORADOR AUTORIZADO"
     let y = 30;
     doc.setTextColor(black);
     doc.setFont(FONT, 'bold');
     doc.setFontSize(7.5);
-    doc.text('EMPREGADO AUTORIZADO', 27.5, y, { align: 'center' });
+    doc.text('COLABORADOR AUTORIZADO', 27.5, y, { align: 'center' });
 
     // Nome — barra destacada em salmão
     y += 2;
