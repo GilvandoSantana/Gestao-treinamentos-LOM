@@ -545,49 +545,102 @@ try
             // expira em 1 hora — busca um novo a cada abertura em vez de
             // guardar um fixo, pra funcionar mesmo dias depois), baixa o
             // conteúdo de verdade, entrega pro Windows.
+            //
+            // Repete até 3 vezes se algo falhar no meio do caminho (rede
+            // instável, uma resposta lenta, etc.) antes de desistir de
+            // verdade — sem isso, uma falha passageira significava o
+            // arquivo nunca mais carregar (achado real, Gilvando: "carrega
+            // alguns arquivos e outros não" — o problema batia com uma
+            // simples falha de rede sem nenhuma nova tentativa).
+            //
+            // Também importante: se mesmo depois de tentar 3 vezes ainda
+            // falhar, agora AVISA o Windows explicitamente que a busca
+            // falhou (STATUS_UNSUCCESSFUL) — antes, sem isso, o Windows
+            // ficava esperando uma resposta que nunca chegava, e o
+            // arquivo parecia só "travado carregando" pra sempre, sem
+            // nenhum erro claro pra pessoa perceber e tentar de novo.
             CF_CALLBACK fetchDataCallback = (in CF_CALLBACK_INFO callbackInfo, in CF_CALLBACK_PARAMETERS callbackParameters) =>
             {
+                string fileId = Marshal.PtrToStringUni(
+                    callbackInfo.FileIdentity,
+                    (int)(callbackInfo.FileIdentityLength / 2)
+                ) ?? "";
+                Console.WriteLine($"--> FETCH_DATA: \"{callbackInfo.NormalizedPath}\" (id da Nuvem: {fileId})");
+
+                const int maxAttempts = 3;
+                byte[]? realContent = null;
+                Exception? lastError = null;
+
+                for (int attempt = 1; attempt <= maxAttempts && realContent == null; attempt++)
+                {
+                    try
+                    {
+                        if (attempt > 1)
+                        {
+                            Console.WriteLine($"    Tentativa {attempt}/{maxAttempts}...");
+                            System.Threading.Thread.Sleep(1500);
+                        }
+
+                        string requestBody = "{\"0\":{\"json\":{\"id\":\"" + fileId.Replace("\"", "\\\"") + "\"}}}";
+                        var urlRequest = new System.Net.Http.HttpRequestMessage(
+                            System.Net.Http.HttpMethod.Post,
+                            $"{apiServerUrl}/api/trpc/cloud.getDownloadUrl?batch=1"
+                        )
+                        {
+                            Content = new System.Net.Http.StringContent(
+                                requestBody,
+                                System.Text.Encoding.UTF8,
+                                "application/json"
+                            ),
+                        };
+                        urlRequest.Headers.Add("Authorization", $"Bearer {bearerToken}");
+                        urlRequest.Headers.Add("Origin", apiServerUrl);
+
+                        var urlResponse = httpClient.SendAsync(urlRequest).GetAwaiter().GetResult();
+                        string urlResponseText = urlResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                        using var urlDoc = JsonDocument.Parse(urlResponseText);
+                        string downloadUrl = urlDoc.RootElement[0]
+                            .GetProperty("result").GetProperty("data").GetProperty("json").GetProperty("url").GetString()!;
+
+                        realContent = httpClient.GetByteArrayAsync(downloadUrl).GetAwaiter().GetResult();
+                        Console.WriteLine($"    Baixados {realContent.Length} bytes.");
+                    }
+                    catch (Exception ex)
+                    {
+                        lastError = ex;
+                        Console.WriteLine($"    Tentativa {attempt}/{maxAttempts} falhou: {ex.GetType().FullName}: {ex.Message}");
+                    }
+                }
+
+                var opInfo = new CF_OPERATION_INFO
+                {
+                    StructSize = (uint)Marshal.SizeOf<CF_OPERATION_INFO>(),
+                    Type = CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_DATA,
+                    ConnectionKey = callbackInfo.ConnectionKey,
+                    TransferKey = callbackInfo.TransferKey,
+                    RequestKey = callbackInfo.RequestKey,
+                };
+
+                if (realContent == null)
+                {
+                    Console.WriteLine($"    ERRO: desisti depois de {maxAttempts} tentativas ({lastError?.Message}). Avisando o Windows que falhou.");
+                    var failParams = new CF_OPERATION_PARAMETERS
+                    {
+                        ParamSize = (uint)Marshal.SizeOf<CF_OPERATION_PARAMETERS>(),
+                    };
+                    failParams.TransferData = new()
+                    {
+                        CompletionStatus = NTStatus.STATUS_UNSUCCESSFUL,
+                        Buffer = IntPtr.Zero,
+                        Offset = 0,
+                        Length = 0,
+                    };
+                    CfExecute(opInfo, ref failParams);
+                    return;
+                }
+
                 try
                 {
-                    string fileId = Marshal.PtrToStringUni(
-                        callbackInfo.FileIdentity,
-                        (int)(callbackInfo.FileIdentityLength / 2)
-                    ) ?? "";
-                    Console.WriteLine($"--> FETCH_DATA: \"{callbackInfo.NormalizedPath}\" (id da Nuvem: {fileId})");
-
-                    string requestBody = "{\"0\":{\"json\":{\"id\":\"" + fileId.Replace("\"", "\\\"") + "\"}}}";
-                    var urlRequest = new System.Net.Http.HttpRequestMessage(
-                        System.Net.Http.HttpMethod.Post,
-                        $"{apiServerUrl}/api/trpc/cloud.getDownloadUrl?batch=1"
-                    )
-                    {
-                        Content = new System.Net.Http.StringContent(
-                            requestBody,
-                            System.Text.Encoding.UTF8,
-                            "application/json"
-                        ),
-                    };
-                    urlRequest.Headers.Add("Authorization", $"Bearer {bearerToken}");
-                    urlRequest.Headers.Add("Origin", apiServerUrl);
-
-                    var urlResponse = httpClient.SendAsync(urlRequest).GetAwaiter().GetResult();
-                    string urlResponseText = urlResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                    using var urlDoc = JsonDocument.Parse(urlResponseText);
-                    string downloadUrl = urlDoc.RootElement[0]
-                        .GetProperty("result").GetProperty("data").GetProperty("json").GetProperty("url").GetString()!;
-
-                    byte[] realContent = httpClient.GetByteArrayAsync(downloadUrl).GetAwaiter().GetResult();
-                    Console.WriteLine($"    Baixados {realContent.Length} bytes.");
-
-                    var opInfo = new CF_OPERATION_INFO
-                    {
-                        StructSize = (uint)Marshal.SizeOf<CF_OPERATION_INFO>(),
-                        Type = CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_DATA,
-                        ConnectionKey = callbackInfo.ConnectionKey,
-                        TransferKey = callbackInfo.TransferKey,
-                        RequestKey = callbackInfo.RequestKey,
-                    };
-
                     unsafe
                     {
                         fixed (byte* pContent = realContent)
