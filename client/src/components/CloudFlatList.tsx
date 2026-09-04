@@ -23,6 +23,11 @@ interface CloudFlatListProps {
   onRestore?: (id: string) => void;
   onPermanentDelete?: (id: string) => void;
   onRevoke?: (id: string) => void;
+  /** Ativa checkbox de seleção em cada item (usado na Lixeira, pra
+   * excluir/restaurar vários de uma vez). */
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
 export default function CloudFlatList({
@@ -33,6 +38,9 @@ export default function CloudFlatList({
   onRestore,
   onPermanentDelete,
   onRevoke,
+  selectable,
+  selectedIds,
+  onToggleSelect,
 }: CloudFlatListProps) {
   if (isLoading) {
     return (
@@ -54,6 +62,15 @@ export default function CloudFlatList({
           className="flex items-center justify-between p-2.5 rounded-lg hover:bg-muted transition-colors"
         >
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            {selectable && (
+              <input
+                type="checkbox"
+                checked={selectedIds?.has(item.id) ?? false}
+                onChange={() => onToggleSelect?.(item.id)}
+                className="shrink-0 w-4 h-4 accent-orange cursor-pointer"
+                aria-label={`Selecionar ${item.name}`}
+              />
+            )}
             {item.isFolder ? (
               <Folder size={18} className="text-orange shrink-0" />
             ) : (

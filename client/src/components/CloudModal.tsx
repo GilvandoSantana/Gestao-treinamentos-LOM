@@ -53,6 +53,7 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
   const [tab, setTab] = useState<Tab>('files');
   const visibleTabs = isMasterAdmin ? [...TABS, ...ADMIN_TABS] : TABS;
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [selectedTrashIds, setSelectedTrashIds] = useState<Set<string>>(new Set());
 
   const utils = trpc.useUtils();
   const storageQuery = trpc.cloud.storageInfo.useQuery(undefined, { enabled: isOpen });
@@ -68,6 +69,7 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
   const restoreFolderMutation = trpc.cloud.restoreFolder.useMutation();
   const permanentDeleteFileMutation = trpc.cloud.permanentlyDeleteFile.useMutation();
   const permanentDeleteFolderMutation = trpc.cloud.permanentlyDeleteFolder.useMutation();
+  const emptyTrashMutation = trpc.cloud.emptyTrash.useMutation();
 
   const handleDownload = async (id: string) => {
     try {
@@ -138,6 +140,63 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
     }
   };
 
+  const toggleTrashSelection = (id: string) => {
+    setSelectedTrashIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllTrash = () => {
+    const allIds = [
+      ...(trashQuery.data?.folders ?? []).map((f) => f.id),
+      ...(trashQuery.data?.files ?? []).map((f) => f.id),
+    ];
+    setSelectedTrashIds((prev) => (prev.size === allIds.length ? new Set() : new Set(allIds)));
+  };
+
+  const handleDeleteSelectedFromTrash = async () => {
+    const count = selectedTrashIds.size;
+    if (count === 0) return;
+    if (!window.confirm(`Excluir ${count} item(ns) selecionado(s) definitivamente? Não é possível desfazer.`)) return;
+    try {
+      const folderIds = new Set((trashQuery.data?.folders ?? []).map((f) => f.id));
+      for (const id of Array.from(selectedTrashIds)) {
+        if (folderIds.has(id)) {
+          await permanentDeleteFolderMutation.mutateAsync({ id });
+        } else {
+          await permanentDeleteFileMutation.mutateAsync({ id });
+        }
+      }
+      toast.success(`${count} item(ns) excluído(s) definitivamente.`);
+      setSelectedTrashIds(new Set());
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao excluir os itens selecionados.');
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    const total = (trashQuery.data?.folders.length ?? 0) + (trashQuery.data?.files.length ?? 0);
+    if (total === 0) return;
+    if (
+      !window.confirm(
+        `Esvaziar a lixeira inteira? Todos os ${total} item(ns) serão excluídos definitivamente — não é possível desfazer.`
+      )
+    )
+      return;
+    try {
+      await emptyTrashMutation.mutateAsync();
+      toast.success('Lixeira esvaziada.');
+      setSelectedTrashIds(new Set());
+      await refreshTrash();
+    } catch {
+      toast.error('Erro ao esvaziar a lixeira.');
+    }
+  };
+
   if (!isOpen) return null;
 
   const storage = storageQuery.data;
@@ -172,7 +231,10 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
             {visibleTabs.map(({ key, label, Icon }) => (
               <button
                 key={key}
-                onClick={() => setTab(key)}
+                onClick={() => {
+                  setTab(key);
+                  if (key !== 'trash') setSelectedTrashIds(new Set());
+                }}
                 className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition ${
                   tab === key ? 'bg-orange text-white' : 'text-white/70 hover:bg-white/10'
                 }`}
@@ -265,22 +327,61 @@ export default function CloudModal({ isOpen, onClose, canManage, isMasterAdmin }
             )}
 
             {tab === 'trash' && (
-              <CloudFlatList
-                isLoading={trashQuery.isLoading}
-                emptyMessage="A lixeira está vazia."
-                items={[
-                  ...(trashQuery.data?.folders ?? []).map((f) => ({ id: f.id, name: f.name, isFolder: true })),
-                  ...(trashQuery.data?.files ?? []).map((f) => ({ id: f.id, name: f.name, size: f.fileSize })),
-                ]}
-                onRestore={(id) => {
-                  const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
-                  return isFolder ? handleRestoreFolder(id) : handleRestoreFile(id);
-                }}
-                onPermanentDelete={(id) => {
-                  const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
-                  return isFolder ? handlePermanentDeleteFolder(id) : handlePermanentDeleteFile(id);
-                }}
-              />
+              <>
+                {((trashQuery.data?.folders.length ?? 0) + (trashQuery.data?.files.length ?? 0)) > 0 && (
+                  <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-border flex-wrap">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedTrashIds.size > 0 &&
+                          selectedTrashIds.size ===
+                            (trashQuery.data?.folders.length ?? 0) + (trashQuery.data?.files.length ?? 0)
+                        }
+                        onChange={toggleSelectAllTrash}
+                        className="w-4 h-4 accent-orange cursor-pointer"
+                      />
+                      {selectedTrashIds.size > 0 ? `${selectedTrashIds.size} selecionado(s)` : 'Selecionar tudo'}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {selectedTrashIds.size > 0 && (
+                        <button
+                          onClick={handleDeleteSelectedFromTrash}
+                          className="text-xs font-medium text-danger hover:opacity-80 transition-opacity px-2 py-1"
+                        >
+                          Excluir selecionados
+                        </button>
+                      )}
+                      <button
+                        onClick={handleEmptyTrash}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-white bg-danger rounded-lg px-3 py-1.5 hover:opacity-90 transition-opacity"
+                      >
+                        <Trash2 size={13} />
+                        Esvaziar lixeira
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <CloudFlatList
+                  isLoading={trashQuery.isLoading}
+                  emptyMessage="A lixeira está vazia."
+                  items={[
+                    ...(trashQuery.data?.folders ?? []).map((f) => ({ id: f.id, name: f.name, isFolder: true })),
+                    ...(trashQuery.data?.files ?? []).map((f) => ({ id: f.id, name: f.name, size: f.fileSize })),
+                  ]}
+                  selectable
+                  selectedIds={selectedTrashIds}
+                  onToggleSelect={toggleTrashSelection}
+                  onRestore={(id) => {
+                    const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
+                    return isFolder ? handleRestoreFolder(id) : handleRestoreFile(id);
+                  }}
+                  onPermanentDelete={(id) => {
+                    const isFolder = trashQuery.data?.folders.some((f) => f.id === id);
+                    return isFolder ? handlePermanentDeleteFolder(id) : handlePermanentDeleteFile(id);
+                  }}
+                />
+              </>
             )}
 
             {tab === 'groups' && <CloudGroupsPanel />}

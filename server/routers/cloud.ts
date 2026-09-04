@@ -744,6 +744,49 @@ export const cloudRouter = router({
         return { success: true, freedBytes } as const;
       }),
 
+    // Esvazia a lixeira inteira de uma vez — mesma lógica das exclusões
+    // individuais acima, só que em laço. Seguro mesmo processando
+    // pasta e arquivo "redundantes" (uma pasta na lixeira já leva
+    // junto tudo que tem dentro, incluindo subpastas/arquivos que
+    // TAMBÉM aparecem na lixeira como itens próprios) — excluir de novo
+    // algo que já não existe simplesmente não faz nada, não dá erro.
+    emptyTrash: requirePermission('manageCloud').mutation(async ({ ctx }) => {
+      if (!ctx.siteContract) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+      }
+      const { folders, files } = await listTrash(ctx.siteContract);
+
+      for (const folder of folders) {
+        const removed = await deleteFolderRecursive(folder.id, ctx.siteContract, ctx.siteAdminUsername, true);
+        for (const key of removed.r2Keys) await deleteFromR2(key);
+        for (const url of removed.fileUrls) await deleteCloudFileFromSupabase(url);
+      }
+
+      for (const file of files) {
+        const result = await permanentlyDeleteFile(file.id, ctx.siteContract);
+        if (result) {
+          const { file: deletedFile, versions } = result;
+          if (deletedFile.r2Key) await deleteFromR2(deletedFile.r2Key);
+          else if (deletedFile.fileUrl) await deleteCloudFileFromSupabase(deletedFile.fileUrl);
+          for (const v of versions) {
+            if (v.r2Key) await deleteFromR2(v.r2Key);
+            else if (v.fileUrl) await deleteCloudFileFromSupabase(v.fileUrl);
+          }
+        }
+      }
+
+      await recalculateStorageUsed(ctx.siteContract);
+      void logActivity({
+        username: ctx.siteAdminUsername,
+        role: ctx.siteRole,
+        action: "cloud.emptyTrash",
+        targetType: "cloudFile",
+        targetId: "trash",
+        targetName: `${folders.length} pasta(s), ${files.length} arquivo(s)`,
+      });
+      return { success: true, foldersRemoved: folders.length, filesRemoved: files.length } as const;
+    }),
+
     // Favoritos — arquivo ou pasta, nunca os dois.
     listFavorites: requirePermission('viewCloud').query(async ({ ctx }) => {
       if (!ctx.siteContract || !ctx.siteAdminUsername) return [];

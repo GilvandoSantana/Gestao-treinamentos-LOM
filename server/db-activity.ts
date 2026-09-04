@@ -56,6 +56,7 @@ export type ActivityAction =
   | "cloud.fileDownload"
   | "cloud.fileRestore"
   | "cloud.filePermanentDelete"
+  | "cloud.emptyTrash"
   | "cloud.share"
   | "cloud.unshare"
   | "cloud.migrateLegacy"
