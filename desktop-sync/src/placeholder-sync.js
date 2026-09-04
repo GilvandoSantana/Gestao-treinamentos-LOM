@@ -81,10 +81,19 @@ function runOneShotCommand(exePath, args, diagLog) {
  * árvore inteira de uma vez). Agora usa getFullTree(), que traz tudo numa
  * chamada só (o servidor resolve a árvore inteira do lado dele, sem
  * ida-e-volta pela rede pra cada pasta) — o caminho de cada item é
- * montado aqui, em memória, subindo a cadeia de pastas-mãe. Mantém de
- * propósito a MESMA formatação de barra dupla ("\\\\") que a versão
- * anterior usava (já validada em testes reais no Windows) — só mudou
- * COMO a árvore é buscada, não o formato do caminho resultante. */
+ * montado aqui, em memória, subindo a cadeia de pastas-mãe.
+ *
+ * IMPORTANTE (corrigido depois, achado real — Gilvando, 04/09): usa
+ * barra ÚNICA como separador ("\\"), o padrão de verdade do Windows —
+ * NÃO a barra dupla que uma versão anterior chegou a usar. A barra dupla
+ * funcionava em pasta pequena/testes, mas em pasta com bastante arquivo
+ * de verdade (relatado: "carrega tudo e depois só mostra alguns"),
+ * provavelmente confundia o agrupamento por pasta que o lado C# faz
+ * (Path.GetDirectoryName, que não espera separador duplicado) —
+ * inclusive o lado de UPLOAD (upload-watcher.js) sempre usou barra
+ * única (via path.sep do Node), e sempre funcionou sem esse problema;
+ * a barra dupla no download era uma inconsistência, não uma
+ * necessidade real. */
 async function generateManifestEntries(apiClient) {
   const { folders, files } = await apiClient.getFullTree();
 
@@ -96,7 +105,7 @@ async function generateManifestEntries(apiClient) {
     const folder = folderById.get(folderId);
     if (!folder) return "";
     const parentPath = folder.parentId ? pathFor(folder.parentId) : "";
-    const fullPath = parentPath ? `${parentPath}\\\\${folder.name}` : folder.name;
+    const fullPath = parentPath ? `${parentPath}\\${folder.name}` : folder.name;
     pathCache.set(folderId, fullPath);
     return fullPath;
   }
@@ -111,7 +120,7 @@ async function generateManifestEntries(apiClient) {
     entries.push({ relativePath: pathFor(folder.id), isFolder: true, folderId: folder.id });
   }
   for (const file of files) {
-    const relativePath = file.folderId ? `${pathFor(file.folderId)}\\\\${file.name}` : file.name;
+    const relativePath = file.folderId ? `${pathFor(file.folderId)}\\${file.name}` : file.name;
     entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0 });
   }
 

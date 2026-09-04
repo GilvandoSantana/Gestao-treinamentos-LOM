@@ -24,7 +24,7 @@ describe("generateManifestEntries", () => {
 
     expect(entries).toContainEqual({ relativePath: "raiz.txt", fileId: "file-raiz", fileSize: 10 });
     expect(entries).toContainEqual({
-      relativePath: "Contratos\\\\dentro.txt",
+      relativePath: "Contratos\\dentro.txt",
       fileId: "file-dentro",
       fileSize: 20,
     });
@@ -53,7 +53,7 @@ describe("generateManifestEntries", () => {
     const entries = await generateManifestEntries(client);
 
     expect(entries).toContainEqual({ relativePath: "Nivel1", isFolder: true, folderId: "f1" });
-    expect(entries).toContainEqual({ relativePath: "Nivel1\\\\Nivel2", isFolder: true, folderId: "f2" });
+    expect(entries).toContainEqual({ relativePath: "Nivel1\\Nivel2", isFolder: true, folderId: "f2" });
   });
 
   it("mostra a pasta sem permissão (vazia), já que o servidor não traz filhos dela", async () => {
@@ -78,7 +78,28 @@ describe("generateManifestEntries", () => {
 
     const entries = await generateManifestEntries(client);
 
-    expect(entries).toContainEqual({ relativePath: "Mae\\\\Filha", isFolder: true, folderId: "f2" });
-    expect(entries).toContainEqual({ relativePath: "Mae\\\\Filha\\\\doc.txt", fileId: "file1", fileSize: 5 });
+    expect(entries).toContainEqual({ relativePath: "Mae\\Filha", isFolder: true, folderId: "f2" });
+    expect(entries).toContainEqual({ relativePath: "Mae\\Filha\\doc.txt", fileId: "file1", fileSize: 5 });
+  });
+
+  it("usa barra ÚNICA como separador (padrão real do Windows) — não barra dupla", async () => {
+    // Achado real (Gilvando, 04/09): uma versão anterior usava barra
+    // dupla de propósito (achando que precisava preservar um formato
+    // antigo) — mas isso provavelmente causava o bug relatado ("carrega
+    // tudo e depois só mostra alguns arquivos" numa pasta com bastante
+    // conteúdo), já que o lado C# (Path.GetDirectoryName) não espera
+    // separador duplicado. Este teste existe especificamente pra nunca
+    // mais regredir pra barra dupla sem querer.
+    const client = makeFakeApiClient({
+      folders: [{ id: "f1", name: "Pasta", parentId: null, hasAccess: true }],
+      files: [{ id: "file1", name: "arquivo.txt", folderId: "f1", fileSize: 1 }],
+    });
+
+    const entries = await generateManifestEntries(client);
+    const fileEntry = entries.find((e) => e.fileId === "file1");
+
+    let backslashCount = 0;
+    for (const ch of fileEntry.relativePath) if (ch === String.fromCharCode(92)) backslashCount++;
+    expect(backslashCount).toBe(1);
   });
 });
