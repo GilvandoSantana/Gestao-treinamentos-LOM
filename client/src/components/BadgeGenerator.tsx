@@ -35,8 +35,13 @@ const FONT = 'RobotoCondensed';
 
 // Helper to load an image from URL, returning both its base64 data and its
 // natural pixel size (precisamos do tamanho real pra encaixar a foto sem
-// distorcer nem estourar a moldura).
-const loadImage = (url: string): Promise<{ dataUrl: string; width: number; height: number }> => {
+// distorcer nem estourar a moldura). format 'png' preserva transparência —
+// necessário pra logo, senão o fundo transparente vira preto ao ser
+// convertido pra JPEG (que não tem canal alfa).
+const loadImage = (
+  url: string,
+  format: 'jpeg' | 'png' = 'jpeg'
+): Promise<{ dataUrl: string; width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -51,7 +56,9 @@ const loadImage = (url: string): Promise<{ dataUrl: string; width: number; heigh
           return;
         }
         ctx.drawImage(img, 0, 0);
-        resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.8), width: img.width, height: img.height });
+        const dataUrl =
+          format === 'png' ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.8);
+        resolve({ dataUrl, width: img.width, height: img.height });
       } catch (e) {
         reject(e);
       }
@@ -181,7 +188,7 @@ export const generateBadgePDF = async (employee: Employee, sharedDoc?: jsPDF): P
 
     let logoBase64: string | null = null;
     try {
-      logoBase64 = (await loadImage(logoMining)).dataUrl;
+      logoBase64 = (await loadImage(logoMining, 'png')).dataUrl;
     } catch {
       logoBase64 = null;
     }
