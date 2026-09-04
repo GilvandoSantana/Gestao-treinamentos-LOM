@@ -71,38 +71,50 @@ function runOneShotCommand(exePath, args, diagLog) {
 }
 
 /** Percorre a Nuvem inteira (todas as subpastas) e monta a lista no mesmo
- * formato que o CloudFilterHost.exe espera no manifesto. */
+ * formato que o CloudFilterHost.exe espera no manifesto.
+ *
+ * Antes, isso fazia uma chamada de rede SEPARADA por pasta (uma
+ * "caminhada" sequencial, esperando cada resposta antes de pedir a
+ * próxima) — lento pra contrato com muitas pastas (achado real, Gilvando:
+ * "a resposta da Nuvem pro programa" demorava, mas o mesmo não acontecia
+ * no site, que só busca uma pasta de cada vez, sob demanda, nunca a
+ * árvore inteira de uma vez). Agora usa getFullTree(), que traz tudo numa
+ * chamada só (o servidor resolve a árvore inteira do lado dele, sem
+ * ida-e-volta pela rede pra cada pasta) — o caminho de cada item é
+ * montado aqui, em memória, subindo a cadeia de pastas-mãe. Mantém de
+ * propósito a MESMA formatação de barra dupla ("\\\\") que a versão
+ * anterior usava (já validada em testes reais no Windows) — só mudou
+ * COMO a árvore é buscada, não o formato do caminho resultante. */
 async function generateManifestEntries(apiClient) {
-  const entries = [];
+  const { folders, files } = await apiClient.getFullTree();
 
-  async function walk(folderId, relativePath) {
-    const listing = await apiClient.listFolder(folderId);
-    for (const file of listing.files) {
-      entries.push({
-        relativePath: relativePath ? `${relativePath}\\${file.name}` : file.name,
-        fileId: file.id,
-        fileSize: file.fileSize || 0,
-      });
-    }
-    for (const folder of listing.folders) {
-      const childPath = relativePath ? `${relativePath}\\${folder.name}` : folder.name;
-      // Marca a pasta em si (mesmo sem nenhum arquivo direto dentro dela)
-      // — sem isso, uma pasta vazia (ou uma pasta cheia de OUTRAS pastas
-      // vazias) nunca aparecia no computador, porque o programa só
-      // "descobria" uma pasta ao ver um arquivo dentro dela. Achado real
-      // (Gilvando, 01/09): a pasta "Pública" sumia por causa disso.
-      entries.push({ relativePath: childPath, isFolder: true, folderId: folder.id });
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+  const pathCache = new Map();
 
-      // Pasta restrita a um grupo que a pessoa não participa: no site,
-      // ela APARECE na listagem (meio apagada), só não dá pra entrar e
-      // ver o que tem dentro. Replica isso aqui — cria a pasta vazia,
-      // mas nunca desce nela pra buscar o conteúdo.
-      if (folder.hasAccess === false) continue;
-      await walk(folder.id, childPath);
-    }
+  function pathFor(folderId) {
+    if (pathCache.has(folderId)) return pathCache.get(folderId);
+    const folder = folderById.get(folderId);
+    if (!folder) return "";
+    const parentPath = folder.parentId ? pathFor(folder.parentId) : "";
+    const fullPath = parentPath ? `${parentPath}\\\\${folder.name}` : folder.name;
+    pathCache.set(folderId, fullPath);
+    return fullPath;
   }
 
-  await walk(null, "");
+  const entries = [];
+  // Marca cada pasta em si (mesmo sem nenhum arquivo direto dentro dela)
+  // — sem isso, uma pasta vazia nunca aparecia no computador. Achado real
+  // (Gilvando, 01/09): a pasta "Pública" sumia por causa disso. Pastas
+  // restritas (hasAccess:false) o servidor já garante que não trazem
+  // filhos junto — aqui só precisa mostrar a pasta em si, vazia.
+  for (const folder of folders) {
+    entries.push({ relativePath: pathFor(folder.id), isFolder: true, folderId: folder.id });
+  }
+  for (const file of files) {
+    const relativePath = file.folderId ? `${pathFor(file.folderId)}\\\\${file.name}` : file.name;
+    entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0 });
+  }
+
   return entries;
 }
 

@@ -302,6 +302,95 @@ export async function listFolderContents(
   };
 }
 
+/**
+ * Busca a árvore inteira de pastas/arquivos de um contrato de uma vez só
+ * — usada pelo programa de sincronização (Windows), que antes fazia uma
+ * chamada de rede SEPARADA pra cada pasta (uma "caminhada" sequencial:
+ * pasta 1, espera responder, pasta 2, espera responder...). Pra um
+ * contrato com muitas pastas, isso significava dezenas de idas-e-voltas
+ * pela internet, um atrás do outro — lento (achado real, Gilvando,
+ * relatando que "a resposta da Nuvem pro programa" demorava, mas o
+ * mesmo não acontecia no site, que só busca uma pasta de cada vez, sob
+ * demanda, nunca a árvore inteira). Aqui, é tudo resolvido com só duas
+ * consultas simples ao banco (todas as pastas, todos os arquivos do
+ * contrato) e a árvore é montada em memória — muito mais rápido, já que
+ * fica inteiro do lado do servidor, sem idas-e-voltas pela rede.
+ */
+export async function getFullFolderTree(
+  contractSlug: string,
+  ctx?: CloudAccessContext
+): Promise<{ folders: (CloudFolderInfo & { parentId: string | null })[]; files: (CloudFileInfo & { folderId: string | null })[] }> {
+  const db = await getDb();
+  if (!db) return { folders: [], files: [] };
+
+  const [allFolderRows, allFileRows] = await Promise.all([
+    db.select().from(cloudFolders).where(and(eq(cloudFolders.contractSlug, contractSlug), isNull(cloudFolders.deletedAt))),
+    db.select().from(cloudFiles).where(and(eq(cloudFiles.contractSlug, contractSlug), isNull(cloudFiles.deletedAt))),
+  ]);
+
+  // hasAccess por pasta restrita — cache por grupo (não por pasta), já
+  // que várias pastas costumam compartilhar o mesmo grupo dono.
+  const groupNameCache = new Map<string, string | null>();
+  const accessCache = new Map<string, boolean>();
+  async function resolveAccess(row: typeof cloudFolders.$inferSelect): Promise<boolean> {
+    if (!row.restrictedToGroupId) return true;
+    if (!ctx) return true;
+    const cacheKey = `${row.restrictedToGroupId}:${row.id}`;
+    if (accessCache.has(cacheKey)) return accessCache.get(cacheKey)!;
+    const allowed = await canAccessFolder(contractSlug, row.id, ctx);
+    accessCache.set(cacheKey, allowed);
+    return allowed;
+  }
+
+  const childrenByParent = new Map<string | null, typeof allFolderRows>();
+  for (const row of allFolderRows) {
+    const key = row.parentId ?? null;
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key)!.push(row);
+  }
+  const filesByFolder = new Map<string | null, typeof allFileRows>();
+  for (const row of allFileRows) {
+    const key = row.folderId ?? null;
+    if (!filesByFolder.has(key)) filesByFolder.set(key, []);
+    filesByFolder.get(key)!.push(row);
+  }
+
+  const resultFolders: (CloudFolderInfo & { parentId: string | null })[] = [];
+  const resultFiles: (CloudFileInfo & { folderId: string | null })[] = [];
+
+  // Caminha a árvore em memória (sem nenhuma chamada de rede aqui dentro)
+  // — mesma regra de antes: pasta restrita aparece na listagem, mas não
+  // desce nela pra ver o que tem dentro.
+  async function walk(parentId: string | null) {
+    const files = filesByFolder.get(parentId) ?? [];
+    for (const file of files) {
+      resultFiles.push({ ...toFileInfo(file), folderId: file.folderId });
+    }
+
+    const children = childrenByParent.get(parentId) ?? [];
+    for (const folder of children) {
+      let groupName: string | null = null;
+      let hasAccess = true;
+      if (folder.restrictedToGroupId) {
+        if (!groupNameCache.has(folder.restrictedToGroupId)) {
+          const group = await getGroupById(folder.restrictedToGroupId);
+          groupNameCache.set(folder.restrictedToGroupId, group?.name ?? null);
+        }
+        groupName = groupNameCache.get(folder.restrictedToGroupId) ?? null;
+        hasAccess = await resolveAccess(folder);
+      }
+      resultFolders.push({ ...toFolderInfo(folder, hasAccess, groupName), parentId: folder.parentId });
+      if (hasAccess) {
+        await walk(folder.id);
+      }
+    }
+  }
+
+  await walk(null);
+
+  return { folders: resultFolders, files: resultFiles };
+}
+
 export async function getFolderById(id: string): Promise<CloudFolderInfo | undefined> {
   const db = await getDb();
   if (!db) return undefined;

@@ -26,6 +26,7 @@ import {
   listFileVersions,
   listFilesNeedingR2Migration,
   listFolderContents,
+  getFullFolderTree,
   listGroupMembers,
   listGroups,
   listRecentFiles,
@@ -80,6 +81,17 @@ export const cloudRouter = router({
         ]);
         return { ...contents, path };
       }),
+
+    // Árvore inteira (todas as pastas e arquivos) de uma vez só — usada
+    // pelo programa de sincronização (Windows), que antes precisava de
+    // uma chamada de rede POR PASTA pra montar essa mesma lista (lento
+    // pra contratos com muitas pastas). Aqui é uma consulta só, resolvida
+    // inteira do lado do servidor.
+    getFullTree: requirePermission('viewCloud').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return { folders: [], files: [] };
+      const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+      return getFullFolderTree(ctx.siteContract, accessCtx);
+    }),
 
     // Espaço usado/limite do contrato — mostrado no topo da Nuvem.
     storageInfo: requirePermission('viewCloud').query(async ({ ctx }) => {

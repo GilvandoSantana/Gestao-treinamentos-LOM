@@ -116,6 +116,15 @@ class ApiClient {
     return parseTrpcResponse(res);
   }
 
+  /** Busca a árvore inteira (todas as pastas e arquivos do contrato) numa
+   * chamada só — bem mais rápido que listFolder pasta por pasta pra
+   * montar o manifesto inteiro (ver generateManifestEntries). */
+  async getFullTree() {
+    const url = buildQueryUrl(this.serverUrl, "cloud.getFullTree");
+    const res = await fetch(url, { headers: this._authHeaders() });
+    return parseTrpcResponse(res);
+  }
+
   /** Baixa o conteúdo de um arquivo da Nuvem como Buffer. */
   async downloadCloudFile(fileId) {
     const urlRes = await fetch(new URL("/api/trpc/cloud.getDownloadUrl?batch=1", this.serverUrl).toString(), {
