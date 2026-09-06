@@ -508,6 +508,7 @@ export default function Home() {
           }}
           onViewModeChange={setViewMode}
           username={session.username}
+          organizationName={session.organization?.name}
           canEdit={session.can('editEmployees')}
           canImportExport={session.can('importExport')}
           onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}

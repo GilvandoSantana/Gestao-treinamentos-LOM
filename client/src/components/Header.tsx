@@ -50,6 +50,11 @@ interface HeaderProps {
   compactTable?: boolean;
   onCompactChange?: (compact: boolean) => void;
   username?: string | null;
+  /** Nome da organização (empresa dona da conta) — aparece no lugar do
+   * nome do produto quando disponível (contas de organizações
+   * cadastradas via /cadastro). Sem isso, mostra "GesCon" (o próprio
+   * produto), como sempre foi. */
+  organizationName?: string | null;
   onLogout: () => void;
   canEdit?: boolean;
   canImportExport?: boolean;
@@ -84,6 +89,7 @@ export default function Header({
   compactTable = false,
   onCompactChange,
   username,
+  organizationName,
   onLogout,
   canEdit = false,
   canImportExport = false,
@@ -212,7 +218,7 @@ export default function Header({
                 }`}
               >
                 <span className="font-technical text-[11px] uppercase tracking-wider text-orange-light">
-                  GesCon
+                  {organizationName || 'GesCon'}
                 </span>
               </div>
               <h1

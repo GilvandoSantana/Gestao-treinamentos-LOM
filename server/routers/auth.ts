@@ -37,6 +37,7 @@ import {
   type Permissions,
 } from "@shared/permissions";
 import { getContractBySlug } from "../db-contracts";
+import { getOrganizationById } from "../db-organizations";
 import { listActivity, logActivity } from "../db-activity";
 import { sendTestEmail } from "../mailer";
 import { sendTestWhatsApp } from "../whatsapp-service";
@@ -276,6 +277,18 @@ export const authRouter = router({
       // Objeto completo (não só o slug), para o cabeçalho montar o título
       // com o nome certo e a preposição certa sem outra consulta.
       contract: ctx.siteContract ? await getContractBySlug(ctx.siteContract) ?? null : null,
+      // Organização (empresa dona da conta) de quem está logado — usada
+      // pra mostrar o nome/marca certos no cabeçalho, em vez do nome do
+      // produto (GesCon) fixo pra todo mundo. null no login mestre (que
+      // enxerga além de uma organização só — ver siteOrganizationId em
+      // server/_core/context.ts). Só os campos de marca vão pro cliente
+      // — nunca os de cobrança (stripeCustomerId etc), que ficam só no
+      // servidor.
+      organization: ctx.siteOrganizationId
+        ? await getOrganizationById(ctx.siteOrganizationId).then((org) =>
+            org ? { id: org.id, slug: org.slug, name: org.name } : null
+          )
+        : null,
       isImpersonating: ctx.isImpersonating,
     })),
 

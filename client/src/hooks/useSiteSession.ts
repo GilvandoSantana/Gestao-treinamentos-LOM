@@ -41,6 +41,11 @@ export function useSiteSession() {
     // administrador principal (que não pertence a nenhum), reflete o que ele
     // escolheu no seletor do cabeçalho; null = "todos os contratos".
     contract: (query.data?.contract as ContractInfo | null) ?? null,
+    // Organização (empresa dona da conta) — usada pra mostrar o nome
+    // certo no cabeçalho, em vez do nome do produto fixo pra todo mundo.
+    // Só os campos de marca (nunca os de cobrança, que o servidor também
+    // manda mas o cliente não precisa enxergar).
+    organization: (query.data?.organization as { id: string; slug: string; name: string } | null) ?? null,
     // Um administrador está "vendo como" este usuário — a sessão real (a
     // salva para voltar) ainda existe, guardada em cookie no servidor.
     isImpersonating: query.data?.isImpersonating ?? false,
