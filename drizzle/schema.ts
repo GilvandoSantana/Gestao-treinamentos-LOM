@@ -210,11 +210,40 @@ export type SafetySheet = typeof safetySheets.$inferSelect;
 export type InsertSafetySheet = typeof safetySheets.$inferInsert;
 
 /**
+ * Organização (empresa dona da conta no sistema) — camada de isolamento
+ * multi-empresa, acima de "contrato". Um contrato pertence a uma
+ * organização; hoje só existe uma (a empresa que já usa o sistema),
+ * migrada automaticamente na criação desta tabela. Ainda não afeta login
+ * nem nenhuma tela — é só a base de dados pra virar multi-empresa de
+ * verdade nas próximas etapas (login por organização, cadastro público,
+ * assinatura).
+ *
+ * IMPORTANTE: não confundir com `contracts.companyName` (razão social
+ * impressa no cabeçalho da Ordem de Serviço) — são conceitos diferentes
+ * que só coincidem de nome em português. Por isso "organization", não
+ * "empresa", no nome da tabela.
+ */
+export const organizations = mysqlTable("organizations", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  slug: varchar("slug", { length: 60 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Organization = typeof organizations.$inferSelect;
+export type InsertOrganization = typeof organizations.$inferInsert;
+
+/**
  * Contratos atendidos pelo sistema. Antes era uma lista fixa no código; agora
  * o administrador cadastra, edita e exclui pela própria interface.
  */
 export const contracts = mysqlTable("contracts", {
   id: varchar("id", { length: 64 }).primaryKey(),
+  // Organização dona deste contrato — ver comentário na tabela
+  // organizations acima. Nullable por enquanto (etapa inicial da
+  // migração pra multi-empresa); toda linha já existente foi
+  // preenchida automaticamente na mesma migração que criou a coluna.
+  organizationId: varchar("organizationId", { length: 64 }),
   // Identificador estável usado em employees/admins/safetySheets.contract.
   // Não muda depois de criado, mesmo que o nome seja editado.
   slug: varchar("slug", { length: 60 }).notNull().unique(),
