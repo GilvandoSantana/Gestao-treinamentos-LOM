@@ -69,7 +69,7 @@ async function initializeDatabase() {
           // Ignora erros de objeto já existente, comuns quando uma migração
           // antiga roda pela primeira vez sob este novo controle mas o
           // schema já foi criado manualmente antes.
-          if (['ER_TABLE_EXISTS_ERROR', 'ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME', 'ER_FK_DUP_NAME'].includes(error.code)) {
+          if (['ER_TABLE_EXISTS_ERROR', 'ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME', 'ER_FK_DUP_NAME', 'ER_CANT_DROP_FIELD_OR_KEY'].includes(error.code)) {
             console.log(`[Init DB] ℹ ${error.code}, ignorando (objeto já existe)`);
           } else {
             console.error(`[Init DB] ✗ Error executing statement:`, error.message);

@@ -1,4 +1,4 @@
-import { bigint, boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date } from "drizzle-orm/mysql-core";
+import { bigint, boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, date, uniqueIndex } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -148,7 +148,16 @@ export type InsertEmailNotification = typeof emailNotifications.$inferInsert;
  */
 export const admins = mysqlTable("admins", {
   id: varchar("id", { length: 64 }).primaryKey(),
-  username: varchar("username", { length: 100 }).notNull().unique(),
+  // Organização dona desta conta — ver comentário completo na tabela
+  // organizations. Nullable por enquanto (mesma etapa gradual de
+  // contracts.organizationId); toda linha já existente foi preenchida
+  // automaticamente na migração que criou esta coluna.
+  organizationId: varchar("organizationId", { length: 64 }),
+  // Único POR ORGANIZAÇÃO (não mais globalmente) — antes de multi-empresa,
+  // dois clientes diferentes nunca poderiam ter cada um um admin chamado
+  // "joao", por exemplo. Hoje só existe uma organização, então o efeito
+  // prático é idêntico ao de antes.
+  username: varchar("username", { length: 100 }).notNull(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   // "admin" = administrador principal (tudo liberado, gerencia contas)
   // "user"  = usuário comum, limitado ao que estiver em permissions
@@ -161,7 +170,11 @@ export const admins = mysqlTable("admins", {
   // JSON com as permissões concedidas a usuários comuns
   permissions: text("permissions"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Substitui o antigo UNIQUE(username) global — ver comentário no campo
+  // username acima.
+  orgUsernameUnique: uniqueIndex("admins_organizationId_username_unique").on(table.organizationId, table.username),
+}));
 
 export type Admin = typeof admins.$inferSelect;
 export type InsertAdmin = typeof admins.$inferInsert;
