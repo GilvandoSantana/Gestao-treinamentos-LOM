@@ -15,6 +15,7 @@ import { certificatesRouter } from "./routers/certificates";
 import { epiConfigRouter } from "./routers/epi-config";
 import { osConfigRouter } from "./routers/os-config";
 import { desktopInstallerRouter } from "./routers/desktop-installer";
+import { signupRouter } from "./routers/signup";
 
 export const appRouter = router({
   system: systemRouter,
@@ -59,6 +60,9 @@ export const appRouter = router({
   // Instalador do programa de sincronização com a Nuvem (Windows) —
   // disponível pra download direto no site, dentro da aba da Nuvem.
   desktopInstaller: desktopInstallerRouter,
+
+  // Cadastro público de organização nova (com confirmação por e-mail).
+  signup: signupRouter,
 });
 
 export type AppRouter = typeof appRouter;

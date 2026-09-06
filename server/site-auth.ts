@@ -305,3 +305,51 @@ export function registerFailedLoginAttempt(key: string): void {
 export function clearLoginAttempts(key: string): void {
   loginAttempts.delete(key);
 }
+
+// Mesmo padrão do limitador de login acima, só que pro cadastro público
+// de organização nova — ação bem mais rara no uso normal (ninguém
+// cadastra a mesma empresa repetidas vezes), então o limite é mais
+// apertado. Protege contra alguém tentando criar várias organizações
+// falsas em sequência.
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+const SIGNUP_MAX_ATTEMPTS = 3;
+const signupAttempts = new Map<string, AttemptRecord>();
+
+function pruneExpiredSignups(now: number) {
+  for (const [key, record] of Array.from(signupAttempts.entries())) {
+    if (now - record.firstAttemptAt > SIGNUP_WINDOW_MS) {
+      signupAttempts.delete(key);
+    }
+  }
+}
+
+/** Mesma semântica de checkLoginRateLimit: null = pode tentar, número =
+ * milissegundos restantes de bloqueio. */
+export function checkSignupRateLimit(key: string): number | null {
+  const now = Date.now();
+  pruneExpiredSignups(now);
+
+  const record = signupAttempts.get(key);
+  if (!record) return null;
+
+  if (now - record.firstAttemptAt > SIGNUP_WINDOW_MS) {
+    signupAttempts.delete(key);
+    return null;
+  }
+
+  if (record.count >= SIGNUP_MAX_ATTEMPTS) {
+    return SIGNUP_WINDOW_MS - (now - record.firstAttemptAt);
+  }
+
+  return null;
+}
+
+export function registerSignupAttempt(key: string): void {
+  const now = Date.now();
+  const record = signupAttempts.get(key);
+  if (!record || now - record.firstAttemptAt > SIGNUP_WINDOW_MS) {
+    signupAttempts.set(key, { count: 1, firstAttemptAt: now });
+  } else {
+    record.count += 1;
+  }
+}

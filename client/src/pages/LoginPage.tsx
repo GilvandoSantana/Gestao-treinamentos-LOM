@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { Link } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { setSessionMarker } from '@/lib/session-marker';
 
@@ -158,6 +159,13 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                   'Entrar'
                 )}
               </button>
+
+              <p className="text-center text-xs text-muted-foreground">
+                Sua empresa ainda não usa o sistema?{' '}
+                <Link href="/cadastro" className="text-orange hover:underline">
+                  Cadastre-se
+                </Link>
+              </p>
             </form>
           </div>
 

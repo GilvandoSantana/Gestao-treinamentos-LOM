@@ -15,7 +15,6 @@ import { v4 as uuidv4 } from "uuid";
 import { organizations, type Organization } from "../drizzle/schema";
 import { getDb } from "./db";
 import { createAdmin, getAdminByUsername, type PublicAdmin } from "./db-admins";
-import { hashAdminPassword } from "./site-auth";
 
 export async function getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
   const db = await getDb();
@@ -39,12 +38,17 @@ export async function getOrganizationById(id: string): Promise<Organization | un
  * checado GLOBALMENTE (não só dentro da organização nova), pelo mesmo
  * motivo documentado em getAdminByUsername: o login ainda não sabe
  * desambiguar por organização.
+ *
+ * Recebe a senha JÁ EM HASH (não em texto puro) — quem chama essa função
+ * é o fluxo de confirmação por e-mail (signup.verify), que só tem o hash
+ * guardado (a senha em texto puro nunca fica salva em lugar nenhum,
+ * nem temporariamente, entre o cadastro e a confirmação).
  */
 export async function createOrganizationWithOwner(input: {
   organizationName: string;
   organizationSlug: string;
   adminUsername: string;
-  adminPassword: string;
+  adminPasswordHash: string;
 }): Promise<{ organization: Organization; admin: PublicAdmin }> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados não disponível.");
@@ -67,11 +71,10 @@ export async function createOrganizationWithOwner(input: {
     name: input.organizationName.trim(),
   });
 
-  const passwordHash = await hashAdminPassword(input.adminPassword);
   const admin = await createAdmin({
     id: uuidv4(),
     username: input.adminUsername,
-    passwordHash,
+    passwordHash: input.adminPasswordHash,
     // "admin" enxerga tudo dentro da própria organização (o campo
     // "contract" não importa pra esse papel — ver comentário em
     // server/_core/context.ts sobre siteContract). Organização nova

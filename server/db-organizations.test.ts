@@ -14,10 +14,6 @@ vi.mock('./db-admins', () => ({
   createAdmin: (input: unknown) => mockCreateAdmin(input),
 }));
 
-vi.mock('./site-auth', () => ({
-  hashAdminPassword: async (password: string) => `hash(${password})`,
-}));
-
 describe('createOrganizationWithOwner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,7 +38,7 @@ describe('createOrganizationWithOwner', () => {
         organizationName: 'Acme',
         organizationSlug: 'acme',
         adminUsername: 'dono',
-        adminPassword: 'senha12345',
+        adminPasswordHash: 'hash-ja-pronto',
       })
     ).rejects.toThrow(/já existe uma organização/i);
 
@@ -58,7 +54,7 @@ describe('createOrganizationWithOwner', () => {
         organizationName: 'Acme',
         organizationSlug: 'acme-nova',
         adminUsername: 'dono',
-        adminPassword: 'senha12345',
+        adminPasswordHash: 'hash-ja-pronto',
       })
     ).rejects.toThrow(/nome de usuário já está em uso/i);
 
@@ -95,7 +91,7 @@ describe('createOrganizationWithOwner', () => {
       organizationName: 'Acme Mineração',
       organizationSlug: 'acme-mineracao',
       adminUsername: 'dono',
-      adminPassword: 'senha12345',
+      adminPasswordHash: 'hash-ja-pronto',
     });
 
     expect(mockInsert).toHaveBeenCalled(); // organização inserida

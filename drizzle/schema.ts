@@ -247,6 +247,29 @@ export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = typeof organizations.$inferInsert;
 
 /**
+ * Cadastro público de organização (empresa) ainda não confirmado por
+ * e-mail. A organização e o administrador "dono" só passam a existir de
+ * verdade nas tabelas organizations/admins depois que a pessoa clica no
+ * link de confirmação — evita que qualquer cadastro (mesmo nunca
+ * confirmado) já ocupe espaço permanente ou colida com dado de
+ * verdade. Linha removida assim que confirmada (ou quando expira).
+ */
+export const pendingSignups = mysqlTable("pendingSignups", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  organizationName: varchar("organizationName", { length: 120 }).notNull(),
+  organizationSlug: varchar("organizationSlug", { length: 60 }).notNull(),
+  adminUsername: varchar("adminUsername", { length: 100 }).notNull(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  token: varchar("token", { length: 128 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PendingSignup = typeof pendingSignups.$inferSelect;
+export type InsertPendingSignup = typeof pendingSignups.$inferInsert;
+
+/**
  * Contratos atendidos pelo sistema. Antes era uma lista fixa no código; agora
  * o administrador cadastra, edita e exclui pela própria interface.
  */
