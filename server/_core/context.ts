@@ -16,6 +16,12 @@ export type TrpcContext = {
   sitePermissions: Permissions | null;
   /** Contrato do usuário. null = administrador principal (vê todos). */
   siteContract: string | null;
+  /** Organização (empresa dona da conta) de quem está logado. null =
+   * login mestre de recuperação, que enxerga além de uma organização só
+   * (mesmo espírito de siteContract:null = "vê todos"). Ainda não é
+   * usado por nenhuma consulta pra isolar dado entre organizações — só
+   * disponível no contexto, pronto pra quando isso for implementado. */
+  siteOrganizationId: string | null;
   /** Um administrador está "vendo como" outro usuário nesta sessão. */
   isImpersonating: boolean;
 };
@@ -40,6 +46,7 @@ export async function createContext(
   let sitePermissions: Permissions | null = null;
   let siteRole: SiteRole | null = siteSession.role;
   let siteContract: string | null = null;
+  let siteOrganizationId: string | null = null;
 
   if (siteSession.isSiteAdmin) {
     if (siteSession.adminId) {
@@ -48,13 +55,15 @@ export async function createContext(
         siteRole = account.role;
         sitePermissions = account.permissions;
         siteContract = account.contract;
+        siteOrganizationId = account.organizationId;
       } else {
         // Conta removida enquanto a sessão ainda estava válida.
         siteRole = null;
         sitePermissions = null;
       }
     } else {
-      // Login pela senha mestra (recuperação): acesso total.
+      // Login pela senha mestra (recuperação): acesso total, além de
+      // uma organização só — siteOrganizationId fica null de propósito.
       siteRole = "admin";
       sitePermissions = { ...ALL_PERMISSIONS };
     }
@@ -84,6 +93,7 @@ export async function createContext(
     // Usuário comum: sempre o próprio contrato. Administrador: o que ele
     // escolheu no cabeçalho, ou null (todos).
     siteContract: stillValid ? siteContract : null,
+    siteOrganizationId: stillValid ? siteOrganizationId : null,
     isImpersonating: !!getRawCookie(opts.req, IMPERSONATION_BACKUP_COOKIE),
   };
 }

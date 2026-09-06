@@ -43,6 +43,12 @@ export interface ContractInfo {
 /** Contrato padrão dos registros que existiam antes desta divisão. */
 export const DEFAULT_CONTRACT_SLUG = 'lom';
 
+// Organização padrão criada na migração 0040 (Fase 1 do multi-empresa) —
+// hoje é a única que existe, então toda conta/contrato novo cai nela por
+// padrão. Id fixo de propósito (o mesmo hardcoded na própria migração
+// SQL), pra sempre bater com o que já está no banco.
+export const DEFAULT_ORGANIZATION_ID = '76242633-4bf5-477f-b2e8-05f388777654';
+
 /** Gera um identificador estável a partir do nome digitado pelo administrador. */
 export function slugifyContract(name: string): string {
   return name

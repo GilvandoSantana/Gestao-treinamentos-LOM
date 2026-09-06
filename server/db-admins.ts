@@ -5,7 +5,7 @@
 import { eq } from "drizzle-orm";
 import { admins, type Admin } from "../drizzle/schema";
 import { getDb } from "./db";
-import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
+import { DEFAULT_CONTRACT_SLUG, DEFAULT_ORGANIZATION_ID } from "@shared/contracts";
 import {
   normalizePermissions,
   DEFAULT_USER_PERMISSIONS,
@@ -21,6 +21,7 @@ export type PublicAdmin = {
   setor: string | null;
   permissions: Permissions;
   createdAt: Date;
+  organizationId: string | null;
 };
 
 function toPublic(row: Admin): PublicAdmin {
@@ -33,6 +34,7 @@ function toPublic(row: Admin): PublicAdmin {
     setor: row.setor ?? null,
     permissions: normalizePermissions(row.permissions, role),
     createdAt: row.createdAt,
+    organizationId: row.organizationId ?? null,
   };
 }
 
@@ -118,6 +120,11 @@ export async function createAdmin(input: {
     role: input.role,
     setor: input.setor?.trim() || null,
     permissions,
+    // Só existe uma organização hoje — toda conta nova cai nela por
+    // padrão (mesma que as já existentes, migradas na Fase 1). Quando
+    // existir cadastro público de organização (fase futura), isso passa
+    // a vir de input em vez de fixo.
+    organizationId: DEFAULT_ORGANIZATION_ID,
   });
 
   return {
@@ -128,6 +135,7 @@ export async function createAdmin(input: {
     setor: input.setor?.trim() || null,
     permissions: normalizePermissions(permissions, input.role),
     createdAt: new Date(),
+    organizationId: DEFAULT_ORGANIZATION_ID,
   };
 }
 
