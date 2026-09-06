@@ -7,7 +7,6 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { toast } from 'sonner';
 import { Eye } from 'lucide-react';
 import type { Employee, FilterType } from '@/lib/types';
-import { getFilteredEmployees, getStatistics, getWorstStatus } from '@/lib/training-utils';
 import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
@@ -45,7 +44,9 @@ import RoleFilter from '@/components/RoleFilter';
 import EmailHistoryPanel from '@/components/EmailHistoryPanel';
 import WelcomeSummary from '@/components/WelcomeSummary';
 import ModuleQuickAccess from '@/components/ModuleQuickAccess';
-import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
+import { useEmployeeFiltering } from '@/hooks/useEmployeeFiltering';
+import { useEmployeeExports } from '@/hooks/useEmployeeExports';
+import { useExcelImport } from '@/hooks/useExcelImport';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { setActiveContract } from '@/lib/active-contract';
 
@@ -152,78 +153,14 @@ export default function Home() {
     }
   }, [listQuery.data, listQuery.isSuccess, listQuery.isError, session.isLoggedIn]);
 
-  const handleExcelImport = async (importedEmployees: Employee[]) => {
-    try {
-      setIsSyncing(true);
-      const mergedEmployees = [...employees];
-      for (const imported of importedEmployees) {
-        const existingIndex = mergedEmployees.findIndex(
-          e => e.name.toLowerCase() === imported.name.toLowerCase()
-        );
-        if (existingIndex >= 0) {
-          const existing = mergedEmployees[existingIndex];
-          const newTrainings = imported.trainings.filter(
-            t => !existing.trainings.some(et => et.name === t.name)
-          );
-          existing.trainings.push(...newTrainings);
-          // Reimportar também atualiza os dados pessoais de quem já existe,
-          // quando a planilha traz algo preenchido — é assim que dá pra
-          // completar em lote um campo que ficou faltando (como data de
-          // nascimento) sem digitar tudo de novo, um por um. Célula vazia na
-          // planilha não apaga o que já estava certo.
-          if (imported.birthDate) existing.birthDate = imported.birthDate;
-          if (imported.registration) existing.registration = imported.registration;
-          if (imported.educationLevel) existing.educationLevel = imported.educationLevel;
-          if (imported.phone) existing.phone = imported.phone;
-          if (imported.role) existing.role = imported.role;
-        } else {
-          mergedEmployees.push(imported);
-        }
-      }
-      mergedEmployees.sort((a, b) => a.name.localeCompare(b.name));
-      setEmployees(mergedEmployees);
-
-      // Sanitiza antes de enviar: uma célula de data quebrada ou vazia na
-      // planilha não pode travar a importação de todo o contrato. Preenche
-      // datas vazias com hoje e descarta treinamentos sem nome.
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const sanitizedEmployees = mergedEmployees.map(emp => ({
-        ...emp,
-        trainings: emp.trainings
-          .filter(t => t.name && t.name.trim() !== '')
-          .map(t => ({
-            ...t,
-            completionDate: t.completionDate || todayIso,
-            expirationDate: t.expirationDate || todayIso,
-          })),
-      }));
-
-      const syncResult = await syncMutation.mutateAsync({ employees: sanitizedEmployees });
-      await listQuery.refetch();
-      setLastSyncTime(new Date());
-
-      if (syncResult.failed.length > 0) {
-        // Alguns podem ter dado erro sem travar os demais — mostra
-        // exatamente quem, em vez de dizer que deu tudo certo.
-        toast.error(
-          `${syncResult.updated} salvo(s), mas ${syncResult.failed.length} falharam: ${syncResult.failed
-            .map((f) => f.name)
-            .join(', ')}`,
-          { duration: 10000 }
-        );
-      } else {
-        toast.success(`${importedEmployees.length} colaborador(es) importado(s)!`);
-      }
-    } catch (error) {
-      // Mostra o erro de verdade em vez de uma mensagem genérica, para dar
-      // pista real do que quebrou (ex: contrato não escolhido, erro de rede).
-      const message = error instanceof Error ? error.message : String(error);
-      toast.error(`Erro ao importar colaboradores: ${message}`);
-      console.error(error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const { handleExcelImport } = useExcelImport(
+    employees,
+    setEmployees,
+    setIsSyncing,
+    setLastSyncTime,
+    syncMutation,
+    listQuery
+  );
 
   const saveEmployee = async (employeeData: Employee) => {
     try {
@@ -450,36 +387,12 @@ export default function Home() {
     if (event.target) event.target.value = '';
   };
 
-  const handleExportPDF = async () => {
-    try {
-      setIsSyncing(true);
-      const { generateComprehensivePDF } = await import('@/lib/pdf-export');
-      await generateComprehensivePDF(employees);
-      toast.success('Relatório PDF gerado com sucesso!');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao gerar relatório PDF');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handlePrintFilter = async (filterType: FilterType) => {
-    try {
-      setIsSyncing(true);
-      const { generateFilteredPDF } = await import('@/lib/pdf-export');
-      await generateFilteredPDF(employees, filterType);
-      const labels: Record<FilterType, string> = {
-        all: 'Todos', valid: 'Válidos', expiring: 'Próximos a Vencer', expired: 'Vencidos',
-      };
-      toast.success(`Relatório de ${labels[filterType]} gerado com sucesso!`);
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao gerar relatório PDF');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const { handleExportPDF, handlePrintFilter, handleExportEmployeeData } = useEmployeeExports(
+    employees,
+    session,
+    utils,
+    setIsSyncing
+  );
 
   const openModal = (employee: Employee | null = null) => {
     setEditingEmployee(employee);
@@ -493,29 +406,6 @@ export default function Home() {
     setShowModal(true);
   };
 
-  const handleExportEmployeeData = async (employee: Employee) => {
-    try {
-      const certificates = await utils.client.certificates.getByEmployee.query({
-        employeeId: employee.id,
-      });
-      // Para usuário comum, o próprio contrato dele já é o do colaborador
-      // (a lista só mostra gente do mesmo contrato). Só o administrador
-      // pode estar vendo colaboradores de outros contratos, então só ele
-      // busca o nome certo por fora.
-      let contractName = session.contract?.name ?? '—';
-      if (session.isMasterAdmin && employee.contract) {
-        const contracts = await utils.client.contracts.list.query({ includeDeleted: true });
-        contractName = contracts.find((c) => c.slug === employee.contract)?.name ?? employee.contract;
-      }
-      const { generateEmployeeDataExportPDF } = await import('@/lib/employee-data-export');
-      generateEmployeeDataExportPDF(employee, certificates as any, contractName);
-      toast.success('PDF gerado.');
-    } catch (error) {
-      toast.error('Erro ao gerar o PDF de dados.');
-      console.error(error);
-    }
-  };
-
   // Atalhos de teclado do desktop: "N" novo colaborador, "/" foca a busca.
   // Só quando não há modal já capturando o teclado, e só quem pode cadastrar
   // ganha o atalho de "N".
@@ -527,50 +417,18 @@ export default function Home() {
   // Memoizado para evitar recálculo em cada re-render
   // Demitidos ficam fora de tudo: listas, filtros, contagens e estatísticas.
   // O registro continua no banco, apenas não entra no dia a dia.
-  const activeEmployees = useMemo(() => employees.filter((e) => !e.dismissed), [employees]);
-  const trainingAlerts = useTrainingAlerts(activeEmployees);
-  const dismissedEmployees = useMemo(() => employees.filter((e) => e.dismissed), [employees]);
-
-  const stats = useMemo(() => getStatistics(activeEmployees), [activeEmployees]);
-
-  // Contagem por COLABORADOR (pela pior situação dele), para os selos da barra
-  // inferior baterem com o tamanho da lista que cada aba mostra. O `stats`
-  // acima conta treinamentos, que é outro número.
-  const statusCounts = useMemo(() => {
-    const counts = { expired: 0, expiring: 0, valid: 0 };
-    for (const emp of activeEmployees) {
-      const worst = getWorstStatus(emp);
-      if (worst === 'expired') counts.expired++;
-      else if (worst === 'expiring') counts.expiring++;
-      else if (worst === 'valid') counts.valid++;
-    }
-    return counts;
-  }, [activeEmployees]);
-
-  const filteredEmployees = useMemo(() => {
-    let result = getFilteredEmployees(activeEmployees, filter, searchQuery);
-    if (selectedRole) result = result.filter(emp => emp.role === selectedRole);
-    return result;
-  }, [activeEmployees, filter, searchQuery, selectedRole]);
-
-  // Paginação: evita renderizar centenas de cartões/linhas de uma vez só
-  // quando a lista de colaboradores crescer.
-  const PAGE_SIZE = 24;
-  const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / PAGE_SIZE));
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, searchQuery, selectedRole, viewMode]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [totalPages, currentPage]);
-
-  const paginatedEmployees = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredEmployees.slice(start, start + PAGE_SIZE);
-  }, [filteredEmployees, currentPage]);
+  const {
+    activeEmployees,
+    trainingAlerts,
+    dismissedEmployees,
+    stats,
+    statusCounts,
+    filteredEmployees,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    paginatedEmployees,
+  } = useEmployeeFiltering(employees, filter, searchQuery, selectedRole, viewMode);
 
   // Porta de entrada: sem sessão válida, só a tela de login.
   // A verificação da sessão vem ANTES do carregamento da lista: enquanto não
