@@ -21,6 +21,8 @@ import {
   abortMultipartUpload,
 } from "../r2-storage";
 import { getCurrentInstaller, setCurrentInstaller } from "../db-desktop-installer";
+import { getStripe, getStripeWebhookSecret } from "../stripe-client";
+import { finalizePaidSignup } from "../db-organizations";
 import { v4 as uuidv4 } from "uuid";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -73,6 +75,66 @@ async function startServer() {
       crossOriginResourcePolicy: false,
     })
   );
+  // Webhook do Stripe — PRECISA vir antes do express.json() global,
+  // porque a verificação de assinatura do Stripe exige o corpo da
+  // requisição em bytes crus (não já convertido pra objeto JS). Só esta
+  // rota usa express.raw(); todas as outras continuam usando o parser
+  // JSON normal, configurado logo abaixo.
+  app.post(
+    "/api/webhooks/stripe",
+    express.raw({ type: "application/json" }),
+    async (req, res) => {
+      const signature = req.headers["stripe-signature"];
+      const webhookSecret = getStripeWebhookSecret();
+      const stripe = getStripe();
+      if (!stripe || !webhookSecret || typeof signature !== "string") {
+        console.error("[Stripe webhook] Recebido, mas o Stripe não está configurado neste servidor.");
+        res.status(400).send("Stripe não configurado.");
+        return;
+      }
+
+      let event: import("stripe").default.Event;
+      try {
+        event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
+      } catch (error) {
+        console.error("[Stripe webhook] Assinatura inválida:", error instanceof Error ? error.message : error);
+        res.status(400).send("Assinatura inválida.");
+        return;
+      }
+
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
+        const pendingSignupId = session.client_reference_id;
+        const subscriptionId =
+          typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+        const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+
+        if (pendingSignupId && subscriptionId && customerId && session.payment_status === "paid") {
+          try {
+            // Idempotente de propósito (ver finalizePaidSignup) — se a
+            // página de "pagamento concluído" no navegador já tiver
+            // finalizado isso antes do webhook chegar, essa chamada
+            // simplesmente não faz nada (devolve null), sem erro.
+            await finalizePaidSignup(pendingSignupId, {
+              customerId,
+              subscriptionId,
+              subscriptionStatus: "active",
+            });
+          } catch (error) {
+            console.error("[Stripe webhook] Falha ao finalizar cadastro pago:", error);
+            // Responde 500 de propósito — assim o Stripe tenta reenviar
+            // este mesmo webhook depois, em vez de desistir achando que
+            // já deu certo.
+            res.status(500).send("Falha ao processar.");
+            return;
+          }
+        }
+      }
+
+      res.json({ received: true });
+    }
+  );
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

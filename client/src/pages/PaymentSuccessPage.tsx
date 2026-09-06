@@ -1,48 +1,48 @@
 /*
  * Design: Industrial Blueprint — Neo-Industrial (mesmo estilo do LoginPage)
- * VerifySignupPage: destino do link de confirmação por e-mail. Confirma o
- * token e, se tudo certo, manda a pessoa pra tela de pagamento do Stripe
- * — a organização só é criada de verdade depois de pago (ver
- * PaymentSuccessPage, destino de volta do Stripe).
+ * PaymentSuccessPage: destino de volta do Stripe Checkout (success_url).
+ * Confirma o pagamento direto com o Stripe, cria a organização de
+ * verdade (se ainda não tiver sido criada pelo webhook) e já loga a
+ * pessoa.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, XCircle } from 'lucide-react';
-import { Link } from 'wouter';
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { Link, useLocation } from 'wouter';
 import { trpc } from '@/lib/trpc';
+import { setSessionMarker } from '@/lib/session-marker';
 
-export default function VerifySignupPage() {
-  const [status, setStatus] = useState<'checking' | 'redirecting' | 'error'>('checking');
+export default function PaymentSuccessPage() {
+  const [status, setStatus] = useState<'checking' | 'success' | 'error'>('checking');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const verifyMutation = trpc.signup.verify.useMutation();
+  const finalizeMutation = trpc.signup.finalizeAfterPayment.useMutation();
+  const utils = trpc.useUtils();
+  const [, setLocation] = useLocation();
   const attempted = useRef(false);
 
   useEffect(() => {
-    // Evita chamar duas vezes (o React roda efeitos duas vezes em
-    // desenvolvimento, e um token de confirmação só pode ser usado uma
-    // vez — a segunda chamada daria "link inválido" mesmo a primeira
-    // tendo funcionado).
+    // Mesmo cuidado do VerifySignupPage: evita chamar duas vezes.
     if (attempted.current) return;
     attempted.current = true;
 
-    const token = new URLSearchParams(window.location.search).get('token');
-    if (!token) {
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (!sessionId) {
       setStatus('error');
-      setErrorMessage('Link incompleto — falta o código de confirmação.');
+      setErrorMessage('Link incompleto — falta a confirmação do pagamento.');
       return;
     }
 
-    verifyMutation
-      .mutateAsync({ token })
-      .then((result) => {
-        setStatus('redirecting');
-        // Manda o navegador pra tela de pagamento hospedada pelo Stripe —
-        // não é navegação interna (wouter), é uma troca de site mesmo.
-        window.location.href = result.checkoutUrl;
+    finalizeMutation
+      .mutateAsync({ sessionId })
+      .then(async (result) => {
+        if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
+        setStatus('success');
+        await utils.invalidate();
+        setTimeout(() => setLocation('/'), 900);
       })
       .catch((err) => {
         setStatus('error');
-        setErrorMessage(err instanceof Error && err.message ? err.message : 'Não foi possível confirmar.');
+        setErrorMessage(err instanceof Error && err.message ? err.message : 'Não foi possível concluir.');
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -67,25 +67,25 @@ export default function VerifySignupPage() {
           {status === 'checking' && (
             <>
               <Loader2 size={40} className="animate-spin text-orange mx-auto mb-4" />
-              <p className="text-sm text-foreground">Confirmando seu cadastro...</p>
+              <p className="text-sm text-foreground">Confirmando o pagamento...</p>
             </>
           )}
 
-          {status === 'redirecting' && (
+          {status === 'success' && (
             <>
-              <Loader2 size={40} className="animate-spin text-teal mx-auto mb-4" />
-              <h1 className="font-display font-bold text-xl text-foreground mb-1">E-mail confirmado!</h1>
-              <p className="text-sm text-muted-foreground">Preparando o pagamento...</p>
+              <CheckCircle2 size={40} className="text-teal mx-auto mb-4" />
+              <h1 className="font-display font-bold text-xl text-foreground mb-1">Pagamento confirmado!</h1>
+              <p className="text-sm text-muted-foreground">Entrando no sistema...</p>
             </>
           )}
 
           {status === 'error' && (
             <>
               <XCircle size={40} className="text-danger mx-auto mb-4" />
-              <h1 className="font-display font-bold text-xl text-foreground mb-2">Não foi possível confirmar</h1>
+              <h1 className="font-display font-bold text-xl text-foreground mb-2">Não foi possível concluir</h1>
               <p className="text-sm text-muted-foreground mb-5">{errorMessage}</p>
               <Link href="/cadastro" className="text-orange hover:underline text-sm font-semibold">
-                Fazer o cadastro de novo
+                Voltar ao cadastro
               </Link>
             </>
           )}

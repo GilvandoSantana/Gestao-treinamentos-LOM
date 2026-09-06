@@ -27,13 +27,14 @@ import {
 import {
   createPendingSignup,
   getPendingSignupByToken,
-  deletePendingSignup,
+  getPendingSignupById,
   pruneExpiredPendingSignups,
 } from "../db-pending-signups";
-import { createOrganizationWithOwner, getOrganizationBySlug } from "../db-organizations";
+import { getOrganizationBySlug, finalizePaidSignup } from "../db-organizations";
 import { getAdminByUsername } from "../db-admins";
 import { sendEmail } from "../mailer";
 import { logActivity } from "../db-activity";
+import { getStripe, isStripeConfigured, getStripePriceId } from "../stripe-client";
 
 const organizationSlugSchema = z
   .string()
@@ -126,6 +127,9 @@ export const signupRouter = router({
       return { success: true } as const;
     }),
 
+  // Confirma o e-mail e, se tudo certo, manda pra tela de pagamento do
+  // Stripe — a organização ainda NÃO é criada aqui (só depois que o
+  // pagamento for confirmado, em finalizeAfterPayment).
   verify: publicProcedure
     .input(z.object({ token: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
@@ -137,23 +141,90 @@ export const signupRouter = router({
         });
       }
 
-      const { admin } = await createOrganizationWithOwner({
-        organizationName: pending.organizationName,
-        organizationSlug: pending.organizationSlug,
-        adminUsername: pending.adminUsername,
-        adminPasswordHash: pending.passwordHash,
+      if (!isStripeConfigured()) {
+        // Acontece enquanto a cobrança ainda não foi configurada de
+        // verdade (chaves do Stripe) — mensagem clara em vez de um erro
+        // confuso. Ver server/stripe-client.ts pras variáveis necessárias.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "O cadastro com pagamento ainda não está disponível. Entre em contato com o suporte.",
+        });
+      }
+
+      const stripe = getStripe()!;
+      const priceId = getStripePriceId()!;
+
+      const checkoutSession = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        line_items: [{ price: priceId, quantity: 1 }],
+        customer_email: pending.email,
+        client_reference_id: pending.id,
+        success_url: `${ctx.req.protocol}://${ctx.req.get("host")}/cadastro-pago?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${ctx.req.protocol}://${ctx.req.get("host")}/cadastro`,
       });
 
-      await deletePendingSignup(pending.id);
+      if (!checkoutSession.url) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível iniciar o pagamento." });
+      }
 
-      void logActivity({
-        username: admin.username,
-        role: "admin",
-        action: "login",
+      return { checkoutUrl: checkoutSession.url } as const;
+    }),
+
+  // Destino do retorno do Stripe (success_url) — confirma o pagamento de
+  // verdade direto com o Stripe (nunca confia só no redirecionamento do
+  // navegador, que poderia ser forjado) antes de criar a organização.
+  // Idempotente: se o webhook do Stripe já tiver finalizado este mesmo
+  // cadastro antes desta chamada chegar, so busca e loga — não tenta
+  // criar de novo (ver finalizePaidSignup).
+  finalizeAfterPayment: publicProcedure
+    .input(z.object({ sessionId: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      if (!isStripeConfigured()) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Cobrança não configurada." });
+      }
+      const stripe = getStripe()!;
+
+      const session = await stripe.checkout.sessions.retrieve(input.sessionId);
+      if (session.payment_status !== "paid" || !session.client_reference_id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pagamento não confirmado." });
+      }
+
+      const pendingSignupId = session.client_reference_id;
+      const subscriptionId =
+        typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+      const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+
+      if (!subscriptionId || !customerId) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Dados de assinatura incompletos." });
+      }
+
+      const result = await finalizePaidSignup(pendingSignupId, {
+        customerId,
+        subscriptionId,
+        subscriptionStatus: "active",
       });
 
-      // Já loga a pessoa direto — mesmo mecanismo de cookie/marcador do
-      // login normal (server/routers/auth.ts, siteLogin).
+      let admin = result?.admin;
+      if (!admin) {
+        // Já tinha sido finalizado antes (provavelmente pelo webhook, que
+        // chegou primeiro) — busca quem já foi criado em vez de falhar.
+        const pending = await getPendingSignupById(pendingSignupId);
+        if (pending) {
+          // Ainda pendente de verdade (nem o webhook processou ainda) —
+          // pouco provável chegar aqui, mas a pessoa pode tentar de novo.
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Ainda processando o pagamento. Atualize a página em alguns segundos.",
+          });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Não foi possível concluir o cadastro. Entre em contato com o suporte.",
+        });
+      }
+
+      void logActivity({ username: admin.username, role: "admin", action: "login" });
+
       const sessionMarker = generateSessionMarker();
       const token = await createSiteSessionToken(admin.username, "admin", admin.id, sessionMarker);
       const cookieOptions = getSessionCookieOptions(ctx.req);

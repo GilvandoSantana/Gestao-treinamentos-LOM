@@ -22,6 +22,13 @@ export async function createPendingSignup(input: {
   });
 }
 
+export async function getPendingSignupById(id: string): Promise<PendingSignup | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(pendingSignups).where(eq(pendingSignups.id, id));
+  return rows[0];
+}
+
 export async function getPendingSignupByToken(token: string): Promise<PendingSignup | undefined> {
   const db = await getDb();
   if (!db) return undefined;

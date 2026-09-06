@@ -24,7 +24,7 @@ export type PublicAdmin = {
   organizationId: string | null;
 };
 
-function toPublic(row: Admin): PublicAdmin {
+export function toPublic(row: Admin): PublicAdmin {
   const role = (row.role === "admin" ? "admin" : "user") as SiteRole;
   return {
     id: row.id,

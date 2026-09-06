@@ -241,6 +241,15 @@ export const organizations = mysqlTable("organizations", {
   slug: varchar("slug", { length: 60 }).notNull().unique(),
   name: varchar("name", { length: 120 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  // Dados de cobrança (Stripe) — nulos até a organização pagar pela
+  // primeira vez. Preenchidos só depois que o pagamento é confirmado de
+  // verdade (webhook do Stripe), nunca antes — ver server/routers/signup.ts.
+  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  // Espelha o status da assinatura no Stripe (active, past_due, canceled,
+  // etc — usa exatamente os mesmos nomes que o Stripe usa, sem traduzir,
+  // pra nunca ficar em dúvida na hora de comparar com o painel do Stripe).
+  subscriptionStatus: varchar("subscriptionStatus", { length: 50 }),
 });
 
 export type Organization = typeof organizations.$inferSelect;
