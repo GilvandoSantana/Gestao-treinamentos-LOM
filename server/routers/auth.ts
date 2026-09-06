@@ -343,6 +343,15 @@ export const authRouter = router({
           })
         )
         .mutation(async ({ input, ctx }) => {
+          // getAdminByUsername busca GLOBALMENTE (não só na organização de
+          // quem está criando) DE PROPÓSITO: o login de hoje ainda não
+          // pergunta "de qual organização" (só existe uma organização com
+          // uso real por enquanto), então dois admins com o mesmo nome de
+          // usuário em organizações diferentes ficariam impossíveis de
+          // logar sem ambiguidade. Não trocar essa checagem pra ficar
+          // restrita à própria organização sem antes o login saber
+          // desambiguar por organização (ver comentário em
+          // getAdminByUsername, server/db-admins.ts).
           const existing = await getAdminByUsername(input.username);
           if (existing) {
             throw new TRPCError({ code: "CONFLICT", message: "Esse usuário já existe." });

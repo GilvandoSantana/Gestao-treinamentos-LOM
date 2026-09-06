@@ -59,6 +59,29 @@ export async function countAdminsByRole(role: SiteRole): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Decide o que fazer com as linhas encontradas por nome de usuário —
+ * função pura, separada da consulta em si, pra dar pra testar isolada
+ * (a parte que realmente importa proteger contra erro).
+ *
+ * Antes de existir mais de uma organização, um nome de usuário só podia
+ * bater com uma linha (era único globalmente). Agora que a unicidade é
+ * por organização (ver migração 0041), duas organizações diferentes já
+ * PODEM ter, cada uma, um admin com o mesmo nome de usuário — e o login
+ * de hoje ainda não pergunta "de qual organização" (isso fica pra
+ * quando o cadastro público de organização existir). Enquanto isso não
+ * existir, mais de uma linha aqui significa uma colisão real: em vez de
+ * arriscar logar a pessoa como o admin ERRADO (de outra organização),
+ * falha de forma segura — a própria criação de admin já impede esse
+ * caso na entrada (ver createAdmin/createOrganizationWithOwner), então
+ * isso só dispararia se os dados chegassem de outro jeito (importação
+ * manual, etc.).
+ */
+export function pickUnambiguousAdmin(rows: Admin[]): Admin | undefined {
+  if (rows.length > 1) return undefined;
+  return rows[0];
+}
+
 export async function getAdminByUsername(username: string): Promise<Admin | undefined> {
   const db = await getDb();
   if (!db) return undefined;
@@ -68,7 +91,13 @@ export async function getAdminByUsername(username: string): Promise<Admin | unde
     .from(admins)
     .where(eq(admins.username, username.trim().toLowerCase()));
 
-  return rows[0];
+  const result = pickUnambiguousAdmin(rows);
+  if (!result && rows.length > 1) {
+    console.error(
+      `[Admins] Nome de usuário "${username}" existe em mais de uma organização — login bloqueado por segurança até isso ser corrigido manualmente no banco.`
+    );
+  }
+  return result;
 }
 
 // Cache curto das contas. A checagem de permissão roda em TODA requisição, e
@@ -104,6 +133,11 @@ export async function createAdmin(input: {
   role: SiteRole;
   setor?: string | null;
   permissions?: Permissions;
+  /** Organização dona desta conta — hoje só existe uma (a padrão), então
+   * quem não passar cai nela automaticamente. Quando a organização nova
+   * é criada pelo próprio cadastro (createOrganizationWithOwner), passa
+   * o id da organização recém-criada aqui. */
+  organizationId?: string;
 }): Promise<PublicAdmin> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -111,6 +145,7 @@ export async function createAdmin(input: {
   const normalizedUsername = input.username.trim().toLowerCase();
   const permissions =
     input.role === "admin" ? null : JSON.stringify(input.permissions ?? DEFAULT_USER_PERMISSIONS);
+  const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
 
   await db.insert(admins).values({
     id: input.id,
@@ -120,11 +155,7 @@ export async function createAdmin(input: {
     role: input.role,
     setor: input.setor?.trim() || null,
     permissions,
-    // Só existe uma organização hoje — toda conta nova cai nela por
-    // padrão (mesma que as já existentes, migradas na Fase 1). Quando
-    // existir cadastro público de organização (fase futura), isso passa
-    // a vir de input em vez de fixo.
-    organizationId: DEFAULT_ORGANIZATION_ID,
+    organizationId,
   });
 
   return {
@@ -135,7 +166,7 @@ export async function createAdmin(input: {
     setor: input.setor?.trim() || null,
     permissions: normalizePermissions(permissions, input.role),
     createdAt: new Date(),
-    organizationId: DEFAULT_ORGANIZATION_ID,
+    organizationId,
   };
 }
 
