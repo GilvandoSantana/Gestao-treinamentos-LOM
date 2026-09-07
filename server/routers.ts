@@ -17,6 +17,7 @@ import { osConfigRouter } from "./routers/os-config";
 import { desktopInstallerRouter } from "./routers/desktop-installer";
 import { signupRouter } from "./routers/signup";
 import { employeePortalRouter } from "./routers/employee-portal";
+import { backupRouter } from "./routers/backup";
 
 export const appRouter = router({
   system: systemRouter,
@@ -67,6 +68,9 @@ export const appRouter = router({
 
   // Portal de autoatendimento do colaborador (CPF + PIN, só leitura).
   employeePortal: employeePortalRouter,
+
+  // Backup do banco de dados (rodar manualmente, listar) — só admin principal.
+  backup: backupRouter,
 });
 
 export type AppRouter = typeof appRouter;

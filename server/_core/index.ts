@@ -9,6 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
+import { runDatabaseBackup } from "../db-backup";
 import { nanoid } from "nanoid";
 import { hasValidSiteSession, getSiteSession } from "../site-auth";
 import { csrfProtection } from "./csrf";
@@ -164,6 +165,27 @@ async function startServer() {
       console.error("[Cron] Erro ao enviar alertas de treinamento:", error);
       return res.status(500).json({ error: "Falha ao processar alertas" });
     }
+  });
+
+  // Backup do banco de dados — mesmo padrão do endpoint acima (o plano do
+  // Railway usado aqui não inclui backup nativo). Rodar 1x/dia é
+  // suficiente; configure isso no agendador externo escolhido.
+  app.post("/api/cron/db-backup", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    const provided = req.headers["x-cron-secret"];
+
+    if (!secret) {
+      return res.status(500).json({ error: "CRON_SECRET não configurado no servidor." });
+    }
+    if (provided !== secret) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const result = await runDatabaseBackup();
+    if (!result.success) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.status(200).json(result);
   });
 
   // Seed route for bulk employee insertion

@@ -13,6 +13,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
@@ -126,6 +127,31 @@ export async function deleteFromR2(key: string): Promise<void> {
   } catch (error) {
     console.error(`[R2] Falha ao excluir "${key}":`, error);
   }
+}
+
+/** Lista objetos com um prefixo (ex: "system-backups/") — usada pra ver
+ * quais backups já existem, decidir quais apagar (retenção), etc. */
+export async function listObjectsInR2(
+  prefix: string
+): Promise<{ key: string; size: number; lastModified: Date | undefined }[]> {
+  const results: { key: string; size: number; lastModified: Date | undefined }[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await requireClient().send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    );
+    for (const obj of response.Contents ?? []) {
+      if (obj.Key) results.push({ key: obj.Key, size: obj.Size ?? 0, lastModified: obj.LastModified });
+    }
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return results;
 }
 
 /** URL temporária de download — expira em 1 hora por padrão. O bucket é

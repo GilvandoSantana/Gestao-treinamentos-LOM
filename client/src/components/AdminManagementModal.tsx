@@ -53,6 +53,22 @@ export default function AdminManagementModal({
   const testEmailMutation = trpc.auth.testEmail.useMutation();
   const testWhatsAppMutation = trpc.auth.testWhatsApp.useMutation();
   const [testPhone, setTestPhone] = useState('');
+  const backupsQuery = trpc.backup.list.useQuery(undefined, { enabled: isOpen });
+  const runBackupMutation = trpc.backup.runNow.useMutation();
+
+  const handleRunBackup = async () => {
+    try {
+      const result = await runBackupMutation.mutateAsync();
+      if (result.success) {
+        toast.success('Backup gerado com sucesso.');
+        backupsQuery.refetch();
+      } else {
+        toast.error(result.error ?? 'Falha ao gerar o backup.', { duration: 8000 });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao gerar o backup.');
+    }
+  };
 
   const handleTestEmail = async () => {
     try {
@@ -321,6 +337,49 @@ export default function AdminManagementModal({
               </>
             )}
           </button>
+        </div>
+
+        {/* Backup do banco de dados — o plano do Railway usado aqui não
+            inclui backup nativo, então isso roda por conta própria (ver
+            server/db-backup.ts). Um agendador externo dispara isso uma vez
+            por dia; este botão é só pra rodar na hora e conferir. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <ShieldCheck size={15} /> Backup do banco de dados
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Guarda uma cópia completa do banco no armazenamento em nuvem. Roda automaticamente uma
+            vez por dia; use o botão abaixo pra rodar na hora e conferir se está funcionando.
+          </p>
+          <button
+            onClick={handleRunBackup}
+            disabled={runBackupMutation.isPending}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {runBackupMutation.isPending ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Gerando...
+              </>
+            ) : (
+              <>
+                <ShieldCheck size={14} /> Rodar backup agora
+              </>
+            )}
+          </button>
+          {backupsQuery.data && backupsQuery.data.length > 0 && (
+            <div className="mt-2.5 space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground">Últimos backups:</p>
+              {backupsQuery.data.slice(0, 5).map((b) => (
+                <div key={b.key} className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="truncate">{b.key.replace('system-backups/', '')}</span>
+                  <span className="shrink-0 ml-2">{(b.size / 1024 / 1024).toFixed(2)} MB</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {backupsQuery.data && backupsQuery.data.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">Nenhum backup gerado ainda.</p>
+          )}
         </div>
 
         {/* Diagnóstico do envio de WhatsApp — o número de teste é digitado
