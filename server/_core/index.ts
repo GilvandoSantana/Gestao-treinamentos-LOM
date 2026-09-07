@@ -22,7 +22,17 @@ import {
   abortMultipartUpload,
 } from "../r2-storage";
 import { getCurrentInstaller, setCurrentInstaller } from "../db-desktop-installer";
-import { canAccessFolder, getStorageInfo, createFileRecord, adjustStorageUsed, getFolderPath } from "../db-cloud";
+import {
+  canAccessFile,
+  canAccessFolder,
+  getStorageInfo,
+  createFileRecord,
+  adjustStorageUsed,
+  getFolderPath,
+  getFileById,
+  isLockActive,
+  uploadNewVersion,
+} from "../db-cloud";
 import { slugifyContract } from "@shared/contracts";
 import { logActivity } from "../db-activity";
 import { getStripe, getStripeWebhookSecret } from "../stripe-client";
@@ -591,6 +601,146 @@ async function startServer() {
       return res.status(200).json({ success: true, file });
     } catch (error) {
       console.error("[CloudUpload] Erro ao concluir envio:", error);
+      return res.status(500).json({ error: "Falha ao concluir o envio." });
+    }
+  });
+
+  // Envio de NOVA VERSÃO de um arquivo já existente — mesmo motivo e
+  // mesmo mecanismo das rotas de cima (envio em partes em vez de Base64
+  // numa requisição só), só que pra CloudVersionHistoryModal.tsx em vez
+  // do envio normal.
+  app.post("/api/cloud-version-upload/start", csrfProtection, async (req, res) => {
+    const ctx = await requireCloudUploadAccess(req, res);
+    if (!ctx) return;
+
+    const fileId = typeof req.body?.fileId === "string" ? req.body.fileId : "";
+    const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "";
+    const mimeType = typeof req.body?.mimeType === "string" ? req.body.mimeType : "application/octet-stream";
+    const declaredSize = Number(req.body?.fileSize) || 0;
+    if (!fileId || !fileName) {
+      return res.status(400).json({ error: "Dados incompletos." });
+    }
+    if (!isR2Configured) {
+      return res.status(400).json({ error: "Armazenamento não configurado." });
+    }
+
+    const existing = await getFileById(fileId);
+    if (!existing || existing.contractSlug !== ctx.siteContract) {
+      return res.status(404).json({ error: "Arquivo não encontrado." });
+    }
+    const accessCtx = { username: ctx.siteAdminUsername ?? "", isMasterAdmin: ctx.siteRole === "admin" };
+    if (!(await canAccessFile(ctx.siteContract!, fileId, accessCtx))) {
+      return res.status(403).json({ error: "Você não tem acesso a este arquivo." });
+    }
+    if (existing.lockedBy && existing.lockedBy !== ctx.siteAdminUsername && isLockActive(existing.lockedBy, existing.lockedAt)) {
+      return res.status(409).json({
+        error: `Este arquivo está sendo editado por ${existing.lockedBy}. Aguarde a pessoa concluir a edição antes de enviar uma nova versão.`,
+      });
+    }
+
+    const storage = await getStorageInfo(ctx.siteContract!);
+    if (declaredSize > 0 && storage.usedBytes + declaredSize > storage.limitBytes) {
+      return res.status(400).json({ error: "Espaço de armazenamento insuficiente." });
+    }
+
+    try {
+      const folderChain = existing.folderId ? await getFolderPath(existing.folderId) : [];
+      const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+      const r2Key = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${uuidv4()}-${fileName}`;
+
+      const uploadId = await createMultipartUpload(r2Key, mimeType);
+      activeMultipartUploads.set(uploadId, {
+        kind: "cloudVersion",
+        r2Key,
+        fileId,
+        mimeType,
+        contractSlug: ctx.siteContract,
+        uploadedBy: ctx.siteAdminUsername ?? "desconhecido",
+        startedAt: Date.now(),
+      });
+      return res.status(200).json({ uploadId, r2Key });
+    } catch (error) {
+      console.error("[CloudVersionUpload] Erro ao iniciar envio em partes:", error);
+      return res.status(500).json({ error: "Falha ao iniciar o envio." });
+    }
+  });
+
+  app.post(
+    "/api/cloud-version-upload/part",
+    csrfProtection,
+    express.raw({ limit: "20mb", type: "application/octet-stream" }),
+    async (req, res) => {
+      const ctx = await requireCloudUploadAccess(req, res);
+      if (!ctx) return;
+
+      const uploadId = typeof req.query.uploadId === "string" ? req.query.uploadId : "";
+      const partNumber = Number(req.query.partNumber);
+      const info = activeMultipartUploads.get(uploadId);
+      if (!info || info.kind !== "cloudVersion" || info.contractSlug !== ctx.siteContract) {
+        return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+      }
+      if (!Number.isInteger(partNumber) || partNumber < 1) {
+        return res.status(400).json({ error: "Número de parte inválido." });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({ error: "Parte vazia ou não recebida." });
+      }
+
+      try {
+        const etag = await uploadPartToR2(info.r2Key, uploadId, partNumber, req.body);
+        return res.status(200).json({ etag });
+      } catch (error) {
+        console.error("[CloudVersionUpload] Erro ao enviar parte:", error);
+        return res.status(500).json({ error: "Falha ao enviar essa parte — tente de novo." });
+      }
+    }
+  );
+
+  app.post("/api/cloud-version-upload/complete", csrfProtection, async (req, res) => {
+    const ctx = await requireCloudUploadAccess(req, res);
+    if (!ctx) return;
+
+    const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId : "";
+    const parts = Array.isArray(req.body?.parts) ? req.body.parts : null;
+    const info = activeMultipartUploads.get(uploadId);
+    if (!info || info.kind !== "cloudVersion" || info.contractSlug !== ctx.siteContract) {
+      return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+    }
+    if (!parts || parts.length === 0) {
+      return res.status(400).json({ error: "Nenhuma parte enviada." });
+    }
+    const fileSize = req.body?.fileSize && Number.isFinite(req.body.fileSize) ? req.body.fileSize : 0;
+
+    const storage = await getStorageInfo(ctx.siteContract!);
+    if (storage.usedBytes + fileSize > storage.limitBytes) {
+      await abortMultipartUpload(info.r2Key, uploadId);
+      activeMultipartUploads.delete(uploadId);
+      return res.status(400).json({ error: "Espaço de armazenamento insuficiente." });
+    }
+
+    try {
+      await completeMultipartUpload(info.r2Key, uploadId, parts);
+      const updated = await uploadNewVersion(uuidv4(), info.fileId, ctx.siteContract!, {
+        r2Key: info.r2Key,
+        fileSize,
+        mimeType: info.mimeType,
+        uploadedBy: info.uploadedBy,
+      });
+      // O conteúdo antigo continua no R2 (agora como versão) - soma o
+      // tamanho novo, sem descontar o antigo (mesma regra do caminho antigo).
+      await adjustStorageUsed(ctx.siteContract!, fileSize);
+      activeMultipartUploads.delete(uploadId);
+      void logActivity({
+        username: ctx.siteAdminUsername,
+        role: ctx.siteRole,
+        action: "cloud.fileNewVersion",
+        targetType: "cloudFile",
+        targetId: info.fileId,
+        targetName: updated.name,
+      });
+      return res.status(200).json({ success: true, file: updated });
+    } catch (error) {
+      console.error("[CloudVersionUpload] Erro ao concluir envio:", error);
       return res.status(500).json({ error: "Falha ao concluir o envio." });
     }
   });

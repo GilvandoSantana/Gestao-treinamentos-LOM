@@ -9,6 +9,7 @@ import { X, History, Upload, Download, RotateCcw, Loader, Clock, Lock, Unlock } 
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
+import { uploadFileInChunks } from '@/lib/chunked-upload';
 
 interface CloudVersionHistoryModalProps {
   fileId: string;
@@ -28,13 +29,13 @@ export default function CloudVersionHistoryModal({
   onChanged,
 }: CloudVersionHistoryModalProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
   const versionsQuery = trpc.cloud.listFileVersions.useQuery({ fileId });
   const fileInfoQuery = trpc.cloud.getFileInfo.useQuery({ fileId });
   const sessionQuery = trpc.auth.siteSession.useQuery();
-  const uploadVersionMutation = trpc.cloud.uploadNewVersion.useMutation();
   const restoreMutation = trpc.cloud.restoreFileVersion.useMutation();
   const getVersionUrlMutation = trpc.cloud.getVersionDownloadUrl.useMutation();
   const lockFileMutation = trpc.cloud.lockFile.useMutation();
@@ -85,20 +86,18 @@ export default function CloudVersionHistoryModal({
     }
 
     setIsUploading(true);
+    setUploadPercent(0);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1]);
-        reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
-        reader.readAsDataURL(file);
-      });
-
-      await uploadVersionMutation.mutateAsync({
-        fileId,
-        fileName: file.name,
-        fileData: base64,
-        mimeType: file.type || 'application/octet-stream',
-      });
+      await uploadFileInChunks(
+        file,
+        { fileId, fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size },
+        {
+          start: '/api/cloud-version-upload/start',
+          part: '/api/cloud-version-upload/part',
+          complete: '/api/cloud-version-upload/complete',
+        },
+        setUploadPercent
+      );
       toast.success('Nova versão enviada.');
       await refresh();
       onChanged();
@@ -106,6 +105,7 @@ export default function CloudVersionHistoryModal({
       toast.error(error instanceof Error ? error.message : 'Erro ao enviar nova versão.');
     } finally {
       setIsUploading(false);
+      setUploadPercent(0);
     }
   };
 
@@ -184,7 +184,7 @@ export default function CloudVersionHistoryModal({
               className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold px-3 py-2.5 rounded-lg bg-orange text-white hover:opacity-90 disabled:opacity-50"
             >
               {isUploading ? <Loader size={15} className="animate-spin" /> : <Upload size={15} />}
-              {isUploading ? 'Enviando...' : 'Enviar nova versão'}
+              {isUploading ? `Enviando... ${uploadPercent}%` : 'Enviar nova versão'}
             </button>
             <input ref={fileInputRef} type="file" onChange={handleUploadNewVersion} className="hidden" />
           </div>

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FolderSync, FolderOpen, X, RefreshCw, AlertTriangle, Loader } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
+import { uploadFileInChunks } from '@/lib/chunked-upload';
 import {
   isFileSystemAccessSupported,
   runSyncTick,
@@ -47,21 +48,11 @@ export default function CloudLocalSyncPanel({ folderId, folderName, canManage }:
   const isTickRunningRef = useRef(false);
 
   const utils = trpc.useUtils();
-  const uploadMutation = trpc.cloud.upload.useMutation();
-  const uploadVersionMutation = trpc.cloud.uploadNewVersion.useMutation();
   const getDownloadUrlMutation = trpc.cloud.getDownloadUrl.useMutation();
   const sessionQuery = trpc.auth.siteSession.useQuery();
   const currentUsername = sessionQuery.data?.username ?? undefined;
 
   const supported = isFileSystemAccessSupported();
-
-  const readFileAsBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).split(',')[1]);
-      reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
-      reader.readAsDataURL(file);
-    });
 
   const runTick = async () => {
     if (isTickRunningRef.current || !dirHandleRef.current || syncedFolderIdRef.current === undefined) return;
@@ -89,25 +80,36 @@ export default function CloudLocalSyncPanel({ folderId, folderName, canManage }:
           return res.blob();
         },
         uploadNewFile: async (file) => {
-          const base64 = await readFileAsBase64(file);
-          const created = await uploadMutation.mutateAsync({
-            folderId: currentFolderId,
-            name: file.name,
-            fileName: file.name,
-            fileData: base64,
-            mimeType: file.type || 'application/octet-stream',
-          });
-          return { id: created.id, updatedAt: created.updatedAt };
+          const result = await uploadFileInChunks<{ file: { id: string; updatedAt: string } }>(
+            file,
+            {
+              folderId: currentFolderId,
+              name: file.name,
+              fileName: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+            },
+            {
+              start: '/api/cloud-upload/start',
+              part: '/api/cloud-upload/part',
+              complete: '/api/cloud-upload/complete',
+            },
+            () => {}
+          );
+          return { id: result.file.id, updatedAt: result.file.updatedAt };
         },
         uploadNewVersion: async (fileId, file) => {
-          const base64 = await readFileAsBase64(file);
-          const updated = await uploadVersionMutation.mutateAsync({
-            fileId,
-            fileName: file.name,
-            fileData: base64,
-            mimeType: file.type || 'application/octet-stream',
-          });
-          return { updatedAt: updated.updatedAt };
+          const result = await uploadFileInChunks<{ file: { updatedAt: string } }>(
+            file,
+            { fileId, fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size },
+            {
+              start: '/api/cloud-version-upload/start',
+              part: '/api/cloud-version-upload/part',
+              complete: '/api/cloud-version-upload/complete',
+            },
+            () => {}
+          );
+          return { updatedAt: result.file.updatedAt };
         },
       }, currentUsername);
 
