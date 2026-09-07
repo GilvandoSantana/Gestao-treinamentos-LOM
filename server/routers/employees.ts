@@ -7,6 +7,8 @@ import {
   deleteTrainingsExcept,
   getAllEmployees,
   getDistinctTrainingNames,
+  getEmployeeById,
+  getEmployeeScoped,
   getTrainingsByEmployeeId,
   getTrainingsGroupedByEmployee,
   setEmployeeContract,
@@ -29,7 +31,11 @@ export const employeesRouter = router({
     // data de nascimento) pra criar um PIN novo.
     resetPortalAccess: requirePermission('editEmployees')
       .input(z.object({ employeeId: z.string().min(1) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
+        if (!employee) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+        }
         await clearEmployeePortalPin(input.employeeId);
         return { success: true } as const;
       }),
@@ -56,8 +62,19 @@ export const employeesRouter = router({
       .mutation(async ({ input, ctx }) => {
         let updated = 0;
         let created = 0;
+        let skipped = 0;
 
         for (const employeeId of input.employeeIds) {
+          // Confere que cada colaborador da lista pertence mesmo ao
+          // contrato de quem está pedindo — sem isso, alguém podia incluir
+          // o id de um colaborador de OUTRO contrato na lista e renovar
+          // treinamento dele também.
+          const employee = await getEmployeeScoped(employeeId, ctx.siteContract);
+          if (!employee) {
+            skipped++;
+            continue;
+          }
+
           const existingTrainings = await getTrainingsByEmployeeId(employeeId);
           const match = existingTrainings.find(
             (t) => t.name.trim().toLowerCase() === input.trainingName.trim().toLowerCase()
@@ -79,10 +96,10 @@ export const employeesRouter = router({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
           action: "training.renewBulk",
-          details: `"${input.trainingName}" — ${updated} renovado(s), ${created} novo(s), de ${input.employeeIds.length} colaborador(es)`,
+          details: `"${input.trainingName}" — ${updated} renovado(s), ${created} novo(s), de ${input.employeeIds.length} colaborador(es)${skipped > 0 ? `, ${skipped} ignorado(s)` : ''}`,
         });
 
-        return { updated, created, total: input.employeeIds.length } as const;
+        return { updated, created, skipped, total: input.employeeIds.length } as const;
       }),
 
     // Reatribuir colaborador para outro contrato — SOMENTE o administrador
@@ -152,6 +169,21 @@ export const employeesRouter = router({
           });
         }
 
+        // Se já existe um colaborador com esse id, ele precisa pertencer ao
+        // MESMO contrato de quem está editando — sem essa checagem, alguém
+        // sabendo o UUID de um colaborador de outro contrato conseguia
+        // sobrescrever os dados dele E, pior, reatribuí-lo pro próprio
+        // contrato (já que o campo contract abaixo sempre usa o contrato de
+        // quem está salvando, não o que já estava gravado). Colaborador
+        // NOVO (id ainda não existe) passa direto — é criação normal.
+        const existing = await getEmployeeById(input.id);
+        if (existing) {
+          const belongsToCaller = ctx.siteContract === null || existing.contract === ctx.siteContract;
+          if (!belongsToCaller) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+          }
+        }
+
         try {
             await upsertEmployee({
               id: input.id,
@@ -218,6 +250,10 @@ export const employeesRouter = router({
     setDismissed: requirePermission('editEmployees')
       .input(z.object({ id: z.string(), dismissed: z.boolean() }))
       .mutation(async ({ input, ctx }) => {
+        const employee = await getEmployeeScoped(input.id, ctx.siteContract);
+        if (!employee) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+        }
         await setEmployeeDismissed(input.id, input.dismissed);
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -233,6 +269,10 @@ export const employeesRouter = router({
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
         try {
+          const employee = await getEmployeeScoped(input.id, ctx.siteContract);
+          if (!employee) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+          }
           await deleteEmployee(input.id);
           void logActivity({
             username: ctx.siteAdminUsername,
@@ -391,8 +431,13 @@ export const employeesRouter = router({
           mimeType: z.string().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
+          const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
+          if (!employee) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+          }
+
           const fileBuffer = Buffer.from(input.fileData, "base64");
 
           const MAX_PHOTO_BYTES = 5 * 1024 * 1024; // 5MB

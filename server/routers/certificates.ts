@@ -9,6 +9,7 @@ import {
   getCertificatesByTrainingId,
   uploadCertificate,
 } from "../db-certificates";
+import { getEmployeeScoped } from "../db-employees";
 import { deleteCertificateFromSupabase, uploadCertificateToSupabase } from "../supabase-storage";
 import { logActivity } from "../db-activity";
 
@@ -23,8 +24,13 @@ export const certificatesRouter = router({
           mimeType: z.string().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
+          const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
+          if (!employee) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+          }
+
           const fileBuffer = typeof input.fileData === "string" 
             ? Buffer.from(input.fileData, "base64")
             : input.fileData;
@@ -92,8 +98,10 @@ export const certificatesRouter = router({
 
     getByEmployee: requirePermission('viewCertificates')
       .input(z.object({ employeeId: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         try {
+          const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
+          if (!employee) return [];
           return await getCertificatesByEmployeeId(input.employeeId);
         } catch (error) {
           console.error("Error fetching certificates by employee:", error);
@@ -108,6 +116,12 @@ export const certificatesRouter = router({
           const certificate = await getCertificateById(input.id);
           if (!certificate) {
             throw new Error("Certificate not found");
+          }
+          // Confere que o colaborador dono do certificado pertence ao
+          // contrato de quem está pedindo a exclusão.
+          const employee = await getEmployeeScoped(certificate.employeeId, ctx.siteContract);
+          if (!employee) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Certificado não encontrado." });
           }
 
           // Delete from Supabase

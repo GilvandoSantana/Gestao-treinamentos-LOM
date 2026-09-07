@@ -46,6 +46,7 @@ import {
   restoreFileVersion,
   restoreFolder,
   revokeShare,
+  getShareById,
   searchFiles,
   setStorageLimit,
   softDeleteFile,
@@ -210,6 +211,10 @@ export const cloudRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFolder(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
         }
         await restoreFolder(input.id, ctx.siteContract);
         void logActivity({
@@ -447,6 +452,8 @@ export const cloudRouter = router({
       .query(async ({ input, ctx }) => {
         const file = await getFileById(input.fileId);
         if (!file || file.contractSlug !== ctx.siteContract) return [];
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract!, input.fileId, accessCtx))) return [];
         return listFileVersions(input.fileId);
       }),
 
@@ -669,6 +676,13 @@ export const cloudRouter = router({
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
+        // Só pode restaurar o que a pessoa teria acesso — sem isso, dava
+        // pra restaurar um arquivo de área restrita mesmo sem acesso à
+        // pasta original dele (achado de auditoria de segurança, 07/09).
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
+        }
         await restoreFile(input.id, ctx.siteContract);
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -680,10 +694,23 @@ export const cloudRouter = router({
         return { success: true } as const;
       }),
 
-    // Lixeira — pastas e arquivos marcados como excluídos.
+    // Lixeira — pastas e arquivos marcados como excluídos. Filtra pelos
+    // que a pessoa realmente pode acessar — sem isso, um item de área
+    // restrita aparecia na lixeira de qualquer um do contrato, mesmo
+    // sem acesso à pasta original dele (achado de auditoria de
+    // segurança, 07/09).
     listTrash: requirePermission('viewCloud').query(async ({ ctx }) => {
       if (!ctx.siteContract) return { folders: [], files: [] };
-      return listTrash(ctx.siteContract);
+      const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+      const { folders, files } = await listTrash(ctx.siteContract);
+      const [folderChecks, fileChecks] = await Promise.all([
+        Promise.all(folders.map((f) => canAccessFolder(ctx.siteContract!, f.id, accessCtx))),
+        Promise.all(files.map((f) => canAccessFile(ctx.siteContract!, f.id, accessCtx))),
+      ]);
+      return {
+        folders: folders.filter((_, i) => folderChecks[i]),
+        files: files.filter((_, i) => fileChecks[i]),
+      };
     }),
 
     // Exclusão definitiva — some do banco e do R2, nunca mais volta.
@@ -692,6 +719,10 @@ export const cloudRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
         }
         const result = await permanentlyDeleteFile(input.id, ctx.siteContract);
         if (result) {
@@ -723,6 +754,10 @@ export const cloudRouter = router({
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
         }
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFolder(ctx.siteContract, input.id, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
+        }
         const removed = await deleteFolderRecursive(input.id, ctx.siteContract, ctx.siteAdminUsername, true);
         let freedBytes = 0;
         for (const key of removed.r2Keys) {
@@ -750,7 +785,13 @@ export const cloudRouter = router({
     // junto tudo que tem dentro, incluindo subpastas/arquivos que
     // TAMBÉM aparecem na lixeira como itens próprios) — excluir de novo
     // algo que já não existe simplesmente não faz nada, não dá erro.
-    emptyTrash: requirePermission('manageCloud').mutation(async ({ ctx }) => {
+    //
+    // SÓ o administrador principal (masterAdminProcedure, não
+    // manageCloud) — é uma ação destrutiva demais pra deixar qualquer
+    // conta com manageCloud apagar de vez a lixeira do contrato inteiro,
+    // incluindo item de área restrita que ela nem devia enxergar (achado
+    // de auditoria de segurança, 07/09).
+    emptyTrash: masterAdminProcedure.mutation(async ({ ctx }) => {
       if (!ctx.siteContract) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
       }
@@ -806,18 +847,29 @@ export const cloudRouter = router({
         return { isFavorite } as const;
       }),
 
-    // Recentes — últimos enviados/modificados.
+    // Recentes — últimos enviados/modificados. Filtra pelos que a pessoa
+    // realmente pode acessar — sem isso, nome/metadado de arquivo dentro
+    // de pasta restrita aparecia pra quem não deveria ver (achado de
+    // auditoria de segurança, 07/09).
     listRecent: requirePermission('viewCloud').query(async ({ ctx }) => {
       if (!ctx.siteContract) return [];
-      return listRecentFiles(ctx.siteContract);
+      const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+      const files = await listRecentFiles(ctx.siteContract);
+      const checks = await Promise.all(files.map((f) => canAccessFile(ctx.siteContract!, f.id, accessCtx)));
+      return files.filter((_, i) => checks[i]);
     }),
 
-    // Busca por nome, dentro do contrato do usuário.
+    // Busca por nome, dentro do contrato do usuário. Mesma filtragem de
+    // acesso do listRecent acima — a busca não pode ser uma forma de
+    // "espiar" nome de arquivo de pasta restrita.
     search: requirePermission('viewCloud')
       .input(z.object({ query: z.string() }))
       .query(async ({ input, ctx }) => {
         if (!ctx.siteContract) return [];
-        return searchFiles(ctx.siteContract, input.query);
+        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        const files = await searchFiles(ctx.siteContract, input.query);
+        const checks = await Promise.all(files.map((f) => canAccessFile(ctx.siteContract!, f.id, accessCtx)));
+        return files.filter((_, i) => checks[i]);
       }),
 
     // Compartilhamento pessoa a pessoa.
@@ -853,6 +905,14 @@ export const cloudRouter = router({
         if (!file || file.contractSlug !== ctx.siteContract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
         }
+        // Só quem já tem acesso ao arquivo pode compartilhá-lo — sem isso,
+        // alguém com manageCloud e o UUID de um arquivo restrito conseguia
+        // compartilhar algo que nem ele mesmo deveria conseguir ver
+        // (achado de auditoria de segurança, 07/09).
+        const accessCtx = { username: ctx.siteAdminUsername, isMasterAdmin: ctx.siteRole === 'admin' };
+        if (!(await canAccessFile(ctx.siteContract, input.fileId, accessCtx))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
+        }
         if (input.sharedWith === ctx.siteAdminUsername) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível compartilhar consigo mesmo." });
         }
@@ -882,6 +942,19 @@ export const cloudRouter = router({
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        // Só quem compartilhou (ou o administrador principal) pode revogar
+        // — sem isso, qualquer conta com manageCloud podia desfazer um
+        // compartilhamento que nem foi ela quem criou (achado de auditoria
+        // de segurança, 07/09).
+        const share = await getShareById(input.id);
+        if (!share || share.contractSlug !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Compartilhamento não encontrado." });
+        }
+        const isOwner = share.sharedBy === ctx.siteAdminUsername;
+        const isMasterAdmin = ctx.siteRole === 'admin';
+        if (!isOwner && !isMasterAdmin) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Só quem compartilhou pode revogar." });
         }
         await revokeShare(input.id, ctx.siteContract);
         void logActivity({

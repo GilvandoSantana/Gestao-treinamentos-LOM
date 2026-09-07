@@ -1015,6 +1015,13 @@ export async function getSharesForFile(
   return enrichSharesWithGroupNames(rows);
 }
 
+export async function getShareById(id: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(cloudShares).where(eq(cloudShares.id, id));
+  return rows[0];
+}
+
 export async function revokeShare(id: string, contractSlug: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

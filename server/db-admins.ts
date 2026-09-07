@@ -2,7 +2,7 @@
  * Database helpers for named admin/user accounts
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { admins, type Admin } from "../drizzle/schema";
 import { getDb } from "./db";
 import { DEFAULT_CONTRACT_SLUG, DEFAULT_ORGANIZATION_ID } from "@shared/contracts";
@@ -42,11 +42,21 @@ export function toPublic(row: Admin): PublicAdmin {
   };
 }
 
-export async function listAdmins(): Promise<PublicAdmin[]> {
+/**
+ * organizationId null = vê todos (só o acesso mestre de recuperação, que
+ * não pertence a nenhuma organização específica, chega com null aqui —
+ * mesmo espírito de siteContract:null). Uma conta nomeada com papel
+ * "admin" só vê as contas da PRÓPRIA organização (achado de auditoria de
+ * segurança, 07/09: antes retornava tudo, de qualquer organização).
+ */
+export async function listAdmins(organizationId: string | null): Promise<PublicAdmin[]> {
   const db = await getDb();
   if (!db) return [];
 
-  const rows = await db.select().from(admins);
+  const rows =
+    organizationId === null
+      ? await db.select().from(admins)
+      : await db.select().from(admins).where(eq(admins.organizationId, organizationId));
   return rows
     .map(toPublic)
     .sort((a, b) => {
@@ -56,10 +66,23 @@ export async function listAdmins(): Promise<PublicAdmin[]> {
     });
 }
 
-export async function countAdminsByRole(role: SiteRole): Promise<number> {
+/**
+ * organizationId null = conta globalmente (só faz sentido pro acesso
+ * mestre de recuperação, que não pertence a organização nenhuma).
+ * Achado de auditoria de segurança (07/09): antes sempre contava
+ * globalmente — isso permitia remover o ÚLTIMO administrador de UMA
+ * organização específica, desde que existisse admin em OUTRA
+ * organização (o total geral parecia "seguro", mas aquela organização
+ * ficava sem nenhum administrador).
+ */
+export async function countAdminsByRole(role: SiteRole, organizationId: string | null): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const rows = await db.select().from(admins).where(eq(admins.role, role));
+  const condition =
+    organizationId === null
+      ? eq(admins.role, role)
+      : and(eq(admins.role, role), eq(admins.organizationId, organizationId));
+  const rows = await db.select().from(admins).where(condition);
   return rows.length;
 }
 

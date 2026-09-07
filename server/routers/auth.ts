@@ -514,8 +514,8 @@ export const authRouter = router({
 
     // Gerenciamento de contas — SOMENTE o administrador principal.
     admins: router({
-      list: masterAdminProcedure.query(async () => {
-        return listAdmins();
+      list: masterAdminProcedure.query(async ({ ctx }) => {
+        return listAdmins(ctx.siteOrganizationId);
       }),
 
       create: masterAdminProcedure
@@ -634,7 +634,7 @@ export const authRouter = router({
           }
 
           if (target.role === "admin") {
-            const adminCount = await countAdminsByRole("admin");
+            const adminCount = await countAdminsByRole("admin", target.organizationId);
             if (adminCount <= 1) {
               throw new TRPCError({
                 code: "BAD_REQUEST",

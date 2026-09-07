@@ -97,6 +97,26 @@ export async function getEmployeeById(id: string) {
   }
 }
 
+/**
+ * Igual a getEmployeeById, mas SÓ devolve o colaborador se ele pertencer
+ * ao contrato informado — usada em TODA operação que recebe um id vindo
+ * do cliente (editar, demitir, excluir, resetar acesso do portal, etc),
+ * pra impedir que alguém manipule um colaborador de outro contrato só
+ * por saber (ou adivinhar) o UUID dele. Achado real numa auditoria de
+ * segurança (ChatGPT + revisão própria, 07/09): essas rotas confiavam no
+ * id sozinho, sem confirmar de quem era o registro.
+ *
+ * `contract: null` (administrador principal vendo "Todos os contratos")
+ * passa direto — ele realmente enxerga tudo por design, mesma regra já
+ * usada no resto do sistema (ex: siteContract null = vê todos).
+ */
+export async function getEmployeeScoped(id: string, contract: string | null) {
+  const employee = await getEmployeeById(id);
+  if (!employee) return undefined;
+  if (contract !== null && employee.contract !== contract) return undefined;
+  return employee;
+}
+
 export async function deleteEmployee(id: string): Promise<void> {
   const db = await getDb();
   if (!db) {
