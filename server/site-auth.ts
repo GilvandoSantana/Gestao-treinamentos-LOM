@@ -380,3 +380,91 @@ export function registerSignupAttempt(key: string): void {
     record.count += 1;
   }
 }
+
+// Portal de autoatendimento do colaborador — identificação por CPF + PIN
+// (bem mais fraca que usuário/senha de administrador, já que o CPF não é
+// segredo e o PIN é curto). Por isso um cookie PRÓPRIO, separado do
+// site_session do administrador (nunca colidem nem interferem um no
+// outro), sessão mais curta, e um limite de tentativas bem mais
+// apertado — tanto por IP quanto por CPF específico (alguém tentando
+// advinhar o PIN de UMA pessoa, de vários IPs diferentes, também é
+// barrado).
+
+export const EMPLOYEE_SESSION_COOKIE = "employee_session";
+const EMPLOYEE_SESSION_TTL_SECONDS = 60 * 60 * 2; // 2 horas — sessão mais curta que a de admin, de propósito
+
+export async function createEmployeeSessionToken(employeeId: string, contractSlug: string): Promise<string> {
+  return new SignJWT({ scope: "employee-portal", employeeId, contractSlug })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${EMPLOYEE_SESSION_TTL_SECONDS}s`)
+    .sign(getSecretKey());
+}
+
+export async function verifyEmployeeSessionToken(
+  token: string
+): Promise<{ employeeId: string; contractSlug: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.scope !== "employee-portal" || typeof payload.employeeId !== "string") return null;
+    return { employeeId: payload.employeeId, contractSlug: String(payload.contractSlug ?? "") };
+  } catch {
+    return null;
+  }
+}
+
+const PORTAL_WINDOW_MS = 30 * 60 * 1000; // 30 minutos
+const PORTAL_MAX_ATTEMPTS = 5;
+const portalAttemptsByIp = new Map<string, AttemptRecord>();
+const portalAttemptsByCpf = new Map<string, AttemptRecord>();
+
+function checkPortalLimit(map: Map<string, AttemptRecord>, key: string): number | null {
+  const now = Date.now();
+  const record = map.get(key);
+  if (!record) return null;
+  if (now - record.firstAttemptAt > PORTAL_WINDOW_MS) {
+    map.delete(key);
+    return null;
+  }
+  if (record.count >= PORTAL_MAX_ATTEMPTS) {
+    return PORTAL_WINDOW_MS - (now - record.firstAttemptAt);
+  }
+  return null;
+}
+
+function registerPortalAttempt(map: Map<string, AttemptRecord>, key: string): void {
+  const now = Date.now();
+  const record = map.get(key);
+  if (!record || now - record.firstAttemptAt > PORTAL_WINDOW_MS) {
+    map.set(key, { count: 1, firstAttemptAt: now });
+  } else {
+    record.count += 1;
+  }
+}
+
+/** Confere os dois limites (por IP e pelo CPF específico tentado) — o
+ * mais restritivo dos dois decide. null = pode tentar. */
+export function checkEmployeePortalRateLimit(ip: string, cpf: string): number | null {
+  const byIp = checkPortalLimit(portalAttemptsByIp, ip);
+  const byCpf = checkPortalLimit(portalAttemptsByCpf, cpf);
+  if (byIp === null && byCpf === null) return null;
+  return Math.max(byIp ?? 0, byCpf ?? 0);
+}
+
+export function registerEmployeePortalAttempt(ip: string, cpf: string): void {
+  registerPortalAttempt(portalAttemptsByIp, ip);
+  registerPortalAttempt(portalAttemptsByCpf, cpf);
+}
+
+export function clearEmployeePortalAttempts(ip: string, cpf: string): void {
+  portalAttemptsByIp.delete(ip);
+  portalAttemptsByCpf.delete(cpf);
+}
+
+export async function hashEmployeePin(pin: string): Promise<string> {
+  return bcrypt.hash(pin, 10);
+}
+
+export async function verifyEmployeePin(pin: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(pin, hash);
+}

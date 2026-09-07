@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import SignupPage from "@/pages/SignupPage";
 import VerifySignupPage from "@/pages/VerifySignupPage";
 import PaymentSuccessPage from "@/pages/PaymentSuccessPage";
+import EmployeePortalPage from "@/pages/EmployeePortalPage";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -17,6 +18,7 @@ function Router() {
       <Route path={"/cadastro"} component={SignupPage} />
       <Route path={"/verificar-cadastro"} component={VerifySignupPage} />
       <Route path={"/cadastro-pago"} component={PaymentSuccessPage} />
+      <Route path={"/colaborador"} component={EmployeePortalPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

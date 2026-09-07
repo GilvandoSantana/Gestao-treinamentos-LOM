@@ -19,10 +19,21 @@ import { getAllPhotoUrls, uploadPhotoToSupabase } from "../supabase-storage";
 import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 import { getContractBySlug } from "../db-contracts";
 import { parseCustomFieldValues } from "../db-contract-fields";
+import { clearEmployeePortalPin } from "../db-employee-portal";
 import { addMonthsToDate, getTrainingTypeByName } from "../db-training-types";
 import { logActivity } from "../db-activity";
 
 export const employeesRouter = router({
+    // Reseta o PIN do portal de autoatendimento — pra quando o colaborador
+    // esquece o PIN e precisa fazer o "primeiro acesso" de novo (com CPF +
+    // data de nascimento) pra criar um PIN novo.
+    resetPortalAccess: requirePermission('editEmployees')
+      .input(z.object({ employeeId: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        await clearEmployeePortalPin(input.employeeId);
+        return { success: true } as const;
+      }),
+
     // Nomes de treinamento já cadastrados, para sugerir ao digitar um novo e
     // evitar variações do mesmo treinamento espalhadas pelo sistema.
     trainingNames: requirePermission('viewEmployees').query(async ({ ctx }) => {

@@ -66,6 +66,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const skipDirtyCheck = useRef(true);
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
+  const resetPortalAccessMutation = trpc.employees.resetPortalAccess.useMutation();
   const customFieldsQuery = trpc.contracts.fields.list.useQuery(undefined, { enabled: isOpen });
   const customRolesQuery = trpc.roles.list.useQuery(undefined, { enabled: isOpen });
   const trainingTypesQuery = trpc.trainingTypes.list.useQuery(undefined, { enabled: isOpen });
@@ -687,6 +688,23 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
                 placeholder="000.000.000-00"
               />
+              {employee && cpf && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('Resetar o acesso do colaborador ao portal de autoatendimento? Ele vai precisar criar um PIN novo no próximo acesso.')) return;
+                    try {
+                      await resetPortalAccessMutation.mutateAsync({ employeeId: employee.id });
+                      toast.success('Acesso ao portal resetado.');
+                    } catch {
+                      toast.error('Erro ao resetar o acesso.');
+                    }
+                  }}
+                  className="mt-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Resetar acesso ao portal de autoatendimento
+                </button>
+              )}
             </div>
           </div>
 

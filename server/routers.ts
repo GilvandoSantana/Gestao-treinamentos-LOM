@@ -16,6 +16,7 @@ import { epiConfigRouter } from "./routers/epi-config";
 import { osConfigRouter } from "./routers/os-config";
 import { desktopInstallerRouter } from "./routers/desktop-installer";
 import { signupRouter } from "./routers/signup";
+import { employeePortalRouter } from "./routers/employee-portal";
 
 export const appRouter = router({
   system: systemRouter,
@@ -63,6 +64,9 @@ export const appRouter = router({
 
   // Cadastro público de organização nova (com confirmação por e-mail).
   signup: signupRouter,
+
+  // Portal de autoatendimento do colaborador (CPF + PIN, só leitura).
+  employeePortal: employeePortalRouter,
 });
 
 export type AppRouter = typeof appRouter;

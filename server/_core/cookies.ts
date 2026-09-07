@@ -46,3 +46,19 @@ export function getSessionCookieOptions(
     secure: isSecureRequest(req),
   };
 }
+
+export function getEmployeeSessionCookieOptions(
+  req: Request
+): Pick<CookieOptions, "httpOnly" | "path" | "sameSite" | "secure" | "maxAge"> {
+  // Sessão de 2 horas — mais curta que a do administrador, de propósito
+  // (ver comentário completo em server/site-auth.ts, junto do resto do
+  // portal de autoatendimento do colaborador).
+  const EMPLOYEE_SESSION_TTL_SECONDS = 60 * 60 * 2;
+  return {
+    httpOnly: true,
+    path: "/",
+    sameSite: "none",
+    secure: isSecureRequest(req),
+    maxAge: EMPLOYEE_SESSION_TTL_SECONDS * 1000,
+  };
+}

@@ -59,6 +59,10 @@ export const employees = mysqlTable("employees", {
   // os treinamentos ficam guardados (diferente de excluir).
   dismissed: boolean("dismissed").default(false).notNull(),
   dismissedAt: timestamp("dismissedAt"),
+  // Hash do PIN de acesso ao portal de autoatendimento (nunca o PIN em
+  // texto puro) — nulo até o colaborador fazer o primeiro acesso e
+  // definir um PIN próprio (ver server/routers/employee-portal.ts).
+  portalPinHash: varchar("portalPinHash", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
