@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
 import { Link } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import { setSessionMarker } from '@/lib/session-marker';
@@ -18,9 +18,16 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [justAuthorized, setJustAuthorized] = useState(false);
+  // Preenchido só quando o servidor pede o segundo passo (2FA ativada na
+  // conta) — a partir daí a tela troca pra pedir o código, em vez do
+  // usuário/senha. Nunca vira cookie nem fica salvo em lugar nenhum além
+  // da memória desta tela.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [twoFACode, setTwoFACode] = useState('');
 
   const loginMutation = trpc.auth.siteLogin.useMutation();
-  const isLoading = loginMutation.isPending;
+  const verify2FAMutation = trpc.auth.verify2FALogin.useMutation();
+  const isLoading = loginMutation.isPending || verify2FAMutation.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +54,14 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
         username: trimmedUsername,
         password,
       });
+      // Conta com 2FA ativada: o servidor ainda não criou a sessão de
+      // verdade — só devolveu um token curto provando que a senha bateu.
+      // Troca a tela pra pedir o código do app autenticador.
+      if (result?.requires2FA && result.pendingToken) {
+        setPendingToken(result.pendingToken);
+        setPassword('');
+        return;
+      }
       // Guarda o marcador da sessão do navegador antes de seguir; sem ele o
       // servidor recusa o cookie recém-criado.
       if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
@@ -58,6 +73,30 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : 'Não foi possível entrar.');
       setPassword('');
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!pendingToken) return;
+    if (!twoFACode.trim()) {
+      setError('Informe o código.');
+      return;
+    }
+
+    try {
+      const result = await verify2FAMutation.mutateAsync({
+        pendingToken,
+        code: twoFACode.trim(),
+      });
+      if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
+      setTwoFACode('');
+      setJustAuthorized(true);
+      setTimeout(onSuccess, 620);
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'Código incorreto.');
+      setTwoFACode('');
     }
   };
 
@@ -92,13 +131,79 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                 GesCon
               </h1>
               <p className="font-technical text-[11px] uppercase tracking-wider text-muted-foreground/70 mt-1">
-                Gestão de Contratos
+                {pendingToken ? 'Verificação em duas etapas' : 'Gestão de Contratos'}
               </p>
             </div>
 
             {/* Friso de latão — acabamento da credencial */}
             <div className="h-px bg-gradient-to-r from-transparent via-brass to-transparent mb-6" />
 
+            {pendingToken ? (
+              <form onSubmit={handleVerify2FA} className="space-y-4">
+                <div className="flex items-start gap-2.5 bg-muted/60 rounded-xl px-3.5 py-3 text-xs text-muted-foreground">
+                  <KeyRound size={15} className="shrink-0 mt-0.5 text-orange" />
+                  <span>
+                    Abra o aplicativo autenticador no seu celular e digite o código de 6 dígitos. Perdeu o
+                    acesso? Use um dos seus códigos de backup.
+                  </span>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="two-fa-code"
+                    className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5"
+                  >
+                    Código
+                  </label>
+                  <input
+                    id="two-fa-code"
+                    type="text"
+                    inputMode="numeric"
+                    value={twoFACode}
+                    onChange={(e) => setTwoFACode(e.target.value)}
+                    placeholder="000000"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    disabled={isLoading}
+                    className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground text-center text-lg tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoading || justAuthorized}
+                  className="w-full bg-orange text-white font-semibold py-3 rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 size={17} className="animate-spin" />
+                      Verificando...
+                    </>
+                  ) : (
+                    'Confirmar'
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingToken(null);
+                    setTwoFACode('');
+                    setError(null);
+                  }}
+                  disabled={isLoading}
+                  className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition"
+                >
+                  Voltar
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label
@@ -167,6 +272,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                 </Link>
               </p>
             </form>
+            )}
           </div>
 
           {/* Canhoto destacável do crachá */}

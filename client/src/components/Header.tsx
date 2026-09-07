@@ -45,6 +45,7 @@ interface HeaderProps {
   onExport: () => void;
   onExportPDF: () => void;
   onGenerateComplianceReport?: () => void;
+  onManageTwoFactor?: () => void;
   isSyncing: boolean;
   employeeCount: number;
   viewMode?: 'grid' | 'table';
@@ -85,6 +86,7 @@ export default function Header({
   onExport,
   onExportPDF,
   onGenerateComplianceReport,
+  onManageTwoFactor,
   isSyncing,
   employeeCount,
   viewMode = 'grid',
@@ -496,6 +498,12 @@ export default function Header({
                           <Moon size={16} className="text-muted-foreground" />
                         )}
                         {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+                      </button>
+                    )}
+                    {onManageTwoFactor && (
+                      <button onClick={runAndClose(onManageTwoFactor)} className={menuItemClass} role="menuitem">
+                        <ShieldCheck size={16} className="text-muted-foreground" />
+                        Autenticação em duas etapas
                       </button>
                     )}
                   </div>

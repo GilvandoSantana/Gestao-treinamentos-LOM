@@ -92,6 +92,33 @@ export async function createSiteSessionToken(
     .sign(getSecretKey());
 }
 
+// Token de curtíssima duração emitido depois que usuário+senha já foram
+// conferidos com sucesso, mas ANTES de a sessão de verdade existir — só
+// prova "esta pessoa já passou pela senha corretamente", pra o segundo
+// passo (código do app autenticador) não poder ser tentado sem antes ter
+// acertado a senha. Nunca vira cookie — fica só na resposta, e o cliente
+// guarda em memória até enviar de volta com o código de 2FA.
+const PENDING_2FA_TTL_SECONDS = 5 * 60; // 5 minutos — tempo de sobra pra digitar o código, curto o bastante pra não valer a pena tentar adivinhar
+
+export async function createPending2FAToken(adminId: string): Promise<string> {
+  return new SignJWT({ scope: "pending-2fa", adminId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${PENDING_2FA_TTL_SECONDS}s`)
+    .sign(getSecretKey());
+}
+
+/** Devolve o adminId se o token for válido e do escopo certo, ou null. */
+export async function verifyPending2FAToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.scope !== "pending-2fa" || typeof payload.adminId !== "string") return null;
+    return payload.adminId;
+  } catch {
+    return null;
+  }
+}
+
 export type SiteSession = {
   isSiteAdmin: boolean;
   username: string | null;

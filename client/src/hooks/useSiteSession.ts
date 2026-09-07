@@ -49,6 +49,9 @@ export function useSiteSession() {
     // Um administrador está "vendo como" este usuário — a sessão real (a
     // salva para voltar) ainda existe, guardada em cookie no servidor.
     isImpersonating: query.data?.isImpersonating ?? false,
+    // A conta logada tem 2FA ativa? Usado pra decidir o que mostrar na
+    // tela de segurança (botão "ativar" ou "desativar").
+    hasTwoFactorEnabled: query.data?.hasTwoFactorEnabled ?? false,
     can,
     refetch: query.refetch,
   };

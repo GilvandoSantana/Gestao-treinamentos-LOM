@@ -22,6 +22,9 @@ export type PublicAdmin = {
   permissions: Permissions;
   createdAt: Date;
   organizationId: string | null;
+  /** Só diz SE a 2FA está ativa — nunca o segredo em si nem os códigos de
+   * backup, que ficam só no servidor. */
+  hasTwoFactorEnabled: boolean;
 };
 
 export function toPublic(row: Admin): PublicAdmin {
@@ -35,6 +38,7 @@ export function toPublic(row: Admin): PublicAdmin {
     permissions: normalizePermissions(row.permissions, role),
     createdAt: row.createdAt,
     organizationId: row.organizationId ?? null,
+    hasTwoFactorEnabled: !!row.twoFactorSecret,
   };
 }
 
@@ -125,6 +129,41 @@ export async function getAdminById(id: string): Promise<PublicAdmin | undefined>
   return value;
 }
 
+/** Busca a linha crua (com passwordHash, twoFactorSecret etc) — nunca
+ * cacheada de propósito, dado sensível demais pra arriscar servir uma
+ * versão desatualizada. Usada só pelo fluxo de 2FA. */
+export async function getAdminRowById(id: string): Promise<Admin | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(admins).where(eq(admins.id, id));
+  return rows[0];
+}
+
+/** Ativa 2FA de verdade — só chamado depois que o código de confirmação
+ * já bateu (ver server/two-factor-auth.ts e a rota confirm2FASetup). */
+export async function setAdminTwoFactor(id: string, secret: string, backupCodesJson: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(admins).set({ twoFactorSecret: secret, twoFactorBackupCodes: backupCodesJson }).where(eq(admins.id, id));
+  invalidateAdminCache(id);
+}
+
+/** Atualiza só a lista de códigos de backup restantes (depois de um ser
+ * consumido) — sem mexer no segredo TOTP. */
+export async function updateAdminBackupCodes(id: string, backupCodesJson: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(admins).set({ twoFactorBackupCodes: backupCodesJson }).where(eq(admins.id, id));
+}
+
+/** Desativa 2FA — apaga segredo e códigos de backup. */
+export async function clearAdminTwoFactor(id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(admins).set({ twoFactorSecret: null, twoFactorBackupCodes: null }).where(eq(admins.id, id));
+  invalidateAdminCache(id);
+}
+
 export async function createAdmin(input: {
   id: string;
   username: string;
@@ -167,6 +206,7 @@ export async function createAdmin(input: {
     permissions: normalizePermissions(permissions, input.role),
     createdAt: new Date(),
     organizationId,
+    hasTwoFactorEnabled: false,
   };
 }
 

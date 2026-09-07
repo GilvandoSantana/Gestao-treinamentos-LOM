@@ -170,6 +170,15 @@ export const admins = mysqlTable("admins", {
   // JSON com as permissões concedidas a usuários comuns
   permissions: text("permissions"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  // Autenticação em duas etapas (TOTP, compatível com Google
+  // Authenticator/Authy). Nulo = 2FA desativada (padrão). O segredo NUNCA
+  // é devolvido pro cliente depois de confirmado uma vez — só usado no
+  // servidor pra verificar o código de 6 dígitos a cada login.
+  twoFactorSecret: varchar("twoFactorSecret", { length: 64 }),
+  // JSON com hash (não texto puro) de cada código reserva — usados se a
+  // pessoa perder acesso ao aplicativo autenticador. Cada código só serve
+  // uma vez; usado é removido da lista.
+  twoFactorBackupCodes: text("twoFactorBackupCodes"),
 }, (table) => ({
   // Substitui o antigo UNIQUE(username) global — ver comentário no campo
   // username acima.

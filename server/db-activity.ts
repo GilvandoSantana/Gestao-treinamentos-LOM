@@ -57,6 +57,8 @@ export type ActivityAction =
   | "cloud.fileRestore"
   | "cloud.filePermanentDelete"
   | "cloud.emptyTrash"
+  | "admin.enable2FA"
+  | "admin.disable2FA"
   | "cloud.share"
   | "cloud.unshare"
   | "cloud.migrateLegacy"

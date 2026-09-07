@@ -22,6 +22,9 @@ export type TrpcContext = {
    * usado por nenhuma consulta pra isolar dado entre organizações — só
    * disponível no contexto, pronto pra quando isso for implementado. */
   siteOrganizationId: string | null;
+  /** A conta logada tem 2FA ativa? false pro login mestre (que não tem
+   * linha própria na tabela admins). */
+  siteHasTwoFactorEnabled: boolean;
   /** Um administrador está "vendo como" outro usuário nesta sessão. */
   isImpersonating: boolean;
 };
@@ -47,6 +50,7 @@ export async function createContext(
   let siteRole: SiteRole | null = siteSession.role;
   let siteContract: string | null = null;
   let siteOrganizationId: string | null = null;
+  let siteHasTwoFactorEnabled = false;
 
   if (siteSession.isSiteAdmin) {
     if (siteSession.adminId) {
@@ -56,6 +60,7 @@ export async function createContext(
         sitePermissions = account.permissions;
         siteContract = account.contract;
         siteOrganizationId = account.organizationId;
+        siteHasTwoFactorEnabled = account.hasTwoFactorEnabled;
       } else {
         // Conta removida enquanto a sessão ainda estava válida.
         siteRole = null;
@@ -94,6 +99,7 @@ export async function createContext(
     // escolheu no cabeçalho, ou null (todos).
     siteContract: stillValid ? siteContract : null,
     siteOrganizationId: stillValid ? siteOrganizationId : null,
+    siteHasTwoFactorEnabled: stillValid ? siteHasTwoFactorEnabled : false,
     isImpersonating: !!getRawCookie(opts.req, IMPERSONATION_BACKUP_COOKIE),
   };
 }

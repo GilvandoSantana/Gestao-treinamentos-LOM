@@ -11,6 +11,7 @@ import { trpc } from '@/lib/trpc';
 
 import Header from '@/components/Header';
 const AdminManagementModal = lazy(() => import('@/components/AdminManagementModal'));
+const TwoFactorSettingsModal = lazy(() => import('@/components/TwoFactorSettingsModal'));
 import DismissedModal from '@/components/DismissedModal';
 import DismissConfirmModal from '@/components/DismissConfirmModal';
 import ActivityLogModal from '@/components/ActivityLogModal';
@@ -74,6 +75,7 @@ export default function Home() {
   const [selectedRole, setSelectedRole] = useState('');
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [showAdminManagement, setShowAdminManagement] = useState(false);
+  const [showTwoFactorSettings, setShowTwoFactorSettings] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showContracts, setShowContracts] = useState(false);
@@ -549,6 +551,7 @@ export default function Home() {
           onShowDocumentation={session.isMasterAdmin ? () => setShowDocumentation(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
           dismissedCount={dismissedEmployees.length}
+          onManageTwoFactor={() => setShowTwoFactorSettings(true)}
         />
 
         <ModuleQuickAccess
@@ -563,6 +566,16 @@ export default function Home() {
               isOpen={showAdminManagement}
               onClose={() => setShowAdminManagement(false)}
               currentUsername={session.username}
+            />
+          </Suspense>
+        )}
+        {showTwoFactorSettings && (
+          <Suspense fallback={null}>
+            <TwoFactorSettingsModal
+              isOpen={showTwoFactorSettings}
+              onClose={() => setShowTwoFactorSettings(false)}
+              hasTwoFactorEnabled={session.hasTwoFactorEnabled}
+              onStatusChange={() => session.refetch()}
             />
           </Suspense>
         )}

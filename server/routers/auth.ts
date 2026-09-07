@@ -1,9 +1,10 @@
 import { COOKIE_NAME } from "@shared/const";
 import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { masterAdminProcedure, publicProcedure, router } from "../_core/trpc";
+import { masterAdminProcedure, publicProcedure, siteAdminProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import QRCode from "qrcode";
 import {
   IMPERSONATION_BACKUP_COOKIE,
   SITE_SESSION_COOKIE,
@@ -12,6 +13,8 @@ import {
   clearLoginAttempts,
   createDesktopSyncToken,
   createSiteSessionToken,
+  createPending2FAToken,
+  verifyPending2FAToken,
   generateSessionMarker,
   getClientKey,
   getRawCookie,
@@ -26,10 +29,22 @@ import {
   deleteAdmin,
   getAdminById,
   getAdminByUsername,
+  getAdminRowById,
+  setAdminTwoFactor,
+  updateAdminBackupCodes,
+  clearAdminTwoFactor,
   listAdmins,
   updateAdminPermissions,
   updateAdminSetor,
 } from "../db-admins";
+import {
+  generateTwoFactorSecret,
+  buildTwoFactorURI,
+  verifyTwoFactorCode,
+  generateBackupCodes,
+  hashBackupCodes,
+  verifyAndConsumeBackupCode,
+} from "../two-factor-auth";
 import {
   DEFAULT_USER_PERMISSIONS,
   PERMISSION_KEYS,
@@ -82,6 +97,11 @@ export const authRouter = router({
         let sessionUsername = "master";
         let sessionRole: "admin" | "user" = "admin";
         let sessionAdminId: string | null = null;
+        // Segredo de 2FA da conta, se tiver uma ativa — só existe pra
+        // contas nomeadas (o acesso mestre de recuperação nunca passa
+        // por aqui, não tem uma linha própria na tabela admins pra
+        // guardar um segredo).
+        let twoFactorSecret: string | null = null;
 
         // Acesso mestre de recuperação. Aceita o usuário definido em
         // MASTER_USERNAME (se configurado) ou usuário em branco — o segundo
@@ -99,6 +119,7 @@ export const authRouter = router({
             sessionUsername = admin.username;
             sessionRole = admin.role === "user" ? "user" : "admin";
             sessionAdminId = admin.id;
+            twoFactorSecret = admin.twoFactorSecret;
           }
         } else {
           try {
@@ -126,6 +147,16 @@ export const authRouter = router({
 
         clearLoginAttempts(clientKey);
 
+        // Segundo passo (código do app autenticador), só pra quem ativou
+        // 2FA na própria conta — a sessão de verdade NÃO é criada ainda
+        // aqui. O pendingToken prova só que a senha já foi conferida
+        // com sucesso; sem ele, ninguém consegue tentar códigos de 2FA
+        // sem antes ter acertado a senha.
+        if (twoFactorSecret) {
+          const pendingToken = await createPending2FAToken(sessionAdminId!);
+          return { success: true, requires2FA: true, pendingToken } as const;
+        }
+
         void logActivity({
           username: sessionUsername,
           role: sessionRole,
@@ -149,6 +180,152 @@ export const authRouter = router({
         ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
 
         return { success: true, sessionMarker } as const;
+      }),
+
+    // Segundo passo do login, só chamado quando siteLogin devolveu
+    // requires2FA:true. O pendingToken (curta duração, nunca vira cookie)
+    // prova que a senha já foi conferida — sem ele não dá pra tentar
+    // código nenhum.
+    verify2FALogin: publicProcedure
+      .input(z.object({ pendingToken: z.string().min(1), code: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const clientKey = getClientKey(ctx.req);
+        const remainingMs = checkLoginRateLimit(clientKey);
+        if (remainingMs !== null) {
+          const minutes = Math.ceil(remainingMs / 60000);
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Muitas tentativas incorretas. Tente novamente em ${minutes} minuto${minutes !== 1 ? "s" : ""}.`,
+          });
+        }
+
+        const adminId = await verifyPending2FAToken(input.pendingToken);
+        if (!adminId) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Sessão de login expirada. Faça login novamente.",
+          });
+        }
+
+        const admin = await getAdminRowById(adminId);
+        if (!admin || !admin.twoFactorSecret) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Conta inválida." });
+        }
+
+        let valid = await verifyTwoFactorCode(admin.twoFactorSecret, input.code);
+        if (!valid) {
+          // Não bateu como código do app — tenta como código de backup
+          // (formato bem diferente, então não há ambiguidade real entre
+          // os dois).
+          const backupResult = await verifyAndConsumeBackupCode(admin.twoFactorBackupCodes, input.code);
+          if (backupResult.valid) {
+            valid = true;
+            await updateAdminBackupCodes(admin.id, backupResult.remainingCodesJson);
+          }
+        }
+
+        if (!valid) {
+          registerFailedLoginAttempt(clientKey);
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Código incorreto." });
+        }
+
+        clearLoginAttempts(clientKey);
+
+        const sessionRole: "admin" | "user" = admin.role === "user" ? "user" : "admin";
+        void logActivity({ username: admin.username, role: sessionRole, action: "login" });
+
+        const sessionMarker = generateSessionMarker();
+        const token = await createSiteSessionToken(admin.username, sessionRole, admin.id, sessionMarker);
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
+
+        return { success: true, sessionMarker } as const;
+      }),
+
+    // Configuração de 2FA — quem já está logado gerencia a própria conta
+    // (não é uma permissão de recurso, é um ajuste pessoal de segurança,
+    // por isso siteAdminProcedure — qualquer conta logada, não só quem
+    // tem permissão de X ou Y). O acesso mestre de recuperação nunca tem
+    // linha na tabela admins, então não pode ativar 2FA — faz sentido,
+    // já que ele é o próprio mecanismo de emergência caso alguém perca
+    // acesso à conta normal.
+
+    /** Passo 1: gera um segredo novo (ainda NÃO salvo no banco) e devolve
+     * o QR code pra pessoa escanear no app autenticador. */
+    setup2FAStart: siteAdminProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.siteAdminUsername) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O acesso mestre de recuperação não pode ativar 2FA." });
+      }
+      const secret = generateTwoFactorSecret();
+      const uri = buildTwoFactorURI(secret, ctx.siteAdminUsername);
+      const qrCodeDataUrl = await QRCode.toDataURL(uri);
+      return { secret, qrCodeDataUrl } as const;
+    }),
+
+    /** Passo 2: confirma que o código digitado bate com o segredo gerado
+     * no passo 1 — só ENTÃO salva de verdade e ativa. Devolve os códigos
+     * de backup em texto puro (única vez que isso acontece — depois só
+     * ficam guardados em hash). */
+    confirm2FASetup: siteAdminProcedure
+      .input(z.object({ secret: z.string().min(1), code: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteAdminUsername) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O acesso mestre de recuperação não pode ativar 2FA." });
+        }
+        const admin = await getAdminByUsername(ctx.siteAdminUsername);
+        if (!admin) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Conta inválida." });
+        }
+
+        const valid = await verifyTwoFactorCode(input.secret, input.code);
+        if (!valid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Código incorreto. Confira o app autenticador e tente de novo.",
+          });
+        }
+
+        const backupCodes = generateBackupCodes();
+        const backupCodesJson = await hashBackupCodes(backupCodes);
+        await setAdminTwoFactor(admin.id, input.secret, backupCodesJson);
+
+        void logActivity({
+          username: admin.username,
+          role: ctx.siteRole,
+          action: "admin.enable2FA",
+        });
+
+        return { success: true, backupCodes } as const;
+      }),
+
+    /** Desativa 2FA — exige a senha atual de novo, por segurança (evita
+     * que alguém com a sessão aberta, mas sem saber a senha, desative a
+     * proteção — por exemplo, num computador que ficou logado). */
+    disable2FA: siteAdminProcedure
+      .input(z.object({ password: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteAdminUsername) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O acesso mestre de recuperação não tem 2FA." });
+        }
+        const admin = await getAdminByUsername(ctx.siteAdminUsername);
+        if (!admin) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Conta inválida." });
+        }
+
+        const isValid = await verifyAdminPassword(input.password, admin.passwordHash);
+        if (!isValid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Senha incorreta." });
+        }
+
+        await clearAdminTwoFactor(admin.id);
+
+        void logActivity({
+          username: admin.username,
+          role: ctx.siteRole,
+          action: "admin.disable2FA",
+        });
+
+        return { success: true } as const;
       }),
 
     // Login do programa de sincronização de pasta local (Windows) — mesma
@@ -290,6 +467,7 @@ export const authRouter = router({
           )
         : null,
       isImpersonating: ctx.isImpersonating,
+      hasTwoFactorEnabled: ctx.siteHasTwoFactorEnabled,
     })),
 
     // Teste de envio de e-mail — SOMENTE o administrador principal.
