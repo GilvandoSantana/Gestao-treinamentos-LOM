@@ -387,7 +387,7 @@ export default function Home() {
     if (event.target) event.target.value = '';
   };
 
-  const { handleExportPDF, handlePrintFilter, handleExportEmployeeData } = useEmployeeExports(
+  const { handleExportPDF, handlePrintFilter, handleExportEmployeeData, handleGenerateComplianceReport } = useEmployeeExports(
     employees,
     session,
     utils,
@@ -498,6 +498,7 @@ export default function Home() {
           onNewEmployee={() => openModal()}
           onExport={exportData}
           onExportPDF={handleExportPDF}
+          onGenerateComplianceReport={handleGenerateComplianceReport}
           isSyncing={isSyncing}
           employeeCount={activeEmployees.length}
           viewMode={viewMode}

@@ -69,5 +69,23 @@ export function useEmployeeExports(
     }
   };
 
-  return { handleExportPDF, handlePrintFilter, handleExportEmployeeData };
+  const handleGenerateComplianceReport = async () => {
+    try {
+      setIsSyncing(true);
+      const { generateComplianceReport } = await import('@/lib/compliance-report');
+      await generateComplianceReport(
+        employees,
+        session.contract?.name ?? null,
+        session.contract?.companyName ?? null
+      );
+      toast.success('Relatório de conformidade gerado com sucesso!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar relatório de conformidade');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return { handleExportPDF, handlePrintFilter, handleExportEmployeeData, handleGenerateComplianceReport };
 }

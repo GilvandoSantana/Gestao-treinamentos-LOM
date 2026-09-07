@@ -29,6 +29,7 @@ import {
   Building2,
   FileStack,
   ChevronDown,
+  ShieldCheck,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import HERO_IMAGE from '../assets/hero-banner.webp';
@@ -43,6 +44,7 @@ interface HeaderProps {
   onNewEmployee: () => void;
   onExport: () => void;
   onExportPDF: () => void;
+  onGenerateComplianceReport?: () => void;
   isSyncing: boolean;
   employeeCount: number;
   viewMode?: 'grid' | 'table';
@@ -82,6 +84,7 @@ export default function Header({
   onNewEmployee,
   onExport,
   onExportPDF,
+  onGenerateComplianceReport,
   isSyncing,
   employeeCount,
   viewMode = 'grid',
@@ -404,6 +407,17 @@ export default function Header({
                         <FileText size={16} className="text-muted-foreground" />
                         Relatório em PDF
                       </button>
+                      {onGenerateComplianceReport && (
+                        <button
+                          onClick={runAndClose(onGenerateComplianceReport)}
+                          disabled={isSyncing}
+                          className={menuItemClass}
+                          role="menuitem"
+                        >
+                          <ShieldCheck size={16} className="text-muted-foreground" />
+                          Relatório de Conformidade
+                        </button>
+                      )}
                       <button onClick={runAndClose(onExport)} disabled={isSyncing} className={menuItemClass} role="menuitem">
                         <Download size={16} className="text-muted-foreground" />
                         Exportar para Excel
