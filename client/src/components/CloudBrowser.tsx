@@ -31,6 +31,7 @@ import {
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
+import { uploadFileInChunks } from '@/lib/chunked-upload';
 import CloudShareDialog from '@/components/CloudShareDialog';
 import CloudPreviewModal from '@/components/CloudPreviewModal';
 import CloudMigrationPanel from '@/components/CloudMigrationPanel';
@@ -45,7 +46,12 @@ interface CloudBrowserProps {
   isMasterAdmin?: boolean;
 }
 
-const MAX_UPLOAD_MB = 200;
+// Antes 200MB, por causa do risco de memória do envio em Base64 numa
+// única requisição. Com o envio em partes (chunked-upload.ts), esse
+// risco não existe mais — o limite agora é só uma trava de bom senso,
+// bem mais alto (o espaço de armazenamento contratado continua sendo a
+// checagem de verdade, feita no servidor).
+const MAX_UPLOAD_MB = 2048;
 
 interface FileWithPath {
   file: File;
@@ -89,7 +95,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderGroupId, setNewFolderGroupId] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ name: string; done: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; done: number; total: number; percent: number } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -110,7 +116,6 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const createFolderMutation = trpc.cloud.createFolder.useMutation();
   const renameFolderMutation = trpc.cloud.renameFolder.useMutation();
   const deleteFolderMutation = trpc.cloud.deleteFolder.useMutation();
-  const uploadMutation = trpc.cloud.upload.useMutation();
   const renameFileMutation = trpc.cloud.renameFile.useMutation();
   const deleteFileMutation = trpc.cloud.deleteFile.useMutation();
   const getDownloadUrlMutation = trpc.cloud.getDownloadUrl.useMutation();
@@ -205,26 +210,28 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     let failed = 0;
 
     for (const { file, relativePath } of valid) {
-      setUploadProgress({ name: file.name, done: uploaded, total: valid.length });
+      setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent: 0 });
       try {
         const parts = relativePath.split('/').filter(Boolean);
         const fileName = parts.pop() ?? file.name;
         const targetFolderId = await resolveFolderPath(parts, folderCache);
 
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result).split(',')[1]);
-          reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
-          reader.readAsDataURL(file);
-        });
-
-        await uploadMutation.mutateAsync({
-          folderId: targetFolderId,
-          name: fileName,
-          fileName,
-          fileData: base64,
-          mimeType: file.type || 'application/octet-stream',
-        });
+        await uploadFileInChunks(
+          file,
+          {
+            folderId: targetFolderId,
+            name: fileName,
+            fileName,
+            mimeType: file.type || 'application/octet-stream',
+            fileSize: file.size,
+          },
+          {
+            start: '/api/cloud-upload/start',
+            part: '/api/cloud-upload/part',
+            complete: '/api/cloud-upload/complete',
+          },
+          (percent) => setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent })
+        );
         uploaded++;
       } catch (error) {
         failed++;
@@ -537,12 +544,15 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
       {uploadProgress && (
         <div className="mb-3 p-3 rounded-lg border border-border bg-muted/30">
           <p className="text-xs text-foreground truncate mb-1.5">
-            Enviando {uploadProgress.name}... ({uploadProgress.done + 1} de {uploadProgress.total})
+            Enviando {uploadProgress.name}... ({uploadProgress.done + 1} de {uploadProgress.total}
+            {uploadProgress.total > 1 ? '' : `, ${uploadProgress.percent}%`})
           </p>
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full bg-orange transition-all duration-300"
-              style={{ width: `${Math.round((uploadProgress.done / uploadProgress.total) * 100)}%` }}
+              style={{
+                width: `${Math.round(((uploadProgress.done + uploadProgress.percent / 100) / uploadProgress.total) * 100)}%`,
+              }}
             />
           </div>
         </div>

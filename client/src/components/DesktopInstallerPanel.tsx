@@ -14,94 +14,10 @@ import { useRef, useState } from 'react';
 import { Download, Monitor, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
-import { getSessionMarker } from '@/lib/session-marker';
+import { uploadFileInChunks } from '@/lib/chunked-upload';
 
 interface DesktopInstallerPanelProps {
   isMasterAdmin?: boolean;
-}
-
-const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB por pedaço
-const MAX_RETRIES_PER_PART = 2;
-
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const marker = getSessionMarker();
-  return { ...extra, ...(marker ? { 'x-session-marker': marker } : {}) };
-}
-
-async function uploadFileInChunks(
-  file: File,
-  version: string,
-  onProgress: (percent: number) => void
-): Promise<void> {
-  // 1. Inicia o envio em partes.
-  const startRes = await fetch('/api/desktop-installer/upload/start', {
-    method: 'POST',
-    credentials: 'include',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ version, fileName: file.name }),
-  });
-  if (!startRes.ok) {
-    const body = await startRes.json().catch(() => null);
-    throw new Error(body?.error || `Erro ${startRes.status} ao iniciar o envio.`);
-  }
-  const { uploadId } = await startRes.json();
-
-  // 2. Envia cada pedaço, um de cada vez (mais simples e confiável que
-  // paralelo, e a velocidade não é o gargalo aqui — é o limite de tempo
-  // por requisição).
-  const totalParts = Math.ceil(file.size / CHUNK_SIZE);
-  const parts: { partNumber: number; etag: string }[] = [];
-
-  for (let i = 0; i < totalParts; i++) {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, file.size);
-    const chunk = file.slice(start, end);
-    const buffer = await chunk.arrayBuffer();
-    const partNumber = i + 1;
-
-    let lastError: unknown = null;
-    let etag: string | null = null;
-    for (let attempt = 0; attempt <= MAX_RETRIES_PER_PART; attempt++) {
-      try {
-        const partRes = await fetch(
-          `/api/desktop-installer/upload/part?uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: authHeaders({ 'Content-Type': 'application/octet-stream' }),
-            body: buffer,
-          }
-        );
-        if (!partRes.ok) {
-          const body = await partRes.json().catch(() => null);
-          throw new Error(body?.error || `Erro ${partRes.status} ao enviar a parte ${partNumber}.`);
-        }
-        const data = await partRes.json();
-        etag = data.etag;
-        break;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    if (!etag) {
-      throw lastError instanceof Error ? lastError : new Error(`Falha ao enviar a parte ${partNumber}.`);
-    }
-
-    parts.push({ partNumber, etag });
-    onProgress(Math.round(((i + 1) / totalParts) * 100));
-  }
-
-  // 3. Junta tudo num arquivo só, de verdade, no R2.
-  const completeRes = await fetch('/api/desktop-installer/upload/complete', {
-    method: 'POST',
-    credentials: 'include',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ uploadId, parts, fileSize: file.size }),
-  });
-  if (!completeRes.ok) {
-    const body = await completeRes.json().catch(() => null);
-    throw new Error(body?.error || `Erro ${completeRes.status} ao concluir o envio.`);
-  }
 }
 
 export default function DesktopInstallerPanel({ isMasterAdmin }: DesktopInstallerPanelProps) {
@@ -133,7 +49,16 @@ export default function DesktopInstallerPanel({ isMasterAdmin }: DesktopInstalle
     setUploading(true);
     setProgress(0);
     try {
-      await uploadFileInChunks(file, version.trim(), setProgress);
+      await uploadFileInChunks(
+        file,
+        { version: version.trim(), fileName: file.name },
+        {
+          start: '/api/desktop-installer/upload/start',
+          part: '/api/desktop-installer/upload/part',
+          complete: '/api/desktop-installer/upload/complete',
+        },
+        setProgress
+      );
       toast.success('Instalador enviado com sucesso.');
       await utils.desktopInstaller.getInfo.invalidate();
     } catch (error) {

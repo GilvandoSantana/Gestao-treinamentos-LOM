@@ -22,6 +22,9 @@ import {
   abortMultipartUpload,
 } from "../r2-storage";
 import { getCurrentInstaller, setCurrentInstaller } from "../db-desktop-installer";
+import { canAccessFolder, getStorageInfo, createFileRecord, adjustStorageUsed, getFolderPath } from "../db-cloud";
+import { slugifyContract } from "@shared/contracts";
+import { logActivity } from "../db-activity";
 import { getStripe, getStripeWebhookSecret } from "../stripe-client";
 import { finalizePaidSignup } from "../db-organizations";
 import { v4 as uuidv4 } from "uuid";
@@ -410,6 +413,184 @@ async function startServer() {
       return res.status(200).json({ success: true, version: info.version, fileSize });
     } catch (error) {
       console.error("[DesktopInstaller] Erro ao concluir envio:", error);
+      return res.status(500).json({ error: "Falha ao concluir o envio." });
+    }
+  });
+
+  // Upload de arquivo da Nuvem em PARTES — antes ia tudo numa única
+  // requisição, com o arquivo inteiro convertido pra Base64 (~33% maior)
+  // e guardado em memória várias vezes ao mesmo tempo (string JSON,
+  // Buffer, SDK do S3). Um arquivo de 200MB podia consumir bem mais que
+  // isso de memória de pico, com risco real de derrubar o container do
+  // Railway (achado de auditoria de segurança, 07/09). Mesmo mecanismo de
+  // partes já usado pro instalador do programa de sincronização acima —
+  // reaproveita o mesmo activeMultipartUploads e a mesma limpeza por
+  // tempo esgotado.
+  async function requireCloudUploadAccess(req: express.Request, res: express.Response) {
+    // O adaptador Express do tRPC exige um campo "info" no tipo (usado
+    // internamente por ele pra outras coisas) que createContext nunca lê
+    // de verdade — só req/res importam pra essa função. Sem problema
+    // passar sem ele aqui.
+    const ctx = await createContext({ req, res } as Parameters<typeof createContext>[0]);
+    if (!ctx.isSiteAdmin) {
+      res.status(401).json({ error: "Não autorizado." });
+      return null;
+    }
+    if (ctx.siteRole !== "admin" && !ctx.sitePermissions?.manageCloud) {
+      res.status(403).json({ error: "Você não tem permissão para enviar arquivos." });
+      return null;
+    }
+    if (!ctx.siteContract) {
+      res.status(400).json({ error: "Escolha um contrato no cabeçalho antes de enviar um arquivo." });
+      return null;
+    }
+    return ctx;
+  }
+
+  app.post("/api/cloud-upload/start", csrfProtection, async (req, res) => {
+    const ctx = await requireCloudUploadAccess(req, res);
+    if (!ctx) return;
+
+    const folderId = typeof req.body?.folderId === "string" ? req.body.folderId : null;
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "";
+    const mimeType = typeof req.body?.mimeType === "string" ? req.body.mimeType : "application/octet-stream";
+    const declaredSize = Number(req.body?.fileSize) || 0;
+    if (!name || !fileName) {
+      return res.status(400).json({ error: "Informe o nome do arquivo." });
+    }
+    if (!isR2Configured) {
+      return res.status(400).json({
+        error:
+          "O armazenamento em nuvem (Cloudflare R2) ainda não foi configurado. Defina R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY e R2_BUCKET_NAME no Railway.",
+      });
+    }
+
+    if (folderId) {
+      const accessCtx = { username: ctx.siteAdminUsername ?? "", isMasterAdmin: ctx.siteRole === "admin" };
+      const allowed = await canAccessFolder(ctx.siteContract!, folderId, accessCtx);
+      if (!allowed) {
+        return res.status(403).json({ error: "Você não tem acesso a esta pasta." });
+      }
+    }
+
+    // Confere espaço já aqui, com o tamanho que o navegador declarou —
+    // evita começar (e a pessoa esperar) um envio grande que nunca ia
+    // caber. O tamanho de verdade é conferido de novo ao concluir.
+    const storage = await getStorageInfo(ctx.siteContract!);
+    if (declaredSize > 0 && storage.usedBytes + declaredSize > storage.limitBytes) {
+      return res.status(400).json({ error: "Espaço de armazenamento insuficiente." });
+    }
+
+    try {
+      // Espelha as pastas do sistema na chave do R2, mesmo padrão já usado
+      // pelo upload antigo — o arquivo aparece organizado também olhando
+      // direto lá.
+      const folderChain = folderId ? await getFolderPath(folderId) : [];
+      const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
+      const fileId = uuidv4();
+      const r2Key = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${fileId}-${fileName}`;
+
+      const uploadId = await createMultipartUpload(r2Key, mimeType);
+      activeMultipartUploads.set(uploadId, {
+        kind: "cloud",
+        r2Key,
+        fileId,
+        folderId,
+        name,
+        mimeType,
+        contractSlug: ctx.siteContract,
+        uploadedBy: ctx.siteAdminUsername ?? "desconhecido",
+        role: ctx.siteRole,
+        startedAt: Date.now(),
+      });
+      return res.status(200).json({ uploadId, r2Key });
+    } catch (error) {
+      console.error("[CloudUpload] Erro ao iniciar envio em partes:", error);
+      return res.status(500).json({ error: "Falha ao iniciar o envio." });
+    }
+  });
+
+  app.post(
+    "/api/cloud-upload/part",
+    csrfProtection,
+    express.raw({ limit: "20mb", type: "application/octet-stream" }),
+    async (req, res) => {
+      const ctx = await requireCloudUploadAccess(req, res);
+      if (!ctx) return;
+
+      const uploadId = typeof req.query.uploadId === "string" ? req.query.uploadId : "";
+      const partNumber = Number(req.query.partNumber);
+      const info = activeMultipartUploads.get(uploadId);
+      if (!info || info.kind !== "cloud" || info.contractSlug !== ctx.siteContract) {
+        return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+      }
+      if (!Number.isInteger(partNumber) || partNumber < 1) {
+        return res.status(400).json({ error: "Número de parte inválido." });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({ error: "Parte vazia ou não recebida." });
+      }
+
+      try {
+        const etag = await uploadPartToR2(info.r2Key, uploadId, partNumber, req.body);
+        return res.status(200).json({ etag });
+      } catch (error) {
+        console.error("[CloudUpload] Erro ao enviar parte:", error);
+        return res.status(500).json({ error: "Falha ao enviar essa parte — tente de novo." });
+      }
+    }
+  );
+
+  app.post("/api/cloud-upload/complete", csrfProtection, async (req, res) => {
+    const ctx = await requireCloudUploadAccess(req, res);
+    if (!ctx) return;
+
+    const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId : "";
+    const parts = Array.isArray(req.body?.parts) ? req.body.parts : null;
+    const info = activeMultipartUploads.get(uploadId);
+    if (!info || info.kind !== "cloud" || info.contractSlug !== ctx.siteContract) {
+      return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
+    }
+    if (!parts || parts.length === 0) {
+      return res.status(400).json({ error: "Nenhuma parte enviada." });
+    }
+    const fileSize = req.body?.fileSize && Number.isFinite(req.body.fileSize) ? req.body.fileSize : 0;
+
+    // Confere o espaço de novo, agora com o tamanho de verdade — a
+    // declaração inicial (em /start) podia estar errada ou desatualizada.
+    const storage = await getStorageInfo(ctx.siteContract!);
+    if (storage.usedBytes + fileSize > storage.limitBytes) {
+      await abortMultipartUpload(info.r2Key, uploadId);
+      activeMultipartUploads.delete(uploadId);
+      return res.status(400).json({ error: "Espaço de armazenamento insuficiente." });
+    }
+
+    try {
+      await completeMultipartUpload(info.r2Key, uploadId, parts);
+      const file = await createFileRecord({
+        id: info.fileId,
+        contractSlug: ctx.siteContract!,
+        folderId: info.folderId,
+        name: info.name,
+        r2Key: info.r2Key,
+        fileSize,
+        mimeType: info.mimeType,
+        uploadedBy: info.uploadedBy,
+      });
+      await adjustStorageUsed(ctx.siteContract!, fileSize);
+      activeMultipartUploads.delete(uploadId);
+      void logActivity({
+        username: ctx.siteAdminUsername,
+        role: ctx.siteRole,
+        action: "cloud.fileUpload",
+        targetType: "cloudFile",
+        targetId: file.id,
+        targetName: file.name,
+      });
+      return res.status(200).json({ success: true, file });
+    } catch (error) {
+      console.error("[CloudUpload] Erro ao concluir envio:", error);
       return res.status(500).json({ error: "Falha ao concluir o envio." });
     }
   });
