@@ -267,15 +267,20 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
                 </div>
 
                 {row.fileUrl && (
-                  <a
-                    href={row.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { url } = await utils.client.invoices.getDownloadUrl.query({ id: row.id });
+                        window.open(url, '_blank', 'noreferrer');
+                      } catch {
+                        toast.error('Erro ao abrir o arquivo.');
+                      }
+                    }}
                     className="shrink-0 p-2 text-muted-foreground hover:text-orange transition-colors"
                     title="Baixar arquivo"
                   >
                     <Download size={17} />
-                  </a>
+                  </button>
                 )}
 
                 {isMasterAdmin && contractsQuery.data && contractsQuery.data.length > 1 && (

@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { masterAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { deleteFdsFromSupabase, uploadFdsToSupabase } from "../supabase-storage";
+import { deleteFdsFromSupabase, getSignedFdsUrl, uploadFdsToSupabase } from "../supabase-storage";
 import {
   createSafetySheet,
   deleteSafetySheet,
@@ -98,11 +98,25 @@ export const fdsRouter = router({
         return sheet;
       }),
 
+    // URL assinada de curta duração — mesmo motivo de certificates.getDownloadUrl.
+    getDownloadUrl: requirePermission('viewCertificates')
+      .input(z.object({ id: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const sheet = await getSafetySheetById(input.id);
+        if (!sheet || (ctx.siteContract !== null && sheet.contract !== ctx.siteContract)) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Documento não encontrado." });
+        }
+        const url = await getSignedFdsUrl(sheet.fileUrl);
+        return { url } as const;
+      }),
+
     setRoles: requirePermission('manageCertificates')
       .input(z.object({ id: z.string(), roles: z.array(z.string()) }))
       .mutation(async ({ input, ctx }) => {
         const sheet = await getSafetySheetById(input.id);
-        if (!sheet) throw new TRPCError({ code: "NOT_FOUND", message: "FDS não encontrada." });
+        if (!sheet || (ctx.siteContract !== null && sheet.contract !== ctx.siteContract)) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "FDS não encontrada." });
+        }
 
         await updateSafetySheetRoles(input.id, input.roles);
         void logActivity({
@@ -120,7 +134,13 @@ export const fdsRouter = router({
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
         const sheet = await getSafetySheetById(input.id);
-        if (!sheet) return { success: true } as const;
+        // Achado de auditoria de segurança (07/09): faltava conferir se o
+        // documento pertence ao contrato de quem está pedindo a exclusão
+        // — sem isso, alguém sabendo o UUID de uma FDS de outro contrato
+        // conseguia apagá-la.
+        if (!sheet || (ctx.siteContract !== null && sheet.contract !== ctx.siteContract)) {
+          return { success: true } as const;
+        }
 
         await deleteFdsFromSupabase(sheet.fileUrl);
         await deleteSafetySheet(input.id);

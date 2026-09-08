@@ -140,15 +140,20 @@ export default function DocumentPanel({ type, canManage, isMasterAdmin = false }
                     </p>
                   </div>
 
-                  <a
-                    href={sheet.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { url } = await utils.client.fds.getDownloadUrl.query({ id: sheet.id });
+                        window.open(url, '_blank', 'noreferrer');
+                      } catch {
+                        toast.error('Erro ao abrir o documento.');
+                      }
+                    }}
                     className="shrink-0 p-2 text-muted-foreground hover:text-orange transition-colors"
                     title="Baixar PDF"
                   >
                     <Download size={17} />
-                  </a>
+                  </button>
 
                   {isMasterAdmin && contractsQuery.data && contractsQuery.data.length > 1 && (
                     <select

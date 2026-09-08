@@ -10,7 +10,7 @@ import {
   uploadCertificate,
 } from "../db-certificates";
 import { getEmployeeScoped } from "../db-employees";
-import { deleteCertificateFromSupabase, uploadCertificateToSupabase } from "../supabase-storage";
+import { deleteCertificateFromSupabase, getSignedCertificateUrl, uploadCertificateToSupabase } from "../supabase-storage";
 import { logActivity } from "../db-activity";
 
 export const certificatesRouter = router({
@@ -107,6 +107,25 @@ export const certificatesRouter = router({
           console.error("Error fetching certificates by employee:", error);
           return [];
         }
+      }),
+
+    // URL assinada de curta duração — usada pelo cliente em vez de
+    // confiar na URL pública guardada no banco, que deixa de funcionar
+    // quando o bucket do Supabase virar privado (achado de auditoria de
+    // segurança, 07/09).
+    getDownloadUrl: requirePermission('viewCertificates')
+      .input(z.object({ id: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const certificate = await getCertificateById(input.id);
+        if (!certificate) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Certificado não encontrado." });
+        }
+        const employee = await getEmployeeScoped(certificate.employeeId, ctx.siteContract);
+        if (!employee) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Certificado não encontrado." });
+        }
+        const url = await getSignedCertificateUrl(certificate.fileUrl);
+        return { url } as const;
       }),
 
     delete: requirePermission('manageCertificates')

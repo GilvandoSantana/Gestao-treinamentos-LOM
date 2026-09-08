@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { masterAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { deleteInvoiceFileFromSupabase, uploadInvoiceFileToSupabase } from "../supabase-storage";
+import { deleteInvoiceFileFromSupabase, getSignedInvoiceUrl, uploadInvoiceFileToSupabase } from "../supabase-storage";
 import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 import { getContractBySlug } from "../db-contracts";
 import {
@@ -124,6 +124,14 @@ export const invoicesRouter = router({
           if (!existing) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Nota fiscal não encontrada." });
           }
+          // Achado de auditoria de segurança (07/09): faltava conferir se a
+          // nota pertence ao contrato de quem está editando — sem isso,
+          // alguém sabendo o UUID de uma nota de outro contrato conseguia
+          // sobrescrevê-la (e reatribuí-la, já que "contract" abaixo
+          // sempre usa o contrato de quem está salvando).
+          if (ctx.siteContract !== null && existing.contract !== ctx.siteContract) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Nota fiscal não encontrada." });
+          }
           await updateInvoice(input.id, {
             docType: input.docType,
             number: input.number,
@@ -186,11 +194,28 @@ export const invoicesRouter = router({
         return created;
       }),
 
+    // URL assinada de curta duração — mesmo motivo de
+    // certificates.getDownloadUrl (achado de auditoria de segurança, 07/09).
+    getDownloadUrl: requirePermission('viewInvoices')
+      .input(z.object({ id: z.string() }))
+      .query(async ({ input, ctx }) => {
+        const invoice = await getInvoiceById(input.id);
+        if (!invoice || !invoice.fileUrl || (ctx.siteContract !== null && invoice.contract !== ctx.siteContract)) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
+        }
+        const url = await getSignedInvoiceUrl(invoice.fileUrl);
+        return { url } as const;
+      }),
+
     delete: requirePermission('manageInvoices')
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
         const existing = await getInvoiceById(input.id);
         if (!existing) return { success: true } as const;
+        // Mesma checagem de contrato do upsertOne acima.
+        if (ctx.siteContract !== null && existing.contract !== ctx.siteContract) {
+          return { success: true } as const;
+        }
 
         if (existing.fileUrl) {
           await deleteInvoiceFileFromSupabase(existing.fileUrl);

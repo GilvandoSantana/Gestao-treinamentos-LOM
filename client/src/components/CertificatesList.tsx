@@ -23,6 +23,7 @@ export default function CertificatesList({
   isAdmin = false,
 }: CertificatesListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const utils = trpc.useUtils();
   const deleteMutation = trpc.certificates.delete.useMutation();
 
   // Fetch certificates
@@ -50,9 +51,14 @@ export default function CertificatesList({
     }
   };
 
-  const handleDownload = (certificate: Certificate) => {
-    // Open certificate in new tab
-    window.open(certificate.fileUrl, '_blank');
+  const handleDownload = async (certificate: Certificate) => {
+    try {
+      const { url } = await utils.client.certificates.getDownloadUrl.query({ id: certificate.id });
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Erro ao abrir o certificado.');
+    }
   };
 
   const formatDate = (date: Date | string) => {
