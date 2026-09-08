@@ -184,6 +184,22 @@ export const employeesRouter = router({
           }
         }
 
+        // Barreira do lado do servidor contra treinamento duplicado — a
+        // tela já impede isso na hora de adicionar, mas esta é a segunda
+        // camada (protege contra chamada direta à API e contra a
+        // importação de planilha).
+        const trainingNamesSeen = new Set<string>();
+        for (const training of input.trainings) {
+          const key = training.name.trim().toLowerCase();
+          if (trainingNamesSeen.has(key)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `"${training.name}" está duplicado na lista de treinamentos.`,
+            });
+          }
+          trainingNamesSeen.add(key);
+        }
+
         try {
             await upsertEmployee({
               id: input.id,
@@ -341,6 +357,19 @@ export const employeesRouter = router({
 
           for (const employee of input.employees) {
             try {
+              // Mesma barreira contra treinamento duplicado do upsertOne —
+              // aqui, uma linha duplicada na planilha não trava a
+              // importação inteira, só marca ESTE colaborador como falho
+              // e segue para o próximo.
+              const trainingNamesSeen = new Set<string>();
+              for (const training of employee.trainings) {
+                const key = training.name.trim().toLowerCase();
+                if (trainingNamesSeen.has(key)) {
+                  throw new Error(`Treinamento "${training.name}" duplicado na planilha.`);
+                }
+                trainingNamesSeen.add(key);
+              }
+
               // Upsert employee
               await upsertEmployee({
                 id: employee.id,

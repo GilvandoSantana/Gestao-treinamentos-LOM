@@ -311,6 +311,21 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
 
+    // Impede cadastrar o mesmo treinamento duas vezes pro mesmo
+    // colaborador — ao editar um já existente, ignora ele mesmo na
+    // comparação (senão nunca conseguiria salvar a própria edição).
+    const isDuplicate = trainings.some(
+      (t) =>
+        t.id !== editingTraining?.id &&
+        t.name.trim().toLowerCase() === trainingName.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      toast.error(
+        `"${trainingName}" já está cadastrado para este colaborador. Edite o registro existente pra renovar, em vez de adicionar de novo.`
+      );
+      return;
+    }
+
     const trainingId = editingTraining ? editingTraining.id : Date.now().toString();
 
     if (selectedFile) {

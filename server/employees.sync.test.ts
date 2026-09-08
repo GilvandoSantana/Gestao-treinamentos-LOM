@@ -146,6 +146,42 @@ describe("employees.sync", () => {
       failed: [],
     });
   });
+
+  it("marca o colaborador como falho quando a planilha tem o mesmo treinamento duplicado, sem travar o restante do lote", async () => {
+    // Achado real reportado pelo Gilvando: dava pra cadastrar o mesmo
+    // treinamento duas vezes pro mesmo colaborador. Aqui testa a barreira
+    // do caminho de importação por planilha — o caminho de edição manual
+    // (upsertOne) tem seu próprio teste equivalente.
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const testEmployees = [
+      {
+        id: "emp-1",
+        name: "Colaborador Com Duplicata",
+        role: "Motorista",
+        trainings: [
+          { id: "train-1", name: "NR-35", completionDate: "2025-06-15", expirationDate: "2026-06-15" },
+          { id: "train-2", name: "nr-35", completionDate: "2025-07-01", expirationDate: "2026-07-01" },
+        ],
+      },
+      {
+        id: "emp-2",
+        name: "Colaborador Sem Problema",
+        role: "Soldador industrial",
+        trainings: [
+          { id: "train-3", name: "Proteção de Máquinas", completionDate: "2025-05-10", expirationDate: "2026-05-10" },
+        ],
+      },
+    ];
+
+    const result = await caller.employees.sync({ employees: testEmployees });
+
+    expect(result.updated).toBe(1); // só o segundo colaborador foi salvo
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].name).toBe("Colaborador Com Duplicata");
+    expect(result.failed[0].error).toContain("duplicado");
+  });
 });
 
 describe("employees.list", () => {
