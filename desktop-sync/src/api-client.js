@@ -8,6 +8,8 @@
  * - Mutação: POST com corpo `{"0":{"json": <dados> }}`
  */
 
+const os = require("os");
+
 class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -83,10 +85,21 @@ class ApiClient {
   /** Faz login e guarda o token internamente. Devolve {username}. */
   async login(username, password) {
     const url = new URL("/api/trpc/auth.desktopLogin?batch=1", this.serverUrl).toString();
+    // Nome do computador, sugerido automaticamente — aparece na tela de
+    // "Dispositivos conectados" do administrador, permitindo revogar só
+    // este computador (sem esse nome, tudo aparecia genérico e sem jeito
+    // de saber qual token pertence a qual máquina — achado de auditoria
+    // de segurança, 07/09).
+    let deviceName;
+    try {
+      deviceName = os.hostname();
+    } catch {
+      deviceName = undefined;
+    }
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: this.serverUrl },
-      body: JSON.stringify({ "0": { json: { username: username || undefined, password } } }),
+      body: JSON.stringify({ "0": { json: { username: username || undefined, password, deviceName } } }),
     });
     const data = await parseTrpcResponse(res);
     this.token = data.token;

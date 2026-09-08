@@ -292,6 +292,35 @@ export type PendingSignup = typeof pendingSignups.$inferSelect;
 export type InsertPendingSignup = typeof pendingSignups.$inferInsert;
 
 /**
+ * Sessão do programa de sincronização de pasta local (Windows) — uma
+ * linha por "login" feito no programa, pra deixar cada uma revogável
+ * individualmente. Antes, o token JWT do desktop-sync não tinha nenhum
+ * registro correspondente no banco: se um computador fosse perdido ou
+ * roubado, a única forma de invalidar o acesso era trocar o
+ * SESSION_SECRET inteiro, derrubando TODAS as sessões (site e desktop)
+ * de uma vez (achado de auditoria de segurança, 07/09). Com esta
+ * tabela, o token carrega o id de uma sessão aqui, e cada verificação
+ * confere se essa sessão específica ainda não foi revogada.
+ */
+export const desktopSessions = mysqlTable("desktopSessions", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  username: varchar("username", { length: 255 }).notNull(),
+  // null pro acesso mestre de recuperação, que não tem linha própria em
+  // admins (mesmo espírito de admins.organizationId).
+  adminId: varchar("adminId", { length: 64 }),
+  // Nome que a pessoa dá ao computador no momento do login (ex: "PC
+  // Escritório") — o próprio programa sugere o nome do computador via
+  // os.hostname(), mas a pessoa pode trocar. Null em sessões antigas,
+  // de antes desta coluna existir.
+  deviceName: varchar("deviceName", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+});
+
+export type DesktopSession = typeof desktopSessions.$inferSelect;
+export type InsertDesktopSession = typeof desktopSessions.$inferInsert;
+
+/**
  * Contratos atendidos pelo sistema. Antes era uma lista fixa no código; agora
  * o administrador cadastra, edita e exclui pela própria interface.
  */

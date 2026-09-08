@@ -59,6 +59,7 @@ export type ActivityAction =
   | "cloud.emptyTrash"
   | "admin.enable2FA"
   | "admin.disable2FA"
+  | "desktopSession.revoke"
   | "cloud.share"
   | "cloud.unshare"
   | "cloud.migrateLegacy"

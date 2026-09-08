@@ -3,6 +3,7 @@ import { parse as parseCookieHeader } from "cookie";
 import { randomUUID, timingSafeEqual } from "crypto";
 import type { Request } from "express";
 import bcrypt from "bcryptjs";
+import { isDesktopSessionRevoked } from "./db-desktop-sessions";
 
 export const SITE_SESSION_COOKIE = "site_session";
 // Guarda o token do administrador enquanto ele está "vendo como" um usuário.
@@ -145,9 +146,10 @@ export async function verifySiteSessionToken(token: string): Promise<boolean> {
 export async function createDesktopSyncToken(
   username: string,
   role: "admin" | "user",
-  adminId: string | null
+  adminId: string | null,
+  sessionId: string
 ): Promise<string> {
-  return new SignJWT({ scope: "desktop-sync", username, role, adminId })
+  return new SignJWT({ scope: "desktop-sync", username, role, adminId, sessionId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${DESKTOP_SYNC_TTL_SECONDS}s`)
@@ -158,11 +160,20 @@ export type DesktopSyncSession = {
   username: string;
   role: "admin" | "user";
   adminId: string | null;
+  /** Ausente em tokens emitidos antes desta sessão ser rastreada
+   * individualmente (versões antigas do programa) — nesse caso, não dá
+   * pra checar revogação, e o token continua valendo até expirar
+   * naturalmente (30 dias). Um novo login já emite com sessionId. */
+  sessionId: string | null;
 };
 
 /** Decodifica e valida um token do programa de sincronização. Devolve
  * `null` se o token não existir, estiver expirado, ou não for desse tipo
- * (por exemplo, se alguém tentar usar um cookie de navegador aqui). */
+ * (por exemplo, se alguém tentar usar um cookie de navegador aqui).
+ * NÃO confere revogação aqui (isso exigiria uma consulta ao banco em
+ * toda chamada) — quem chama esta função decide se/quando checar
+ * isDesktopSessionRevoked, normalmente uma vez por requisição em
+ * getSiteSession. */
 export async function verifyDesktopSyncToken(
   token: string
 ): Promise<DesktopSyncSession | null> {
@@ -174,6 +185,7 @@ export async function verifyDesktopSyncToken(
       username: payload.username,
       role: payload.role === "user" ? "user" : "admin",
       adminId: typeof payload.adminId === "string" ? payload.adminId : null,
+      sessionId: typeof payload.sessionId === "string" ? payload.sessionId : null,
     };
   } catch {
     return null;
@@ -207,6 +219,15 @@ export async function getSiteSession(req: Request): Promise<SiteSession> {
 
     const desktopSession = await verifyDesktopSyncToken(bearerToken);
     if (!desktopSession) return { ...EMPTY_SESSION };
+
+    // Só checa revogação se o token TEM um sessionId — tokens emitidos
+    // antes desta funcionalidade existir não têm essa informação, e
+    // continuam valendo até expirar sozinhos (30 dias), sem quebrar quem
+    // já estava logado no programa quando isso foi lançado.
+    if (desktopSession.sessionId) {
+      const revoked = await isDesktopSessionRevoked(desktopSession.sessionId);
+      if (revoked) return { ...EMPTY_SESSION };
+    }
 
     return {
       isSiteAdmin: true,

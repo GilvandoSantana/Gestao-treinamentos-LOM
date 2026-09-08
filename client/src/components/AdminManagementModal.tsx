@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { setSessionMarker } from '@/lib/session-marker';
@@ -55,6 +55,19 @@ export default function AdminManagementModal({
   const [testPhone, setTestPhone] = useState('');
   const backupsQuery = trpc.backup.list.useQuery(undefined, { enabled: isOpen });
   const runBackupMutation = trpc.backup.runNow.useMutation();
+  const desktopSessionsQuery = trpc.auth.desktopSessions.list.useQuery(undefined, { enabled: isOpen });
+  const revokeDesktopSessionMutation = trpc.auth.desktopSessions.revoke.useMutation();
+
+  const handleRevokeDesktopSession = async (id: string, deviceName: string | null) => {
+    if (!window.confirm(`Revogar o acesso de "${deviceName || 'este dispositivo'}"? Ele vai precisar entrar de novo.`)) return;
+    try {
+      await revokeDesktopSessionMutation.mutateAsync({ id });
+      toast.success('Acesso revogado.');
+      desktopSessionsQuery.refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao revogar acesso.');
+    }
+  };
 
   const handleRunBackup = async () => {
     try {
@@ -379,6 +392,43 @@ export default function AdminManagementModal({
           )}
           {backupsQuery.data && backupsQuery.data.length === 0 && (
             <p className="text-xs text-muted-foreground mt-2">Nenhum backup gerado ainda.</p>
+          )}
+        </div>
+
+        {/* Dispositivos com o programa de sincronização conectado — antes
+            não dava pra revogar só um (só trocando o segredo inteiro,
+            derrubando todo mundo). Achado de auditoria de segurança,
+            07/09. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Monitor size={15} /> Dispositivos conectados
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Computadores com o programa de sincronização de pastas logado. Revogue o acesso de um
+            específico se o computador for perdido ou trocado.
+          </p>
+          {desktopSessionsQuery.data && desktopSessionsQuery.data.length > 0 ? (
+            <div className="space-y-1.5">
+              {desktopSessionsQuery.data.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="text-foreground truncate">{s.deviceName || 'Dispositivo sem nome'}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {s.username} · desde {new Date(s.createdAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRevokeDesktopSession(s.id, s.deviceName)}
+                    disabled={revokeDesktopSessionMutation.isPending}
+                    className="shrink-0 text-xs font-semibold text-danger hover:underline disabled:opacity-50"
+                  >
+                    Revogar
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Nenhum dispositivo conectado no momento.</p>
           )}
         </div>
 

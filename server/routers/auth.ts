@@ -53,6 +53,7 @@ import {
 } from "@shared/permissions";
 import { getContractBySlug } from "../db-contracts";
 import { getOrganizationById } from "../db-organizations";
+import { createDesktopSession, listActiveDesktopSessions, revokeDesktopSession } from "../db-desktop-sessions";
 import { listActivity, logActivity } from "../db-activity";
 import { sendTestEmail } from "../mailer";
 import { sendTestWhatsApp } from "../whatsapp-service";
@@ -338,6 +339,10 @@ export const authRouter = router({
         z.object({
           username: z.string().trim().min(1).optional(),
           password: z.string().min(1),
+          // Nome do computador, sugerido pelo próprio programa
+          // (os.hostname()) — pra aparecer na lista de "Dispositivos
+          // conectados" e permitir revogar só este, se for perdido.
+          deviceName: z.string().trim().max(255).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -399,7 +404,14 @@ export const authRouter = router({
           action: "login",
         });
 
-        const token = await createDesktopSyncToken(sessionUsername, sessionRole, sessionAdminId);
+        const sessionId = uuidv4();
+        await createDesktopSession({
+          id: sessionId,
+          username: sessionUsername,
+          adminId: sessionAdminId,
+          deviceName: input.deviceName ?? null,
+        });
+        const token = await createDesktopSyncToken(sessionUsername, sessionRole, sessionAdminId, sessionId);
 
         return { success: true, token, username: sessionUsername } as const;
       }),
@@ -697,6 +709,30 @@ export const authRouter = router({
           });
 
           return { success: true, sessionMarker, username: target.username } as const;
+        }),
+    }),
+
+    // Sessões do programa de sincronização de pasta local (Windows) — só
+    // o administrador principal, mesma lógica de "admins" acima (é
+    // gerenciamento de infraestrutura de acesso, não algo de contrato
+    // específico).
+    desktopSessions: router({
+      list: masterAdminProcedure.query(async () => {
+        return listActiveDesktopSessions();
+      }),
+
+      revoke: masterAdminProcedure
+        .input(z.object({ id: z.string().min(1) }))
+        .mutation(async ({ input, ctx }) => {
+          await revokeDesktopSession(input.id);
+          void logActivity({
+            username: ctx.siteAdminUsername,
+            role: ctx.siteRole,
+            action: "desktopSession.revoke",
+            targetType: "desktopSession",
+            targetId: input.id,
+          });
+          return { success: true } as const;
         }),
     }),
   });
