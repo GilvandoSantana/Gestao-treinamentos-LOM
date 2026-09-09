@@ -387,10 +387,10 @@ async function runSyncNow() {
 
 ipcMain.handle("get-default-server-url", () => DEFAULT_SERVER_URL);
 
-ipcMain.handle("login", async (_event, serverUrl, username, password) => {
+ipcMain.handle("login", async (_event, serverUrl, username, password, twoFactorCode) => {
   try {
     const client = new ApiClient(serverUrl);
-    const result = await client.login(username, password);
+    const result = await client.login(username, password, twoFactorCode);
     apiClient = client; // ainda não persistido — só vira definitivo em finish-setup
     state.username = result.username;
     return { ok: true };
@@ -605,3 +605,4 @@ ipcMain.handle("disconnect", () => {
   updateTrayMenu();
   openLoginWindow();
 });
+

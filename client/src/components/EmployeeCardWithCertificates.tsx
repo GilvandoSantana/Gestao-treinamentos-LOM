@@ -29,6 +29,8 @@ const statusRingMap = {
   expiring: 'bg-warning',
   valid: 'bg-teal',
   none: 'bg-white/20',
+
+  unknown: 'bg-white/20',
 };
 
 const statusBorderMap = {
@@ -36,6 +38,7 @@ const statusBorderMap = {
   expiring: 'border-l-warning',
   valid: 'border-l-teal',
   none: 'border-l-muted-foreground',
+  unknown: 'border-l-muted-foreground',
 };
 
 const statusBgMap = {
@@ -423,3 +426,5 @@ export default function EmployeeCardWithCertificates({
     </>
   );
 }
+
+

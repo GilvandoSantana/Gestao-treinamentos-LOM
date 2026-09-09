@@ -11,7 +11,6 @@ import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
 import { runDatabaseBackup } from "../db-backup";
 import { nanoid } from "nanoid";
-import { hasValidSiteSession, getSiteSession } from "../site-auth";
 import { csrfProtection } from "./csrf";
 import {
   deleteFromR2,
@@ -201,95 +200,8 @@ async function startServer() {
     return res.status(200).json(result);
   });
 
-  // Seed route for bulk employee insertion
-  // Protegida: só executa com uma sessão de admin do site válida (cookie
-  // definido via auth.siteLogin). Antes era pública e qualquer um podia
-  // chamá-la para inserir dados em massa sem senha.
-  app.post("/api/seed/employees", async (req, res) => {
-    const isSiteAdmin = await hasValidSiteSession(req);
-    if (!isSiteAdmin) {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
-    try {
-      const db = await getDb();
-      if (!db) {
-        return res.status(500).json({ error: "Database not available" });
-      }
-      const { employees: employeeTable } = await import("../../drizzle/schema");
-      
-      const employeesList = [
-        'Adryan Gabriel Alves',
-        'Alexandre Francisco Souza Da Silva',
-        'Alexandre Vinicius Santos',
-        'Alexandro Souza Dos Santos',
-        'Algary Feitosa Cavalcante',
-        'Alison Valbert',
-        'Amós Silvestre Dos Santos',
-        'André Neres Santos',
-        'Antônio Dizio Da Silva',
-        'Antonio Marcos Alves De Souza',
-        'Carlos Alberto Dos Santos',
-        'Clebisson Dos Santos',
-        'Cleisson Cardoso Dantas',
-        'Cleverton De Andrade Santos',
-        'David Lune Conceição',
-        'Edidelson Santos',
-        'Eraldo Pereira Santos',
-        'Erivaldo Batista Santos Junior',
-        'Esdras Phillip',
-        'Everton Mendes Soares',
-        'Francisco Cicero Da Silva',
-        'Gabriel Dos Santos Costa',
-        'Gabriel Santana Dos Santos',
-        'Gabriel Santana Nogueira',
-        'Helyel Santana Silva',
-        'Humberto Rodrigues Dos Santos Neto',
-        'Ivanilson Menezes Batista',
-        'Izaias Da Paz Santos',
-        'Jeizon Nunes Santos',
-        'João Pedro Da Silva Santos',
-        'Joelisson Dos Santos',
-        'Jose Alisson De Lima Morais',
-        'José Vanderley Francisco',
-        'Josivan Da Silva Lima',
-        'Luiz Carlos Maia Santos',
-        'Magno Dos Santos',
-        'Manoel Messias Dos Santos',
-        'Marcelo Santos Santana',
-        'Marcus Vinicius Gomes De Azevedo',
-        'Mateus Souza Da Hora',
-        'Matheus Santos Gomes',
-        'Michael Alysson Jheckson Santos Silva',
-        'Nathan Nascimento Santos',
-        'Rafael Santos Bispo',
-        'Robson Santos Da Silva',
-        'Shairwandler Santos Santana',
-        'Thiago Freire De Campos',
-        'Walisson Tavares Dos Santos',
-        'Welber Guilherme Dos Santos',
-        'Wevicles Oliveira Batista Dos Santos',
-        'Yago Santos Cruz'
-      ];
-      
-      let inserted = 0;
-      for (const name of employeesList) {
-        try {
-          await db.insert(employeeTable).values({
-            id: nanoid(),
-            name,
-            role: ''
-          });
-          inserted++;
-        } catch (error: any) {
-          console.error(`[Seed] Error inserting ${name}:`, error.message);
-        }
-      }
-      
-      res.json({ success: true, inserted, total: employeesList.length });
-    } catch (error: any) {
-      console.error('[Seed] Error:', error);
-      res.status(500).json({ error: error.message });
-    }
+  app.post("/api/seed/employees", (_req, res) => {
+    res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
   // Upload do instalador do programa de sincronização com a Nuvem
@@ -322,12 +234,12 @@ async function startServer() {
   }, 30 * 60 * 1000).unref();
 
   async function requireMasterAdminForInstaller(req: express.Request, res: express.Response) {
-    const session = await getSiteSession(req);
-    if (!session.isSiteAdmin || session.role !== "admin") {
+    const ctx = await createContext({ req, res } as Parameters<typeof createContext>[0]);
+    if (!ctx.isSiteAdmin || ctx.siteRole !== "admin" || ctx.siteOrganizationId !== null) {
       res.status(403).json({ error: "Apenas o administrador principal pode enviar o instalador." });
       return null;
     }
-    return session;
+    return { username: ctx.siteAdminUsername };
   }
 
   app.post("/api/desktop-installer/upload/start", csrfProtection, async (req, res) => {
@@ -785,3 +697,4 @@ startServer().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);
 });
+

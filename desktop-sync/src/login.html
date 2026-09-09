@@ -141,6 +141,9 @@
       <label for="password">Senha</label>
       <input id="password" type="password" autocomplete="current-password" />
 
+      <label for="two-factor-code">Código do autenticador (se 2FA estiver ativo)</label>
+      <input id="two-factor-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" />
+
       <div class="error" id="login-error"></div>
       <button id="btn-login">Entrar</button>
     </div>
@@ -169,3 +172,4 @@
   <script src="login-renderer.js"></script>
 </body>
 </html>
+

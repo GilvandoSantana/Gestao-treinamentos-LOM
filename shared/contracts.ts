@@ -10,6 +10,7 @@ export type ContractPreposition = 'do' | 'da';
 
 export interface ContractInfo {
   id: string;
+  organizationId?: string | null;
   slug: string;
   name: string;
   preposition: ContractPreposition;
@@ -89,3 +90,4 @@ export interface CustomFieldInfo {
   label: string;
   fieldType: 'text' | 'number' | 'date';
 }
+

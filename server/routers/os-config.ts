@@ -1,3 +1,4 @@
+import { requireContractAccess } from "../contract-access";
 import { siteAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -62,7 +63,7 @@ export const osConfigRouter = router({
     .query(async ({ input, ctx }) => {
       const slug = input?.slug ?? ctx.siteContract;
       if (!slug) return null;
-      const contract = await getContractBySlug(slug);
+      const contract = await requireContractAccess(ctx, slug);
       if (!contract) return null;
       return {
         osMedidasAdministrativas: contract.osMedidasAdministrativas,
@@ -118,3 +119,4 @@ export const osConfigRouter = router({
       }
     }),
 });
+

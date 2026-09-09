@@ -76,6 +76,10 @@ export const requirePermission = (permission: PermissionKey) =>
         throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
       }
 
+      if (ctx.siteOrganizationId !== null && !ctx.siteContract) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Selecione um contrato válido da sua empresa." });
+      }
+
       if (ctx.siteRole !== "admin" && !ctx.sitePermissions?.[permission]) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -88,7 +92,7 @@ export const requirePermission = (permission: PermissionKey) =>
   );
 
 /** Somente o administrador principal (gerenciar contas e permissões). */
-export const masterAdminProcedure = t.procedure.use(
+export const organizationAdminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
@@ -102,6 +106,17 @@ export const masterAdminProcedure = t.procedure.use(
       });
     }
 
+    return next({ ctx });
+  }),
+);
+
+
+/** Platform-wide diagnostics, catalogs and migrations are only for the master login. */
+export const masterAdminProcedure = organizationAdminProcedure.use(
+  t.middleware(({ ctx, next }) => {
+    if (ctx.siteOrganizationId !== null) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Apenas o administrador da plataforma pode executar esta ação." });
+    }
     return next({ ctx });
   }),
 );

@@ -1,3 +1,4 @@
+import { daysUntilDate } from "@shared/calendar-date";
 import { notifyOwner } from "./_core/notification";
 import { sendEmail } from "./mailer";
 import { getDb } from "./db";
@@ -23,15 +24,12 @@ export interface TrainingAlert {
 /**
  * Calculate days remaining until training expiration
  */
-export function calculateDaysRemaining(expirationDate: Date): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const expDate = new Date(expirationDate);
-  expDate.setHours(0, 0, 0, 0);
-  
-  const timeDiff = expDate.getTime() - today.getTime();
-  return Math.ceil(timeDiff / (1000 * 3600 * 24));
+export function calculateDaysRemaining(expirationDate: Date | string): number {
+  if (typeof expirationDate === 'string') {
+    return daysUntilDate(expirationDate, new Date(), 'America/Sao_Paulo') ?? Number.NaN;
+  }
+  const day = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return (day(expirationDate) - day(new Date())) / 86400000;
 }
 
 /**
@@ -129,7 +127,7 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
     for (const training of allTrainings) {
       if (!training.expirationDate || !training.employeeName) continue;
 
-      const daysRemaining = calculateDaysRemaining(new Date(training.expirationDate));
+      const daysRemaining = calculateDaysRemaining(training.expirationDate);
 
       // Alert if expiring within 30 days or already expired
       if (daysRemaining <= 30) {
@@ -313,3 +311,4 @@ export function scheduleTrainingAlerts(intervalMinutes: number = 1440) {
     sendTrainingAlerts();
   }, intervalMs);
 }
+

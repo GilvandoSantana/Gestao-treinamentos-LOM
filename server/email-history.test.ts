@@ -25,6 +25,10 @@ function createMockContext(): TrpcContext {
     siteAdminUsername: "teste-admin",
     siteRole: 'admin',
     sitePermissions: null,
+    siteContract: null,
+    siteOrganizationId: null,
+    siteHasTwoFactorEnabled: false,
+    isImpersonating: false,
     req: {
       protocol: "https",
       headers: {},
@@ -116,3 +120,4 @@ describe("emailHistory.list", () => {
     }
   });
 });
+

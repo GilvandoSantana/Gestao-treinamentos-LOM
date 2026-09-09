@@ -26,6 +26,9 @@ function makeEmployee(overrides: Partial<Employee> = {}): Employee {
 }
 
 describe('getTrainingStatus', () => {
+  it.each(['invalid', '2026-02-30', '2026-13-01'])('não considera uma data inválida como válida (%s)', date => {
+    expect(getTrainingStatus(date).status).toBe('unknown');
+  });
   it('retorna "unknown" quando a data de vencimento está vazia', () => {
     expect(getTrainingStatus('').status).toBe('unknown');
   });
@@ -63,6 +66,9 @@ describe('getTrainingStatus', () => {
 });
 
 describe('getWorstStatus', () => {
+  it('não indica conformidade quando um treinamento tem data inválida', () => {
+    expect(getWorstStatus(makeEmployee({ trainings: [{ name: 'A', expirationDate: 'invalid' }] as any }))).toBe('unknown');
+  });
   it('retorna "none" pra quem não tem nenhum treinamento', () => {
     expect(getWorstStatus(makeEmployee({ trainings: [] }))).toBe('none');
   });

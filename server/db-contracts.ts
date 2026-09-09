@@ -1,3 +1,4 @@
+import { daysUntilDate } from "@shared/calendar-date";
 /**
  * Contratos — CRUD e a proteção contra excluir permanentemente um contrato
  * ainda em uso.
@@ -6,11 +7,12 @@
 import { eq, and, count } from "drizzle-orm";
 import { contracts, employees, admins, safetySheets, trainings } from "../drizzle/schema";
 import { getDb } from "./db";
-import { slugifyContract, type ContractInfo, type ContractPreposition } from "@shared/contracts";
+import { DEFAULT_ORGANIZATION_ID, slugifyContract, type ContractInfo, type ContractPreposition } from "@shared/contracts";
 
 function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
   return {
     id: row.id,
+    organizationId: row.organizationId,
     slug: row.slug,
     name: row.name,
     preposition: row.preposition === "da" ? "da" : "do",
@@ -31,33 +33,35 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
   };
 }
 
-export async function listContracts(includeDeleted: boolean): Promise<ContractInfo[]> {
+export async function listContracts(includeDeleted: boolean, organizationId: string | null = null): Promise<ContractInfo[]> {
   const db = await getDb();
   if (!db) return [];
 
-  const rows = includeDeleted
-    ? await db.select().from(contracts)
-    : await db.select().from(contracts).where(eq(contracts.deleted, false));
+  const rows = await db.select().from(contracts).where(and(
+    includeDeleted ? undefined : eq(contracts.deleted, false),
+    organizationId === null ? undefined : eq(contracts.organizationId, organizationId),
+  ));
 
   return rows.map(toInfo).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getContractBySlug(slug: string): Promise<ContractInfo | undefined> {
+export async function getContractBySlug(slug: string, organizationId: string | null = null): Promise<ContractInfo | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const rows = await db.select().from(contracts).where(eq(contracts.slug, slug));
+  const rows = await db.select().from(contracts).where(and(eq(contracts.slug, slug), organizationId === null ? undefined : eq(contracts.organizationId, organizationId)));
   return rows[0] ? toInfo(rows[0]) : undefined;
 }
 
-export async function getContractById(id: string): Promise<ContractInfo | undefined> {
+export async function getContractById(id: string, organizationId: string | null = null): Promise<ContractInfo | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const rows = await db.select().from(contracts).where(eq(contracts.id, id));
+  const rows = await db.select().from(contracts).where(and(eq(contracts.id, id), organizationId === null ? undefined : eq(contracts.organizationId, organizationId)));
   return rows[0] ? toInfo(rows[0]) : undefined;
 }
 
 export async function createContract(input: {
   id: string;
+  organizationId?: string | null;
   name: string;
   preposition: ContractPreposition;
   alertEmail?: string | null;
@@ -80,6 +84,7 @@ export async function createContract(input: {
 
   await db.insert(contracts).values({
     id: input.id,
+    organizationId: input.organizationId ?? DEFAULT_ORGANIZATION_ID,
     slug,
     name: input.name.trim(),
     preposition: input.preposition,
@@ -92,6 +97,7 @@ export async function createContract(input: {
 
   return {
     id: input.id,
+    organizationId: input.organizationId ?? DEFAULT_ORGANIZATION_ID,
     slug,
     name: input.name.trim(),
     preposition: input.preposition,
@@ -233,7 +239,7 @@ export async function permanentlyDeleteContract(id: string): Promise<void> {
  * Panorama por contrato: colaboradores ativos e a situação dos treinamentos
  * deles — para o comparativo entre contratos que só o administrador vê.
  */
-export async function getContractsOverview(): Promise<
+export async function getContractsOverview(organizationId: string | null = null): Promise<
   Array<{
     slug: string;
     name: string;
@@ -246,7 +252,7 @@ export async function getContractsOverview(): Promise<
   const db = await getDb();
   if (!db) return [];
 
-  const activeContracts = await listContracts(false);
+  const activeContracts = await listContracts(false, organizationId);
 
   const [employeeRows, trainingRows] = await Promise.all([
     db
@@ -268,16 +274,15 @@ export async function getContractsOverview(): Promise<
   }
 
   const now = new Date();
-  now.setHours(0, 0, 0, 0);
+
 
   const statusCountByContract = new Map<string, { expired: number; expiring: number; valid: number }>();
   for (const t of trainingRows) {
     const contract = contractByEmployeeId.get(t.employeeId);
     if (!contract || !t.expirationDate) continue;
 
-    const expDate = new Date(t.expirationDate);
-    expDate.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
+    const diffDays = daysUntilDate(t.expirationDate, now, 'America/Sao_Paulo');
+    if (diffDays === null) continue;
 
     const entry = statusCountByContract.get(contract) ?? { expired: 0, expiring: 0, valid: 0 };
     if (diffDays < 0) entry.expired++;
@@ -296,3 +301,4 @@ export async function getContractsOverview(): Promise<
     };
   });
 }
+
