@@ -824,3 +824,23 @@ export const desktopInstaller = mysqlTable("desktopInstaller", {
 
 export type DesktopInstallerRow = typeof desktopInstaller.$inferSelect;
 export type InsertDesktopInstallerRow = typeof desktopInstaller.$inferInsert;
+
+
+/** Durable idempotency result; contains no login token or password. */
+export const completedSignups = mysqlTable("completedSignups", {
+  pendingSignupId: varchar("pendingSignupId", { length: 64 }).primaryKey(),
+  checkoutSessionId: varchar("checkoutSessionId", { length: 255 }).notNull().unique(),
+  organizationId: varchar("organizationId", { length: 64 }).notNull(),
+  adminId: varchar("adminId", { length: 64 }).notNull(),
+  customerId: varchar("customerId", { length: 255 }).notNull(),
+  subscriptionId: varchar("subscriptionId", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Temporary capacity held for in-progress uploads; expires after interruption. */
+export const cloudStorageReservations = mysqlTable("cloudStorageReservations", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  contractSlug: varchar("contractSlug", { length: 60 }).notNull(),
+  bytes: bigint("bytes", { mode: 'number' }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+});

@@ -8,6 +8,8 @@ import { slugifyContract } from "@shared/contracts";
 import {
   addGroupMember,
   adjustStorageUsed,
+  reserveStorageCapacity,
+  releaseStorageReservation,
   canAccessFile,
   canAccessFolder,
   createFileRecord,
@@ -284,7 +286,9 @@ export const cloudRouter = router({
         const fileId = uuidv4();
         const r2Key = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${fileId}-${input.fileName}`;
 
-        await uploadToR2(r2Key, fileBuffer, input.mimeType);
+        const reservationId = uuidv4();
+        await reserveStorageCapacity(ctx.siteContract, fileBuffer.length, reservationId);
+        await uploadToR2(r2Key, fileBuffer, input.mimeType).catch(async error => { await releaseStorageReservation(reservationId); throw error; });
 
         const file = await createFileRecord({
           id: fileId,
@@ -293,11 +297,12 @@ export const cloudRouter = router({
           name: input.name,
           r2Key,
           fileSize: fileBuffer.length,
+          reservationId,
           mimeType: input.mimeType,
           uploadedBy: ctx.siteAdminUsername,
-        });
+        }).catch(async error => { await releaseStorageReservation(reservationId); await deleteFromR2(r2Key); throw error; });
 
-        await adjustStorageUsed(ctx.siteContract, fileBuffer.length);
+
 
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -363,18 +368,21 @@ export const cloudRouter = router({
         const folderChain = existing.folderId ? await getFolderPath(existing.folderId) : [];
         const folderPath = folderChain.map((f) => slugifyContract(f.name)).join("/");
         const newVersionKey = `${ctx.siteContract}/${folderPath ? `${folderPath}/` : ""}${uuidv4()}-${input.fileName}`;
-        await uploadToR2(newVersionKey, fileBuffer, input.mimeType);
+        const reservationId = uuidv4();
+        await reserveStorageCapacity(ctx.siteContract, fileBuffer.length, reservationId);
+        await uploadToR2(newVersionKey, fileBuffer, input.mimeType).catch(async error => { await releaseStorageReservation(reservationId); throw error; });
 
         const updated = await uploadNewVersion(uuidv4(), input.fileId, ctx.siteContract, {
           r2Key: newVersionKey,
           fileSize: fileBuffer.length,
+          reservationId,
           mimeType: input.mimeType,
           uploadedBy: ctx.siteAdminUsername,
-        });
+        }).catch(async error => { await releaseStorageReservation(reservationId); await deleteFromR2(newVersionKey); throw error; });
 
         // O conteudo antigo continua no R2 (agora como versao) - soma o
         // tamanho novo, sem descontar o antigo.
-        await adjustStorageUsed(ctx.siteContract, fileBuffer.length);
+
 
         void logActivity({
           username: ctx.siteAdminUsername,

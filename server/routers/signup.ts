@@ -161,7 +161,7 @@ export const signupRouter = router({
         client_reference_id: pending.id,
         success_url: `${ctx.req.protocol}://${ctx.req.get("host")}/cadastro-pago?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${ctx.req.protocol}://${ctx.req.get("host")}/cadastro`,
-      });
+      }, { idempotencyKey: `signup-checkout-${pending.id}` });
 
       if (!checkoutSession.url) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível iniciar o pagamento." });
@@ -199,37 +199,18 @@ export const signupRouter = router({
       }
 
       const result = await finalizePaidSignup(pendingSignupId, {
+        checkoutSessionId: session.id,
         customerId,
         subscriptionId,
         subscriptionStatus: "active",
       });
 
-      let admin = result?.admin;
-      if (!admin) {
-        // Já tinha sido finalizado antes (provavelmente pelo webhook, que
-        // chegou primeiro) — busca quem já foi criado em vez de falhar.
-        const pending = await getPendingSignupById(pendingSignupId);
-        if (pending) {
-          // Ainda pendente de verdade (nem o webhook processou ainda) —
-          // pouco provável chegar aqui, mas a pessoa pode tentar de novo.
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "Ainda processando o pagamento. Atualize a página em alguns segundos.",
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Não foi possível concluir o cadastro. Entre em contato com o suporte.",
-        });
+      if (!result) {
+        throw new TRPCError({ code: "CONFLICT", message: "Cadastro não encontrado. Entre em contato com o suporte informando o pagamento." });
       }
-
-      void logActivity({ username: admin.username, role: "admin", action: "login" });
-
-      const sessionMarker = generateSessionMarker();
-      const token = await createSiteSessionToken(admin.username, "admin", admin.id, sessionMarker);
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.cookie(SITE_SESSION_COOKIE, token, cookieOptions);
-
-      return { success: true, sessionMarker } as const;
+      // The checkout URL is not a reusable authentication credential. The
+      // account's regular password and second factor are required to sign in.
+      return { success: true, requiresLogin: true } as const;
     }),
 });
+

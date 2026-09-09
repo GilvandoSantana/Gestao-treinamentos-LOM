@@ -12,6 +12,7 @@ import {
   cloudFavorites,
   cloudShares,
   cloudStorageConfig,
+  cloudStorageReservations,
   cloudGroups,
   cloudGroupMembers,
 } from "../drizzle/schema";
@@ -474,12 +475,14 @@ export async function createFileRecord(input: {
   fileUrl?: string | null;
   r2Key?: string | null;
   fileSize: number;
+  reservationId?: string;
   mimeType: string;
   uploadedBy: string | null;
 }): Promise<CloudFileInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(cloudFiles).values({
+  return withStorageCapacity(input.contractSlug, input.fileSize, async tx => {
+  await tx.insert(cloudFiles).values({
     id: input.id,
     contractSlug: input.contractSlug,
     folderId: input.folderId,
@@ -490,9 +493,11 @@ export async function createFileRecord(input: {
     mimeType: input.mimeType,
     uploadedBy: input.uploadedBy,
   });
-  const created = await getFileById(input.id);
+  const [row] = await tx.select().from(cloudFiles).where(eq(cloudFiles.id, input.id));
+  const created = row ? toFileInfo(row) : undefined;
   if (!created) throw new Error("Failed to read back created file");
   return created;
+  }, input.reservationId);
 }
 
 export async function renameFile(id: string, contractSlug: string, name: string): Promise<void> {
@@ -533,16 +538,20 @@ export async function uploadNewVersion(
   versionId: string,
   fileId: string,
   contractSlug: string,
-  input: { r2Key?: string | null; fileUrl?: string | null; fileSize: number; mimeType: string; uploadedBy: string | null }
+  input: { r2Key?: string | null; fileUrl?: string | null; fileSize: number; reservationId?: string; mimeType: string; uploadedBy: string | null }
 ): Promise<CloudFileInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const current = await getFileById(fileId);
+  return withStorageCapacity(contractSlug, input.fileSize, async tx => {
+  const [row] = await tx.select().from(cloudFiles).where(and(eq(cloudFiles.id, fileId), eq(cloudFiles.contractSlug, contractSlug))).for('update');
+  const current = row ? toFileInfo(row) : undefined;
+  if (current?.deletedAt) throw new Error("Arquivo na lixeira.");
+  if (current?.lockedBy && current.lockedBy !== input.uploadedBy && isLockActive(current.lockedBy, current.lockedAt)) throw new Error("Arquivo em edição por outra pessoa.");
   if (!current || current.contractSlug !== contractSlug) throw new Error("Arquivo não encontrado.");
 
   // Guarda o estado atual como uma versão antiga antes de sobrescrever.
-  await db.insert(cloudFileVersions).values({
+  await tx.insert(cloudFileVersions).values({
     id: versionId,
     fileId,
     r2Key: current.r2Key,
@@ -553,7 +562,7 @@ export async function uploadNewVersion(
     createdAt: current.updatedAt ? new Date(current.updatedAt) : new Date(),
   });
 
-  await db
+  await tx
     .update(cloudFiles)
     .set({
       r2Key: input.r2Key ?? null,
@@ -564,9 +573,11 @@ export async function uploadNewVersion(
     })
     .where(eq(cloudFiles.id, fileId));
 
-  const updated = await getFileById(fileId);
+  const [updatedRow] = await tx.select().from(cloudFiles).where(eq(cloudFiles.id, fileId));
+  const updated = updatedRow ? toFileInfo(updatedRow) : undefined;
   if (!updated) throw new Error("Failed to read back updated file");
   return updated;
+  }, input.reservationId);
 }
 
 export async function listFileVersions(fileId: string): Promise<CloudFileVersionInfo[]> {
@@ -1188,11 +1199,37 @@ const DEFAULT_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 
 async function ensureStorageConfig(contractSlug: string): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  const rows = await db.select().from(cloudStorageConfig).where(eq(cloudStorageConfig.contractSlug, contractSlug));
-  if (rows.length === 0) {
-    await db.insert(cloudStorageConfig).values({ contractSlug, limitBytes: DEFAULT_LIMIT_BYTES, usedBytes: 0 });
-  }
+  if (!db) throw new Error("Database not available");
+  await db.insert(cloudStorageConfig).values({ contractSlug, limitBytes: DEFAULT_LIMIT_BYTES, usedBytes: 0 })
+    .onDuplicateKeyUpdate({ set: { contractSlug } });
+}
+
+type CloudTransaction = Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>['transaction']>[0]>[0];
+
+/** Locks capacity and commits metadata + usage together across every replica. */
+async function withStorageCapacity<T>(contractSlug: string, bytes: number, write: (tx: CloudTransaction) => Promise<T>, reservationId?: string, committing = true): Promise<T> {
+  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Tamanho de arquivo inválido.");
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await ensureStorageConfig(contractSlug);
+  return db.transaction(async tx => {
+    const [config] = await tx.select().from(cloudStorageConfig).where(eq(cloudStorageConfig.contractSlug, contractSlug)).for('update');
+    // Trash and previous versions still occupy physical storage.
+    const [files] = await tx.select({ total: sql<number>`COALESCE(SUM(${cloudFiles.fileSize}), 0)` }).from(cloudFiles).where(eq(cloudFiles.contractSlug, contractSlug));
+    const [versions] = await tx.select({ total: sql<number>`COALESCE(SUM(${cloudFileVersions.fileSize}), 0)` }).from(cloudFileVersions)
+      .innerJoin(cloudFiles, eq(cloudFiles.id, cloudFileVersions.fileId)).where(eq(cloudFiles.contractSlug, contractSlug));
+    const held = await tx.select().from(cloudStorageReservations).where(eq(cloudStorageReservations.contractSlug, contractSlug)).for('update');
+    const active = held.filter(r => r.expiresAt.getTime() > Date.now());
+    const own = reservationId ? active.find(r => r.id === reservationId) : undefined;
+    if (reservationId && (!own || own.bytes !== bytes)) throw new Error("Reserva de armazenamento expirada. Reinicie o envio.");
+    const reservedOthers = active.filter(r => r.id !== reservationId).reduce((sum, r) => sum + r.bytes, 0);
+    const used = Number(files.total) + Number(versions.total);
+    if (bytes > 0 && used + reservedOthers + bytes > config.limitBytes) throw new Error("Espaço de armazenamento insuficiente.");
+    const result = await write(tx);
+    if (reservationId) await tx.delete(cloudStorageReservations).where(eq(cloudStorageReservations.id, reservationId));
+    await tx.update(cloudStorageConfig).set({ usedBytes: used + (committing ? bytes : 0) }).where(eq(cloudStorageConfig.contractSlug, contractSlug));
+    return result;
+  }, { isolationLevel: 'read committed' });
 }
 
 export async function getStorageInfo(contractSlug: string): Promise<StorageInfo> {
@@ -1224,18 +1261,8 @@ export async function setStorageLimit(contractSlug: string, limitBytes: number):
 /** Recalcula usedBytes somando os arquivos reais (não deletados) — rotina
  * de segurança caso o contador fique dessincronizado por algum motivo. */
 export async function recalculateStorageUsed(contractSlug: string): Promise<number> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await ensureStorageConfig(contractSlug);
-
-  const rows = await db
-    .select({ total: sql<number>`COALESCE(SUM(${cloudFiles.fileSize}), 0)` })
-    .from(cloudFiles)
-    .where(and(eq(cloudFiles.contractSlug, contractSlug), isNull(cloudFiles.deletedAt)));
-
-  const total = Number(rows[0]?.total ?? 0);
-  await db.update(cloudStorageConfig).set({ usedBytes: total }).where(eq(cloudStorageConfig.contractSlug, contractSlug));
-  return total;
+  await withStorageCapacity(contractSlug, 0, async () => undefined);
+  return (await getStorageInfo(contractSlug)).usedBytes;
 }
 
 // ---------------------------------------------------------------------
@@ -1302,4 +1329,18 @@ export async function pointFileToR2(id: string, r2Key: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(cloudFiles).set({ r2Key, fileUrl: null }).where(eq(cloudFiles.id, id));
+}
+
+
+export async function reserveStorageCapacity(contractSlug: string, bytes: number, id: string): Promise<void> {
+  await withStorageCapacity(contractSlug, bytes, async tx => {
+    await tx.delete(cloudStorageReservations).where(and(eq(cloudStorageReservations.contractSlug, contractSlug), sql`${cloudStorageReservations.expiresAt} <= NOW()`));
+    await tx.insert(cloudStorageReservations).values({ id, contractSlug, bytes, expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000) });
+  }, undefined, false);
+}
+
+export async function releaseStorageReservation(id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cloudStorageReservations).where(eq(cloudStorageReservations.id, id));
 }

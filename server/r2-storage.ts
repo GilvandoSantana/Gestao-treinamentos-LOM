@@ -13,6 +13,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   CreateMultipartUploadCommand,
   UploadPartCommand,
@@ -170,4 +171,11 @@ export async function getR2DownloadUrl(key: string, fileName: string, expiresInS
 export async function getR2PreviewUrl(key: string, expiresInSeconds = 3600): Promise<string> {
   const command = new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key });
   return getSignedUrl(requireClient(), command, { expiresIn: expiresInSeconds });
+}
+
+
+export async function getObjectSize(key: string): Promise<number> {
+  const result = await requireClient().send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+  if (!Number.isSafeInteger(result.ContentLength) || result.ContentLength! < 0) throw new Error("Tamanho do objeto indisponível.");
+  return result.ContentLength!;
 }

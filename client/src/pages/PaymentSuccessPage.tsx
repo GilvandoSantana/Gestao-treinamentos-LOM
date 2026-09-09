@@ -8,16 +8,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { trpc } from '@/lib/trpc';
-import { setSessionMarker } from '@/lib/session-marker';
 
 export default function PaymentSuccessPage() {
   const [status, setStatus] = useState<'checking' | 'success' | 'error'>('checking');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const finalizeMutation = trpc.signup.finalizeAfterPayment.useMutation();
-  const utils = trpc.useUtils();
-  const [, setLocation] = useLocation();
   const attempted = useRef(false);
 
   useEffect(() => {
@@ -34,12 +31,7 @@ export default function PaymentSuccessPage() {
 
     finalizeMutation
       .mutateAsync({ sessionId })
-      .then(async (result) => {
-        if (result?.sessionMarker) setSessionMarker(result.sessionMarker);
-        setStatus('success');
-        await utils.invalidate();
-        setTimeout(() => setLocation('/'), 900);
-      })
+      .then(() => { setStatus('success'); })
       .catch((err) => {
         setStatus('error');
         setErrorMessage(err instanceof Error && err.message ? err.message : 'Não foi possível concluir.');
@@ -75,7 +67,8 @@ export default function PaymentSuccessPage() {
             <>
               <CheckCircle2 size={40} className="text-teal mx-auto mb-4" />
               <h1 className="font-display font-bold text-xl text-foreground mb-1">Pagamento confirmado!</h1>
-              <p className="text-sm text-muted-foreground">Entrando no sistema...</p>
+              <p className="text-sm text-muted-foreground mb-4">Sua conta está pronta. Entre com seu usuário e senha.</p>
+              <Link href="/" className="text-orange hover:underline font-semibold">Ir para o login</Link>
             </>
           )}
 
@@ -94,3 +87,4 @@ export default function PaymentSuccessPage() {
     </div>
   );
 }
+
