@@ -385,10 +385,12 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">Quantidade</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">{editingId ? "Saldo (altere em Movimentações)" : "Quantidade inicial"}</label>
               <input
                 type="number"
                 step="0.01"
+                disabled={!!editingId}
+                title={editingId ? "Use Movimentações para alterar o saldo." : undefined}
                 value={form.quantity}
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
@@ -750,3 +752,4 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
     </div>
   );
 }
+

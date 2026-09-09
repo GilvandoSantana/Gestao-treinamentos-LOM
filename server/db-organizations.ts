@@ -8,9 +8,9 @@
  * server/routers/signup.ts, que é quem expõe isso pra rota pública).
  */
 
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import { organizations, type Organization } from "../drizzle/schema";
+import { organizations, admins, pendingSignups, completedSignups, type Organization } from "../drizzle/schema";
 import { getDb } from "./db";
 import { createAdmin, getAdminByUsername, toPublic, type PublicAdmin } from "./db-admins";
 import { getPendingSignupById, deletePendingSignup } from "./db-pending-signups";
@@ -99,56 +99,76 @@ export async function setOrganizationStripeInfo(
   await db.update(organizations).set(info).where(eq(organizations.id, organizationId));
 }
 
-/**
- * Finaliza um cadastro pendente DEPOIS do pagamento confirmado — cria a
- * organização e o administrador de verdade, salva os dados da assinatura,
- * e apaga o registro pendente. IDEMPOTENTE de propósito: tanto o webhook
- * do Stripe quanto a página de "pagamento concluído" (fallback caso o
- * webhook demore) podem chamar isso pro MESMO cadastro pendente — se já
- * tiver sido finalizado por um dos dois (registro pendente já apagado),
- * devolve null em vez de tentar criar tudo de novo.
- */
+/** Additive migration, safe to run on every startup and concurrent replicas. */
+export async function ensureIntegrityTables() {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS completedSignups (
+    pendingSignupId VARCHAR(64) PRIMARY KEY,
+    checkoutSessionId VARCHAR(255) NOT NULL UNIQUE,
+    organizationId VARCHAR(64) NOT NULL,
+    adminId VARCHAR(64) NOT NULL,
+    customerId VARCHAR(255) NOT NULL,
+    subscriptionId VARCHAR(255) NOT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS cloudStorageReservations (
+    id VARCHAR(64) PRIMARY KEY,
+    contractSlug VARCHAR(60) NOT NULL,
+    bytes BIGINT NOT NULL,
+    expiresAt TIMESTAMP NOT NULL,
+    INDEX reservation_contract (contractSlug)
+  ) ENGINE=InnoDB`);
+
+}
+
+/** A checkout is finalized once, even when return and webhook arrive together. */
 export async function finalizePaidSignup(
   pendingSignupId: string,
-  stripe: { customerId: string; subscriptionId: string; subscriptionStatus: string }
+  stripe: { checkoutSessionId: string; customerId: string; subscriptionId: string; subscriptionStatus: string }
 ): Promise<{ organization: Organization; admin: PublicAdmin } | null> {
-  const pending = await getPendingSignupById(pendingSignupId);
-  if (!pending) return null; // já finalizado por outro caminho, ou nunca existiu
-
-  let result: { organization: Organization; admin: PublicAdmin };
-  try {
-    result = await createOrganizationWithOwner({
-      organizationName: pending.organizationName,
-      organizationSlug: pending.organizationSlug,
-      adminUsername: pending.adminUsername,
-      adminPasswordHash: pending.passwordHash,
-    });
-  } catch (error) {
-    // Corrida real possível: o webhook do Stripe e a página de "pagamento
-    // concluído" (fallback) podem chegar quase ao mesmo tempo, os dois
-    // vendo o pendente ainda existir antes de qualquer um apagar. Se o
-    // erro for justamente "já existe" (a MESMA mensagem que
-    // createOrganizationWithOwner lança nesse caso), quem ganhou a
-    // corrida já criou tudo — busca o resultado em vez de falhar.
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("Já existe uma organização") || message.includes("nome de usuário já está em uso")) {
-      const existingOrg = await getOrganizationBySlug(pending.organizationSlug);
-      const existingAdminRow = await getAdminByUsername(pending.adminUsername);
-      if (existingOrg && existingAdminRow) {
-        await deletePendingSignup(pending.id);
-        return { organization: existingOrg, admin: toPublic(existingAdminRow) };
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados não disponível.");
+  return db.transaction(async tx => {
+    // Lock the pending row before checking the durable result. A waiting caller
+    // reads the committed receipt after the first transaction removes pending.
+    const [pending] = await tx.select().from(pendingSignups)
+      .where(eq(pendingSignups.id, pendingSignupId)).for('update');
+    const [receipt] = await tx.select().from(completedSignups)
+      .where(eq(completedSignups.pendingSignupId, pendingSignupId)).for('update');
+    if (receipt) {
+      if (receipt.checkoutSessionId !== stripe.checkoutSessionId || receipt.customerId !== stripe.customerId || receipt.subscriptionId !== stripe.subscriptionId) {
+        throw new Error("Este cadastro já foi concluído por outro pagamento.");
       }
+      const [organization] = await tx.select().from(organizations).where(eq(organizations.id, receipt.organizationId));
+      const [admin] = await tx.select().from(admins).where(and(eq(admins.id, receipt.adminId), eq(admins.organizationId, receipt.organizationId)));
+      if (!organization || !admin) throw new Error("Cadastro concluído não está mais disponível. Entre em contato com o suporte.");
+      return { organization, admin: toPublic(admin) };
     }
-    throw error;
-  }
-
-  await setOrganizationStripeInfo(result.organization.id, {
-    stripeCustomerId: stripe.customerId,
-    stripeSubscriptionId: stripe.subscriptionId,
-    subscriptionStatus: stripe.subscriptionStatus,
-  });
-
-  await deletePendingSignup(pending.id);
-
-  return result;
+    if (!pending) {
+      // Compatibility with checkouts completed before receipts existed. Never
+      // infer ownership from a matching username or organization slug alone.
+      const [organization] = await tx.select().from(organizations).where(and(
+        eq(organizations.stripeCustomerId, stripe.customerId), eq(organizations.stripeSubscriptionId, stripe.subscriptionId)
+      ));
+      if (!organization) return null;
+      const [admin] = await tx.select().from(admins).where(and(eq(admins.organizationId, organization.id), eq(admins.role, 'admin')));
+      return admin ? { organization, admin: toPublic(admin) } : null;
+    }
+    const username = pending.adminUsername.trim().toLowerCase();
+    const [collision] = await tx.select().from(admins).where(eq(admins.username, username));
+    if (collision) throw new Error("Esse nome de usuário já está em uso. Entre em contato com o suporte.");
+    const organizationId = uuidv4(), adminId = uuidv4();
+    await tx.insert(organizations).values({ id: organizationId, slug: pending.organizationSlug,
+      name: pending.organizationName, stripeCustomerId: stripe.customerId,
+      stripeSubscriptionId: stripe.subscriptionId, subscriptionStatus: stripe.subscriptionStatus });
+    await tx.insert(admins).values({ id: adminId, organizationId, username,
+      passwordHash: pending.passwordHash, contract: pending.organizationSlug, role: 'admin', permissions: null });
+    await tx.insert(completedSignups).values({ pendingSignupId, checkoutSessionId: stripe.checkoutSessionId,
+      organizationId, adminId, customerId: stripe.customerId, subscriptionId: stripe.subscriptionId });
+    await tx.delete(pendingSignups).where(eq(pendingSignups.id, pendingSignupId));
+    const [organization] = await tx.select().from(organizations).where(eq(organizations.id, organizationId));
+    const [admin] = await tx.select().from(admins).where(eq(admins.id, adminId));
+    return { organization, admin: toPublic(admin) };
+  }, { isolationLevel: 'read committed' });
 }

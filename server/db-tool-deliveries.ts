@@ -5,7 +5,7 @@
 import { eq, and, desc } from "drizzle-orm";
 import { toolDeliveries } from "../drizzle/schema";
 import { getDb } from "./db";
-import { getWarehouseItemById, adjustWarehouseItemQuantity } from "./db-warehouse";
+import { lockWarehouseItem, validateStockQuantity, adjustWarehouseItemQuantity } from "./db-warehouse";
 
 export interface ToolDeliveryInfo {
   id: string;
@@ -91,7 +91,9 @@ export async function createToolDelivery(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const item = await getWarehouseItemById(input.itemId);
+  validateStockQuantity(input.quantity);
+  return db.transaction(async tx => {
+  const item = await lockWarehouseItem(tx, input.itemId, contract);
   if (!item || item.contract !== contract) {
     throw new Error("Item não encontrado neste contrato.");
   }
@@ -99,7 +101,7 @@ export async function createToolDelivery(
     throw new Error(`Estoque insuficiente: há apenas ${item.quantity} ${item.unit} disponível.`);
   }
 
-  await db.insert(toolDeliveries).values({
+  await tx.insert(toolDeliveries).values({
     id,
     contract,
     employeeId: input.employeeId,
@@ -113,10 +115,11 @@ export async function createToolDelivery(
     deliveredBy: input.deliveredBy || null,
   });
 
-  await adjustWarehouseItemQuantity(item.id, -input.quantity);
+  await adjustWarehouseItemQuantity(tx, item.id, contract, -input.quantity);
 
-  const rows = await db.select().from(toolDeliveries).where(eq(toolDeliveries.id, id));
+  const rows = await tx.select().from(toolDeliveries).where(eq(toolDeliveries.id, id));
   return toInfo(rows[0]);
+  });
 }
 
 export async function returnToolDelivery(
@@ -127,15 +130,16 @@ export async function returnToolDelivery(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const rows = await db
+  return db.transaction(async tx => {
+  const rows = await tx
     .select()
     .from(toolDeliveries)
-    .where(and(eq(toolDeliveries.id, id), eq(toolDeliveries.contract, contract)));
+    .where(and(eq(toolDeliveries.id, id), eq(toolDeliveries.contract, contract))).for("update");
   const delivery = rows[0];
   if (!delivery) throw new Error("Entrega não encontrada.");
   if (delivery.status === "devolvido") throw new Error("Este item já foi devolvido.");
 
-  await db
+  await tx
     .update(toolDeliveries)
     .set({
       status: "devolvido",
@@ -144,8 +148,10 @@ export async function returnToolDelivery(
     })
     .where(eq(toolDeliveries.id, id));
 
-  await adjustWarehouseItemQuantity(delivery.itemId, Number(delivery.quantity));
+  await adjustWarehouseItemQuantity(tx, delivery.itemId, contract, Number(delivery.quantity));
 
-  const updated = await db.select().from(toolDeliveries).where(eq(toolDeliveries.id, id));
+  const updated = await tx.select().from(toolDeliveries).where(eq(toolDeliveries.id, id));
   return toInfo(updated[0]);
+  });
 }
+

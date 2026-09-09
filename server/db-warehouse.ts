@@ -2,7 +2,7 @@
  * Almoxarifado — itens em estoque e movimentações, por contrato.
  */
 
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { warehouseItems, warehouseMovements } from "../drizzle/schema";
 import { getDb } from "./db";
 import type { WarehouseItemInfo, WarehouseItemType, WarehouseMovementInfo, WarehouseMovementType } from "@shared/warehouse";
@@ -164,7 +164,6 @@ export async function updateWarehouseItem(
       name: input.name.trim(),
       type: input.type,
       unit: input.unit.trim() || "un",
-      quantity: String(input.quantity),
       marca: input.marca?.trim() || null,
       modelo: input.modelo?.trim() || null,
       categoria: input.categoria?.trim() || null,
@@ -194,13 +193,27 @@ export async function deleteWarehouseItem(id: string, contract: string): Promise
   await db.delete(warehouseItems).where(and(eq(warehouseItems.id, id), eq(warehouseItems.contract, contract)));
 }
 
-export async function adjustWarehouseItemQuantity(id: string, delta: number): Promise<void> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const item = await getWarehouseItemById(id);
-  if (!item) return;
-  const newQuantity = Math.max(0, item.quantity + delta);
-  await db.update(warehouseItems).set({ quantity: String(newQuantity) }).where(eq(warehouseItems.id, id));
+export type StockTransaction = Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>['transaction']>[0]>[0];
+
+export async function lockWarehouseItem(tx: StockTransaction, id: string, contract: string) {
+  const rows = await tx.select().from(warehouseItems)
+    .where(and(eq(warehouseItems.id, id), eq(warehouseItems.contract, contract))).for('update');
+  if (!rows[0]) throw new Error("Item não encontrado neste contrato.");
+  return toItemInfo(rows[0]);
+}
+
+export function validateStockQuantity(quantity: number) {
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 9999999999.99 || Math.abs(quantity * 100 - Math.round(quantity * 100)) > 0.0001) {
+    throw new Error("Quantidade inválida.");
+  }
+}
+
+export async function adjustWarehouseItemQuantity(tx: StockTransaction, id: string, contract: string, delta: number): Promise<void> {
+  validateStockQuantity(Math.abs(delta));
+  const item = await lockWarehouseItem(tx, id, contract);
+  if (item.quantity + delta < 0) throw new Error("Estoque insuficiente.");
+  await tx.update(warehouseItems).set({ quantity: sql`${warehouseItems.quantity} + ${delta}` })
+    .where(and(eq(warehouseItems.id, id), eq(warehouseItems.contract, contract)));
 }
 
 // ---------------------------------------------------------------------
@@ -240,7 +253,9 @@ export async function createWarehouseMovement(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const item = await getWarehouseItemById(input.itemId);
+  validateStockQuantity(input.quantity);
+  return db.transaction(async tx => {
+  const item = await lockWarehouseItem(tx, input.itemId, contract);
   if (!item || item.contract !== contract) {
     throw new Error("Item não encontrado neste contrato");
   }
@@ -249,7 +264,7 @@ export async function createWarehouseMovement(
     throw new Error(`Estoque insuficiente: há apenas ${item.quantity} ${item.unit} disponível.`);
   }
 
-  await db.insert(warehouseMovements).values({
+  await tx.insert(warehouseMovements).values({
     id,
     contract,
     itemId: item.id,
@@ -267,10 +282,11 @@ export async function createWarehouseMovement(
   });
 
   const delta = input.movementType === "entrada" ? input.quantity : -input.quantity;
-  await adjustWarehouseItemQuantity(item.id, delta);
+  await adjustWarehouseItemQuantity(tx, item.id, contract, delta);
 
-  const rows = await db.select().from(warehouseMovements).where(eq(warehouseMovements.id, id));
+  const rows = await tx.select().from(warehouseMovements).where(eq(warehouseMovements.id, id));
   return toMovementInfo(rows[0]);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -336,3 +352,4 @@ export async function getPriceHistory(contract: string): Promise<ItemPriceHistor
 
   return result.sort((a, b) => a.itemName.localeCompare(b.itemName));
 }
+

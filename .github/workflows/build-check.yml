@@ -42,3 +42,34 @@ jobs:
       - name: Build de produção
         run: pnpm run build
 
+
+  integrity:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: isolated-test-password
+          MYSQL_DATABASE: integrity_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pisolated-test-password"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:isolated-test-password@127.0.0.1:3306/integrity_test
+      RUN_DB_INTEGRATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Preparar schema apenas no MySQL descartável
+        run: pnpm exec drizzle-kit push --force
+      - name: Testar concorrência, rollback e restauração de backup
+        run: pnpm exec vitest run server/integrity.mysql.test.ts
+      - name: Verificar dependências de produção
+        run: pnpm audit --prod
