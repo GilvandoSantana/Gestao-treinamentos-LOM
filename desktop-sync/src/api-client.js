@@ -83,7 +83,7 @@ class ApiClient {
   }
 
   /** Faz login e guarda o token internamente. Devolve {username}. */
-  async login(username, password) {
+  async login(username, password, twoFactorCode) {
     const url = new URL("/api/trpc/auth.desktopLogin?batch=1", this.serverUrl).toString();
     // Nome do computador, sugerido automaticamente — aparece na tela de
     // "Dispositivos conectados" do administrador, permitindo revogar só
@@ -99,7 +99,7 @@ class ApiClient {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: this.serverUrl },
-      body: JSON.stringify({ "0": { json: { username: username || undefined, password, deviceName } } }),
+      body: JSON.stringify({ "0": { json: { username: username || undefined, password, deviceName, twoFactorCode: twoFactorCode || undefined } } }),
     });
     const data = await parseTrpcResponse(res);
     this.token = data.token;
@@ -236,3 +236,4 @@ class ApiClient {
 }
 
 module.exports = { ApiClient, ApiError };
+

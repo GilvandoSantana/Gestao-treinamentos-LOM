@@ -27,15 +27,23 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert employee: database not available");
-    return;
+    throw new Error("Database not available");
   }
 
   // Sempre recalcula a idade a partir da data de nascimento antes de salvar
   const computedAge = calculateAgeFromBirthDate(employee.birthDate) ?? employee.age;
 
   try {
-    await db.insert(employees).values({ ...employee, age: computedAge }).onDuplicateKeyUpdate({
-      set: {
+    const existing = await db.select({ owner: employees.contract }).from(employees).where(eq(employees.id, employee.id)).limit(1);
+    if (existing.length && existing[0].owner !== employee.contract) {
+      throw new Error("Registro não encontrado no escopo informado.");
+    }
+    if (!existing.length) {
+      // A simultaneous insert with the same ID fails instead of updating another owner.
+      await db.insert(employees).values({ ...employee, age: computedAge });
+      return;
+    }
+    await db.update(employees).set({
         name: employee.name,
         registration: employee.registration,
         educationLevel: employee.educationLevel,
@@ -55,8 +63,7 @@ export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
         cpf: employee.cpf,
         customFields: employee.customFields,
         updatedAt: new Date(),
-      },
-    });
+    }).where(and(eq(employees.id, employee.id), eq(employees.contract, employee.contract!)));
   } catch (error) {
     console.error("[Database] Failed to upsert employee:", error);
     throw error;
@@ -85,7 +92,7 @@ export async function getEmployeeById(id: string) {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot get employee: database not available");
-    return undefined;
+    throw new Error("Database not available");
   }
 
   try {
@@ -93,7 +100,7 @@ export async function getEmployeeById(id: string) {
     return result.length > 0 ? result[0] : undefined;
   } catch (error) {
     console.error("[Database] Failed to get employee:", error);
-    return undefined;
+    throw error;
   }
 }
 
@@ -139,18 +146,25 @@ export async function upsertTraining(training: InsertTraining): Promise<void> {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert training: database not available");
-    return;
+    throw new Error("Database not available");
   }
 
   try {
-    await db.insert(trainings).values(training).onDuplicateKeyUpdate({
-      set: {
+    const existing = await db.select({ owner: trainings.employeeId }).from(trainings).where(eq(trainings.id, training.id)).limit(1);
+    if (existing.length && existing[0].owner !== training.employeeId) {
+      throw new Error("Registro não encontrado no escopo informado.");
+    }
+    if (!existing.length) {
+      // A simultaneous insert with the same ID fails instead of updating another owner.
+      await db.insert(trainings).values(training);
+      return;
+    }
+    await db.update(trainings).set({
         name: training.name,
         completionDate: training.completionDate,
         expirationDate: training.expirationDate,
         updatedAt: new Date(),
-      },
-    });
+    }).where(and(eq(trainings.id, training.id), eq(trainings.employeeId, training.employeeId!)));
   } catch (error) {
     console.error("[Database] Failed to upsert training:", error);
     throw error;
@@ -289,4 +303,12 @@ export async function getDistinctTrainingNames(contract?: string): Promise<strin
     console.error("[Database] Failed to get distinct training names:", error);
     return [];
   }
+}
+
+
+export async function getTrainingById(id: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db.select().from(trainings).where(eq(trainings.id, id)).limit(1);
+  return rows[0];
 }

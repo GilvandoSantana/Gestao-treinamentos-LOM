@@ -2,6 +2,7 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { getSiteSession, getRawCookie, IMPERSONATION_BACKUP_COOKIE } from "../site-auth";
+import { getContractBySlug, listContracts } from "../db-contracts";
 import { getAdminById } from "../db-admins";
 import { ALL_PERMISSIONS, type Permissions, type SiteRole } from "@shared/permissions";
 
@@ -16,11 +17,7 @@ export type TrpcContext = {
   sitePermissions: Permissions | null;
   /** Contrato do usuário. null = administrador principal (vê todos). */
   siteContract: string | null;
-  /** Organização (empresa dona da conta) de quem está logado. null =
-   * login mestre de recuperação, que enxerga além de uma organização só
-   * (mesmo espírito de siteContract:null = "vê todos"). Ainda não é
-   * usado por nenhuma consulta pra isolar dado entre organizações — só
-   * disponível no contexto, pronto pra quando isso for implementado. */
+  /** null is reserved for the authenticated recovery/master account. */
   siteOrganizationId: string | null;
   /** A conta logada tem 2FA ativa? false pro login mestre (que não tem
    * linha própria na tabela admins). */
@@ -55,7 +52,7 @@ export async function createContext(
   if (siteSession.isSiteAdmin) {
     if (siteSession.adminId) {
       const account = await getAdminById(siteSession.adminId);
-      if (account) {
+      if (account && account.organizationId) {
         siteRole = account.role;
         sitePermissions = account.permissions;
         siteContract = account.contract;
@@ -74,15 +71,22 @@ export async function createContext(
     }
   }
 
-  // Administrador escolhe no cabeçalho em qual contrato está trabalhando.
-  // Sem escolha, continua vendo todos. Usuários comuns ignoram este cabeçalho.
   if (siteRole === "admin") {
-    // Validação leve aqui (não bate no banco a cada request): um slug
-    // inválido ou de um contrato já excluído simplesmente não encontra nada
-    // nas consultas filtradas, sem quebrar a requisição.
     const header = opts.req.headers["x-active-contract"];
     const chosen = Array.isArray(header) ? header[0] : header;
-    siteContract = typeof chosen === "string" && chosen.trim() ? chosen.trim() : null;
+    const requested = typeof chosen === "string" && chosen.trim() ? chosen.trim() : null;
+    if (siteOrganizationId !== null) {
+      // An organization admin never receives the platform-wide null scope.
+      const contract = requested
+        ? await getContractBySlug(requested, siteOrganizationId)
+        : (await listContracts(false, siteOrganizationId))[0];
+      siteContract = contract && !contract.deleted ? contract.slug : null;
+    } else {
+      siteContract = requested;
+    }
+  } else if (siteRole === "user" && siteContract && siteOrganizationId) {
+    const contract = await getContractBySlug(siteContract, siteOrganizationId);
+    if (!contract || contract.deleted) siteContract = null;
   }
 
   const stillValid = siteSession.isSiteAdmin && siteRole !== null;
@@ -103,3 +107,4 @@ export async function createContext(
     isImpersonating: !!getRawCookie(opts.req, IMPERSONATION_BACKUP_COOKIE),
   };
 }
+

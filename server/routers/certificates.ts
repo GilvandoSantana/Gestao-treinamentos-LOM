@@ -9,7 +9,7 @@ import {
   getCertificatesByTrainingId,
   uploadCertificate,
 } from "../db-certificates";
-import { getEmployeeScoped } from "../db-employees";
+import { getEmployeeScoped, getTrainingById } from "../db-employees";
 import { deleteCertificateFromSupabase, getSignedCertificateUrl, uploadCertificateToSupabase } from "../supabase-storage";
 import { logActivity } from "../db-activity";
 
@@ -29,6 +29,11 @@ export const certificatesRouter = router({
           const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
           if (!employee) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+          }
+
+          const training = await getTrainingById(input.trainingId);
+          if (training && training.employeeId !== employee.id) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Treinamento não encontrado." });
           }
 
           const fileBuffer = typeof input.fileData === "string" 
@@ -87,9 +92,14 @@ export const certificatesRouter = router({
 
     getByTraining: requirePermission('viewCertificates')
       .input(z.object({ trainingId: z.string() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         try {
-          return await getCertificatesByTrainingId(input.trainingId);
+          const certificates = await getCertificatesByTrainingId(input.trainingId);
+          const visible = await Promise.all(certificates.map(async certificate => {
+            const employee = await getEmployeeScoped(certificate.employeeId, ctx.siteContract);
+            return employee ? certificate : null;
+          }));
+          return visible.filter((certificate): certificate is NonNullable<typeof certificate> => certificate !== null);
         } catch (error) {
           console.error("Error fetching certificates by training:", error);
           return [];
@@ -165,3 +175,4 @@ export const certificatesRouter = router({
         }
       }),
   });
+

@@ -516,7 +516,7 @@ export default function Home() {
           canImportExport={session.can('importExport')}
           onImportExcel={session.can('editEmployees') ? () => setShowExcelImport(true) : undefined}
           onRenewBulk={session.can('editEmployees') ? () => setShowRenewBulk(true) : undefined}
-          onShowRolesTrainingTypes={session.isMasterAdmin ? () => setShowRolesTrainingTypes(true) : undefined}
+          onShowRolesTrainingTypes={session.isGlobalAdmin ? () => setShowRolesTrainingTypes(true) : undefined}
           notificationItems={trainingAlerts.items}
           onNotificationSelect={(item) => {
             setSearchQuery(item.employeeName);
@@ -543,10 +543,11 @@ export default function Home() {
           }}
           onManageAdmins={session.isMasterAdmin ? () => setShowAdminManagement(true) : undefined}
           isMasterAdmin={session.isMasterAdmin}
+          isGlobalAdmin={session.isGlobalAdmin}
           onActiveContractChange={handleActiveContractChange}
           titleContract={session.contract}
           onShowDismissed={() => setShowDismissed(true)}
-          onShowActivity={session.isMasterAdmin ? () => setShowActivity(true) : undefined}
+          onShowActivity={session.isGlobalAdmin ? () => setShowActivity(true) : undefined}
           onShowContracts={session.isMasterAdmin ? () => setShowContracts(true) : undefined}
           onShowDocumentation={session.isMasterAdmin ? () => setShowDocumentation(true) : undefined}
           onShowDocuments={session.can('viewCertificates') ? () => setShowDocuments(true) : undefined}
@@ -910,3 +911,4 @@ export default function Home() {
     </div>
   );
 }
+

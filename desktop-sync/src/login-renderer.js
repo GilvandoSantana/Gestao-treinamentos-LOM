@@ -4,6 +4,7 @@ const stepFolder = document.getElementById("step-folder");
 
 const serverUrlInput = document.getElementById("serverUrl");
 const usernameInput = document.getElementById("username");
+const twoFactorInput = document.getElementById("two-factor-code");
 const passwordInput = document.getElementById("password");
 const loginError = document.getElementById("login-error");
 const btnLogin = document.getElementById("btn-login");
@@ -58,7 +59,7 @@ btnLogin.addEventListener("click", async () => {
 
   setButtonLoading(btnLogin, true, "Entrar");
   try {
-    const result = await window.desktopSync.login(serverUrl, username, password);
+    const result = await window.desktopSync.login(serverUrl, username, password, twoFactorInput.value.trim());
     if (!result.ok) {
       showError(loginError, result.error);
       return;
@@ -122,3 +123,4 @@ btnFinish.addEventListener("click", async () => {
   }
   // Se deu certo, o processo principal fecha esta janela sozinho.
 });
+

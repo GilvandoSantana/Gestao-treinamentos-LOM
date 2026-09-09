@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useSiteSession } from '@/hooks/useSiteSession';
 import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ export default function AdminManagementModal({
   onClose,
   currentUsername,
 }: AdminManagementModalProps) {
+  const { isGlobalAdmin } = useSiteSession();
   const [newUsername, setNewUsername] = useState('');
   const [newSetor, setNewSetor] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -53,9 +55,9 @@ export default function AdminManagementModal({
   const testEmailMutation = trpc.auth.testEmail.useMutation();
   const testWhatsAppMutation = trpc.auth.testWhatsApp.useMutation();
   const [testPhone, setTestPhone] = useState('');
-  const backupsQuery = trpc.backup.list.useQuery(undefined, { enabled: isOpen });
+  const backupsQuery = trpc.backup.list.useQuery(undefined, { enabled: isOpen && isGlobalAdmin });
   const runBackupMutation = trpc.backup.runNow.useMutation();
-  const desktopSessionsQuery = trpc.auth.desktopSessions.list.useQuery(undefined, { enabled: isOpen });
+  const desktopSessionsQuery = trpc.auth.desktopSessions.list.useQuery(undefined, { enabled: isOpen && isGlobalAdmin });
   const revokeDesktopSessionMutation = trpc.auth.desktopSessions.revoke.useMutation();
 
   const handleRevokeDesktopSession = async (id: string, deviceName: string | null) => {
@@ -325,6 +327,7 @@ export default function AdminManagementModal({
           })}
         </div>
 
+        {isGlobalAdmin && <>
         {/* Diagnóstico do envio de e-mail — só o administrador principal chega
             até aqui, e é ele quem configura o SMTP no Railway. */}
         <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
@@ -468,6 +471,8 @@ export default function AdminManagementModal({
           </button>
         </div>
 
+        </>}
+
         {/* Nova conta */}
         <form onSubmit={handleCreate} className="space-y-3 border-t border-border pt-4">
           <p className="text-sm font-semibold text-foreground flex items-center gap-2">
@@ -551,3 +556,4 @@ export default function AdminManagementModal({
     </div>
   );
 }
+

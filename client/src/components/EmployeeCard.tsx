@@ -25,6 +25,7 @@ const statusBorderMap = {
   expiring: 'border-l-warning',
   valid: 'border-l-teal',
   none: 'border-l-muted-foreground',
+  unknown: 'border-l-muted-foreground',
 };
 
 const statusBgMap = {
@@ -209,3 +210,5 @@ export default function EmployeeCard({ employee, index, onEdit, onDelete, onDism
     </div>
   );
 }
+
+

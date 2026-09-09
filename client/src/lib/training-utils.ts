@@ -1,3 +1,4 @@
+import { daysUntilDate } from '@shared/calendar-date';
 import type { Employee, FilterType, Statistics, TrainingStatus } from './types';
 
 export function getTrainingStatus(expirationDate: string): TrainingStatus {
@@ -5,12 +6,8 @@ export function getTrainingStatus(expirationDate: string): TrainingStatus {
     return { status: 'unknown', label: 'Data não definida', diffDays: 0 };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expDate = new Date(expirationDate);
-  expDate.setHours(0, 0, 0, 0);
-  const diffTime = expDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffDays = daysUntilDate(expirationDate);
+  if (diffDays === null) return { status: 'unknown', label: 'Data inválida', diffDays: 0 };
 
   if (diffDays < 0) {
     return {
@@ -95,19 +92,23 @@ export function getStatistics(employees: Employee[]): Statistics {
   return { total, expired, expiring, valid };
 }
 
-export function getWorstStatus(employee: Employee): 'expired' | 'expiring' | 'valid' | 'none' {
+export function getWorstStatus(employee: Employee): 'expired' | 'expiring' | 'valid' | 'none' | 'unknown' {
   if (!employee.trainings || employee.trainings.length === 0) return 'none';
 
   let hasExpired = false;
   let hasExpiring = false;
+  let hasUnknown = false;
 
   for (const training of employee.trainings) {
     const status = getTrainingStatus(training.expirationDate).status;
     if (status === 'expired') hasExpired = true;
     else if (status === 'expiring') hasExpiring = true;
+    else if (status === 'unknown') hasUnknown = true;
   }
 
   if (hasExpired) return 'expired';
   if (hasExpiring) return 'expiring';
+  if (hasUnknown) return 'unknown';
   return 'valid';
 }
+

@@ -71,6 +71,7 @@ interface HeaderProps {
   onShowContracts?: () => void;
   onShowDocumentation?: () => void;
   isMasterAdmin?: boolean;
+  isGlobalAdmin?: boolean;
   /** Chamado quando o administrador escolhe outro contrato (ou "todos" = null). */
   onActiveContractChange?: (slug: string | null) => void;
   /** Contrato exibido no título: o do próprio usuário, ou o que o administrador selecionou. */
@@ -108,6 +109,7 @@ export default function Header({
   onShowContracts,
   onShowDocumentation,
   isMasterAdmin = false,
+  isGlobalAdmin = false,
   onActiveContractChange,
   titleContract = null,
   onShowDismissed,
@@ -290,7 +292,7 @@ export default function Header({
                     role="menu"
                     className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-2rem)] bg-card rounded-xl shadow-2xl border border-border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto"
                   >
-                    <button
+                    {isGlobalAdmin && <button
                       role="menuitem"
                       onClick={() => {
                         onActiveContractChange(null);
@@ -301,7 +303,7 @@ export default function Header({
                       }`}
                     >
                       Todos os contratos
-                    </button>
+                    </button>}
                     <div className="border-t border-border" />
                     {contractsQuery.isLoading && (
                       <p className="px-3.5 py-2.5 text-xs text-muted-foreground">Carregando...</p>
@@ -527,3 +529,4 @@ export default function Header({
     </div>
   );
 }
+

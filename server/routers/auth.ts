@@ -1,7 +1,8 @@
+import { requireContractAccess } from "../contract-access";
 import { COOKIE_NAME } from "@shared/const";
 import { v4 as uuidv4 } from "uuid";
 import { getSessionCookieOptions } from "../_core/cookies";
-import { masterAdminProcedure, publicProcedure, siteAdminProcedure, router } from "../_core/trpc";
+import { masterAdminProcedure, organizationAdminProcedure, publicProcedure, siteAdminProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import QRCode from "qrcode";
@@ -57,6 +58,12 @@ import { createDesktopSession, listActiveDesktopSessions, revokeDesktopSession }
 import { listActivity, logActivity } from "../db-activity";
 import { sendTestEmail } from "../mailer";
 import { sendTestWhatsApp } from "../whatsapp-service";
+
+function assertManagedAccount(organizationId: string | null, account: Awaited<ReturnType<typeof getAdminById>>) {
+  if (!account || (organizationId !== null && account.organizationId !== organizationId)) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
+  }
+}
 
 export const authRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
@@ -278,6 +285,9 @@ export const authRouter = router({
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Conta inválida." });
         }
 
+        if (admin.twoFactorSecret) {
+          throw new TRPCError({ code: "CONFLICT", message: "Desative a autenticação em duas etapas antes de configurar outra." });
+        }
         const valid = await verifyTwoFactorCode(input.secret, input.code);
         if (!valid) {
           throw new TRPCError({
@@ -339,6 +349,7 @@ export const authRouter = router({
         z.object({
           username: z.string().trim().min(1).optional(),
           password: z.string().min(1),
+          twoFactorCode: z.string().trim().regex(/^\d{6}$/).optional(),
           // Nome do computador, sugerido pelo próprio programa
           // (os.hostname()) — pra aparecer na lista de "Dispositivos
           // conectados" e permitir revogar só este, se for perdido.
@@ -371,6 +382,9 @@ export const authRouter = router({
           const admin = await getAdminByUsername(typedUsername);
           if (admin) {
             isValid = await verifyAdminPassword(input.password, admin.passwordHash);
+            if (isValid && admin.twoFactorSecret) {
+              isValid = !!input.twoFactorCode && await verifyTwoFactorCode(admin.twoFactorSecret, input.twoFactorCode);
+            }
             sessionUsername = admin.username;
             sessionRole = admin.role === "user" ? "user" : "admin";
             sessionAdminId = admin.id;
@@ -392,7 +406,7 @@ export const authRouter = router({
           registerFailedLoginAttempt(clientKey);
           throw new TRPCError({
             code: "UNAUTHORIZED",
-            message: "Usuário ou senha incorretos.",
+            message: "Usuário, senha ou código de autenticação incorretos. Se sua conta usa 2FA, informe o código do aplicativo autenticador.",
           });
         }
 
@@ -459,6 +473,7 @@ export const authRouter = router({
     }),
 
     siteSession: publicProcedure.query(async ({ ctx }) => ({
+      isGlobalAdmin: ctx.isSiteAdmin && ctx.siteRole === "admin" && ctx.siteOrganizationId === null,
       isSiteAdmin: ctx.isSiteAdmin,
       username: ctx.siteAdminUsername,
       role: ctx.siteRole,
@@ -526,11 +541,11 @@ export const authRouter = router({
 
     // Gerenciamento de contas — SOMENTE o administrador principal.
     admins: router({
-      list: masterAdminProcedure.query(async ({ ctx }) => {
+      list: organizationAdminProcedure.query(async ({ ctx }) => {
         return listAdmins(ctx.siteOrganizationId);
       }),
 
-      create: masterAdminProcedure
+      create: organizationAdminProcedure
         .input(
           z.object({
             username: z
@@ -560,7 +575,7 @@ export const authRouter = router({
             throw new TRPCError({ code: "CONFLICT", message: "Esse usuário já existe." });
           }
 
-          const contract = await getContractBySlug(input.contract);
+          const contract = await requireContractAccess(ctx, input.contract);
           if (!contract || contract.deleted) {
             throw new TRPCError({ code: "BAD_REQUEST", message: "Contrato inválido ou excluído." });
           }
@@ -577,6 +592,7 @@ export const authRouter = router({
           const passwordHash = await hashAdminPassword(input.password);
           return createAdmin({
             id: uuidv4(),
+            organizationId: ctx.siteOrganizationId ?? contract.organizationId ?? undefined,
             username: input.username,
             passwordHash,
             // Só existe um administrador: a conta mestra configurada no
@@ -589,14 +605,16 @@ export const authRouter = router({
           });
         }),
 
-      setSetor: masterAdminProcedure
+      setSetor: organizationAdminProcedure
         .input(z.object({ id: z.string(), setor: z.string().trim().max(100).nullable() }))
-        .mutation(async ({ input }) => {
+        .mutation(async ({ input, ctx }) => {
+          const target = await getAdminById(input.id);
+          assertManagedAccount(ctx.siteOrganizationId, target);
           await updateAdminSetor(input.id, input.setor);
           return { success: true } as const;
         }),
 
-      setPermissions: masterAdminProcedure
+      setPermissions: organizationAdminProcedure
         .input(
           z.object({
             id: z.string(),
@@ -605,6 +623,7 @@ export const authRouter = router({
         )
         .mutation(async ({ input, ctx }) => {
           const target = await getAdminById(input.id);
+          assertManagedAccount(ctx.siteOrganizationId, target);
           if (!target) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
           }
@@ -632,10 +651,11 @@ export const authRouter = router({
           return { success: true, permissions } as const;
         }),
 
-      delete: masterAdminProcedure
+      delete: organizationAdminProcedure
         .input(z.object({ id: z.string() }))
         .mutation(async ({ input, ctx }) => {
           const target = await getAdminById(input.id);
+          assertManagedAccount(ctx.siteOrganizationId, target);
           if (!target) return { success: true } as const;
 
           if (target.username === ctx.siteAdminUsername) {
@@ -670,12 +690,13 @@ export const authRouter = router({
 
       // "Ver como" um usuário — SOMENTE o administrador principal, e nunca
       // aninhado: enquanto estiver "vendo como", a sessão passa a ser desse
-      // usuário (role 'user'), então masterAdminProcedure já bloqueia uma
+      // usuário (role 'user'), então organizationAdminProcedure já bloqueia uma
       // segunda tentativa de impersonar sem precisar de checagem extra.
-      impersonate: masterAdminProcedure
+      impersonate: organizationAdminProcedure
         .input(z.object({ id: z.string() }))
         .mutation(async ({ input, ctx }) => {
           const target = await getAdminById(input.id);
+          assertManagedAccount(ctx.siteOrganizationId, target);
           if (!target) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada." });
           }
@@ -736,3 +757,4 @@ export const authRouter = router({
         }),
     }),
   });
+

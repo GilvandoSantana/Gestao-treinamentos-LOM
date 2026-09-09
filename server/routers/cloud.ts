@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { masterAdminProcedure, requirePermission, router } from "../_core/trpc";
+import { organizationAdminProcedure, masterAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { deleteCloudFileFromSupabase } from "../supabase-storage";
@@ -1011,7 +1011,7 @@ export const cloudRouter = router({
 
     // Setores já em uso neste contrato, pra sugerir na hora de criar um
     // grupo automático (em vez de precisar digitar o nome exato de cabeça).
-    listSetores: masterAdminProcedure.query(async ({ ctx }) => {
+    listSetores: organizationAdminProcedure.query(async ({ ctx }) => {
       if (!ctx.siteContract) return [];
       return listSetores(ctx.siteContract);
     }),
@@ -1116,3 +1116,4 @@ export const cloudRouter = router({
       return { total: pending.length, migrated, failed } as const;
     }),
   });
+

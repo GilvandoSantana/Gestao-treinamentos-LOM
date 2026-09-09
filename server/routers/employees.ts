@@ -8,6 +8,7 @@ import {
   getAllEmployees,
   getDistinctTrainingNames,
   getEmployeeById,
+  getTrainingById,
   getEmployeeScoped,
   getTrainingsByEmployeeId,
   getTrainingsGroupedByEmployee,
@@ -24,6 +25,15 @@ import { parseCustomFieldValues } from "../db-contract-fields";
 import { clearEmployeePortalPin } from "../db-employee-portal";
 import { addMonthsToDate, getTrainingTypeByName } from "../db-training-types";
 import { logActivity } from "../db-activity";
+
+async function assertTrainingOwners(employeeId: string, rows: { id: string }[]) {
+  for (const row of rows) {
+    const existing = await getTrainingById(row.id);
+    if (existing && existing.employeeId !== employeeId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Treinamento não encontrado." });
+    }
+  }
+}
 
 export const employeesRouter = router({
     // Reseta o PIN do portal de autoatendimento — pra quando o colaborador
@@ -183,6 +193,8 @@ export const employeesRouter = router({
             throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
           }
         }
+
+        await assertTrainingOwners(input.id, input.trainings);
 
         // Barreira do lado do servidor contra treinamento duplicado — a
         // tela já impede isso na hora de adicionar, mas esta é a segunda
@@ -357,6 +369,11 @@ export const employeesRouter = router({
 
           for (const employee of input.employees) {
             try {
+              const existing = await getEmployeeById(employee.id);
+              if (existing && existing.contract !== contract) {
+                throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+              }
+              await assertTrainingOwners(employee.id, employee.trainings);
               // Mesma barreira contra treinamento duplicado do upsertOne —
               // aqui, uma linha duplicada na planilha não trava a
               // importação inteira, só marca ESTE colaborador como falho
@@ -444,7 +461,7 @@ export const employeesRouter = router({
         getAllPhotoUrls(),
       ]);
 
-      return employeeList.map((emp) => ({
+      return employeeList.map(({ portalPinHash: _portalPinHash, ...emp }) => ({
         ...emp,
         photoUrl: photoUrls.get(emp.id) ?? null,
         trainings: trainingsByEmployee.get(emp.id) ?? [],

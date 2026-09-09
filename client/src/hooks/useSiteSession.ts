@@ -37,6 +37,7 @@ export function useSiteSession() {
     role,
     username: query.data?.username ?? null,
     isMasterAdmin: role === 'admin',
+    isGlobalAdmin: query.data?.isGlobalAdmin ?? false,
     // Contrato da conta (objeto completo, com nome e preposição). Para o
     // administrador principal (que não pertence a nenhum), reflete o que ele
     // escolheu no seletor do cabeçalho; null = "todos os contratos".
@@ -56,3 +57,4 @@ export function useSiteSession() {
     refetch: query.refetch,
   };
 }
+

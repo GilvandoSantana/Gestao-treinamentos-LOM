@@ -1,5 +1,6 @@
+import { requireContractAccess } from "../contract-access";
 import { v4 as uuidv4 } from "uuid";
-import { masterAdminProcedure, requirePermission, router, siteAdminProcedure } from "../_core/trpc";
+import { organizationAdminProcedure, requirePermission, router, siteAdminProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { employees } from "../../drizzle/schema";
@@ -27,8 +28,8 @@ export const contractsRouter = router({
     // so um nome de exibicao, nao um dado sensivel de gestao do contrato.
     getManagerName: siteAdminProcedure
       .input(z.object({ slug: z.string() }))
-      .query(async ({ input }) => {
-        const contract = await getContractBySlug(input.slug);
+      .query(async ({ input, ctx }) => {
+        const contract = await requireContractAccess(ctx, input.slug);
         return {
           managerName: contract?.managerName ?? null,
           contractName: contract?.name ?? null,
@@ -38,13 +39,13 @@ export const contractsRouter = router({
         };
       }),
 
-    list: masterAdminProcedure
+    list: organizationAdminProcedure
       .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
-      .query(async ({ input }) => {
-        return listContracts(input?.includeDeleted ?? false);
+      .query(async ({ input, ctx }) => {
+        return listContracts(input?.includeDeleted ?? false, ctx.siteOrganizationId);
       }),
 
-    create: masterAdminProcedure
+    create: organizationAdminProcedure
       .input(
         z.object({
           name: z.string().trim().min(2, "Informe o nome do contrato").max(120),
@@ -59,6 +60,7 @@ export const contractsRouter = router({
       .mutation(async ({ input, ctx }) => {
         const contract = await createContract({
           id: uuidv4(),
+          organizationId: ctx.siteOrganizationId,
           name: input.name,
           preposition: input.preposition,
           alertEmail: input.alertEmail || null,
@@ -78,7 +80,7 @@ export const contractsRouter = router({
         return contract;
       }),
 
-    update: masterAdminProcedure
+    update: organizationAdminProcedure
       .input(
         z.object({
           id: z.string(),
@@ -92,7 +94,7 @@ export const contractsRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -117,10 +119,10 @@ export const contractsRouter = router({
       }),
 
     // Move para a lixeira — reversível pelo restore.
-    delete: masterAdminProcedure
+    delete: organizationAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -136,10 +138,10 @@ export const contractsRouter = router({
         return { success: true } as const;
       }),
 
-    restore: masterAdminProcedure
+    restore: organizationAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -157,7 +159,7 @@ export const contractsRouter = router({
 
     // Anexa (ou substitui) o PGR do contrato — pré-requisito para a geração
     // de Ordem de Serviço (ver fds.upload, tipo "os").
-    uploadPgr: masterAdminProcedure
+    uploadPgr: organizationAdminProcedure
       .input(
         z.object({
           id: z.string(),
@@ -166,7 +168,7 @@ export const contractsRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -203,10 +205,10 @@ export const contractsRouter = router({
         return { success: true } as const;
       }),
 
-    removePgr: masterAdminProcedure
+    removePgr: organizationAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -227,20 +229,20 @@ export const contractsRouter = router({
 
     // Quantos colaboradores/contas/documentos ainda usam este contrato —
     // exibido na tela antes de permitir a exclusão definitiva.
-    usage: masterAdminProcedure
+    usage: organizationAdminProcedure
       .input(z.object({ id: z.string() }))
-      .query(async ({ input }) => {
-        const existing = await getContractById(input.id);
+      .query(async ({ input, ctx }) => {
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
         return countContractUsage(existing.slug);
       }),
 
-    permanentDelete: masterAdminProcedure
+    permanentDelete: organizationAdminProcedure
       .input(z.object({ id: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const existing = await getContractById(input.id);
+        const existing = await getContractById(input.id, ctx.siteOrganizationId);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
@@ -271,8 +273,8 @@ export const contractsRouter = router({
 
     // Panorama comparativo entre contratos — colaboradores e situação dos
     // treinamentos lado a lado, só para o administrador principal.
-    overview: masterAdminProcedure.query(async () => {
-      return getContractsOverview();
+    overview: organizationAdminProcedure.query(async ({ ctx }) => {
+      return getContractsOverview(ctx.siteOrganizationId);
     }),
 
     // Campos personalizados por contrato.
@@ -287,11 +289,12 @@ export const contractsRouter = router({
         .query(async ({ input, ctx }) => {
           const slug = ctx.siteRole === "admin" && input?.contractSlug ? input.contractSlug : ctx.siteContract;
           if (!slug) return [];
+          await requireContractAccess(ctx, slug);
           return listCustomFields(slug);
         }),
 
       // Gerenciar quais campos existem — só o administrador principal.
-      create: masterAdminProcedure
+      create: organizationAdminProcedure
         .input(
           z.object({
             contractSlug: z.string().min(1),
@@ -300,6 +303,7 @@ export const contractsRouter = router({
           })
         )
         .mutation(async ({ input, ctx }) => {
+          await requireContractAccess(ctx, input.contractSlug);
           const field = await createCustomField({ ...input, id: uuidv4() });
           void logActivity({
             username: ctx.siteAdminUsername,
@@ -312,9 +316,10 @@ export const contractsRouter = router({
           return field;
         }),
 
-      delete: masterAdminProcedure
+      delete: organizationAdminProcedure
         .input(z.object({ id: z.string(), contractSlug: z.string() }))
         .mutation(async ({ input, ctx }) => {
+          await requireContractAccess(ctx, input.contractSlug);
           await deleteCustomField(input.id, input.contractSlug);
           void logActivity({
             username: ctx.siteAdminUsername,
@@ -327,3 +332,4 @@ export const contractsRouter = router({
         }),
     }),
   });
+
