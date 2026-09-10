@@ -1,3 +1,4 @@
+import { withEmployeeTransaction, upsertEmployee, upsertTraining, deleteTrainingsExcept, getEmployeeById, getTrainingsByEmployeeId } from './db-employees';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -23,6 +24,27 @@ describe.runIf(process.env.RUN_DB_INTEGRATION === '1')('MySQL integrity and back
     await db.insert(warehouseItems).values({ id, contract, code: id, name: 'Synthetic stock', type: 'ferramenta', unit: 'un', quantity: String(quantity) });
     return { id, contract };
   }
+  it('rolls back employee and removed trainings when a replacement fails', async () => {
+    const id = randomUUID(), contract = randomUUID(), trainingId = randomUUID();
+    await upsertEmployee({ id, contract, name: 'Original', role: 'Test' });
+    await upsertTraining({ id: trainingId, employeeId: id, name: 'Original training', completionDate: '2026-09-09', expirationDate: '2027-09-09' });
+    await expect(withEmployeeTransaction(id, contract, async tx => {
+      await upsertEmployee({ id, contract, name: 'Changed', role: 'Test' }, tx);
+      await deleteTrainingsExcept(id, [], tx);
+      await upsertTraining({ id: randomUUID(), employeeId: id, name: 'Invalid', completionDate: '2026-02-30', expirationDate: '' }, tx);
+    })).rejects.toThrow('inválida');
+    expect((await getEmployeeById(id))?.name).toBe('Original');
+    expect((await getTrainingsByEmployeeId(id)).map(t => t.id)).toEqual([trainingId]);
+  });
+  it('preserves unknown training dates without manufacturing completion', async () => {
+    const id = randomUUID(), contract = randomUUID();
+    await withEmployeeTransaction(id, contract, async tx => {
+      await upsertEmployee({ id, contract, name: 'Unknown date', role: 'Test' }, tx);
+      await upsertTraining({ id: randomUUID(), employeeId: id, name: 'Unknown', completionDate: '', expirationDate: '' }, tx);
+    });
+    const [row] = await getTrainingsByEmployeeId(id);
+    expect(row.completionDate).toBe(''); expect(row.expirationDate).toBe('');
+  });
   it('does not oversell when two withdrawals race', async () => {
     const i = await item();
     const outcomes = await Promise.allSettled([1, 2].map(() => createWarehouseMovement(randomUUID(), i.contract, { itemId: i.id, quantity: 6, movementType: 'saida' })));

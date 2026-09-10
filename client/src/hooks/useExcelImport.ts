@@ -23,7 +23,7 @@ export function useExcelImport(
   const handleExcelImport = async (importedEmployees: Employee[]) => {
     try {
       setIsSyncing(true);
-      const mergedEmployees = [...employees];
+      const mergedEmployees = employees.map(e => ({ ...e, trainings: [...e.trainings] }));
       for (const imported of importedEmployees) {
         const existingIndex = mergedEmployees.findIndex(
           (e) => e.name.toLowerCase() === imported.name.toLowerCase()
@@ -49,25 +49,24 @@ export function useExcelImport(
         }
       }
       mergedEmployees.sort((a, b) => a.name.localeCompare(b.name));
-      setEmployees(mergedEmployees);
 
-      // Sanitiza antes de enviar: uma célula de data quebrada ou vazia na
-      // planilha não pode travar a importação de todo o contrato. Preenche
-      // datas vazias com hoje e descarta treinamentos sem nome.
-      const todayIso = new Date().toISOString().slice(0, 10);
+
+      // Datas desconhecidas permanecem vazias. O servidor valida cada
+      // colaborador e conserva o estado anterior quando o registro falha.
       const sanitizedEmployees = mergedEmployees.map((emp) => ({
         ...emp,
         trainings: emp.trainings
           .filter((t) => t.name && t.name.trim() !== '')
           .map((t) => ({
             ...t,
-            completionDate: t.completionDate || todayIso,
-            expirationDate: t.expirationDate || todayIso,
+            completionDate: t.completionDate || '',
+            expirationDate: t.expirationDate || '',
           })),
       }));
 
       const syncResult = await syncMutation.mutateAsync({ employees: sanitizedEmployees });
-      await listQuery.refetch();
+      const refreshed = await listQuery.refetch();
+      if (refreshed.data) setEmployees(refreshed.data as Employee[]);
       setLastSyncTime(new Date());
 
       if (syncResult.failed.length > 0) {
@@ -75,7 +74,7 @@ export function useExcelImport(
         // exatamente quem, em vez de dizer que deu tudo certo.
         toast.error(
           `${syncResult.updated} salvo(s), mas ${syncResult.failed.length} falharam: ${syncResult.failed
-            .map((f) => f.name)
+            .map((f) => `${f.name}: ${f.error}`)
             .join(', ')}`,
           { duration: 10000 }
         );
@@ -95,3 +94,4 @@ export function useExcelImport(
 
   return { handleExcelImport };
 }
+

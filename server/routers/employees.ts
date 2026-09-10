@@ -15,6 +15,7 @@ import {
   setEmployeeContract,
   setEmployeeDismissed,
   upsertEmployee,
+  withEmployeeTransaction,
   upsertTraining,
 } from "../db-employees";
 import { employees, trainings } from "../../drizzle/schema";
@@ -213,6 +214,7 @@ export const employeesRouter = router({
         }
 
         try {
+          await withEmployeeTransaction(input.id, ctx.siteContract ?? DEFAULT_CONTRACT_SLUG, async tx => {
             await upsertEmployee({
               id: input.id,
               name: input.name,
@@ -232,10 +234,10 @@ export const employeesRouter = router({
               // O contrato vem sempre da conta que está cadastrando — não é
               // escolhido no formulário, para não haver como errar nem burlar.
               contract: ctx.siteContract ?? DEFAULT_CONTRACT_SLUG,
-            });
+            }, tx);
 
           const currentTrainingIds = input.trainings.map(t => t.id);
-          await deleteTrainingsExcept(input.id, currentTrainingIds);
+          await deleteTrainingsExcept(input.id, currentTrainingIds, tx);
 
           for (const training of input.trainings) {
             // A validade vem sempre do catálogo, nunca do que o cliente
@@ -243,9 +245,9 @@ export const employeesRouter = router({
             // todo mundo usando o mesmo tipo de treinamento tenha a mesma
             // regra de vencimento.
             const trainingType = await getTrainingTypeByName(training.name);
-            const expirationDate = trainingType
+            const expirationDate = trainingType && training.completionDate
               ? addMonthsToDate(training.completionDate, trainingType.validityMonths)
-              : training.expirationDate || training.completionDate;
+              : training.expirationDate || "";
 
             await upsertTraining({
               id: training.id,
@@ -253,8 +255,10 @@ export const employeesRouter = router({
               name: training.name,
               completionDate: training.completionDate,
               expirationDate,
-            });
+            }, tx);
           }
+
+          });
 
           void logActivity({
             username: ctx.siteAdminUsername,
@@ -387,6 +391,7 @@ export const employeesRouter = router({
                 trainingNamesSeen.add(key);
               }
 
+              await withEmployeeTransaction(employee.id, contract, async tx => {
               // Upsert employee
               await upsertEmployee({
                 id: employee.id,
@@ -398,25 +403,24 @@ export const employeesRouter = router({
                 role: employee.role,
                 phone: employee.phone,
                 contract,
-              });
+              }, tx);
 
               // Upsert trainings
               const currentTrainingIds = employee.trainings.map(t => t.id);
 
               // First, remove trainings that are no longer in the list
-              await deleteTrainingsExcept(employee.id, currentTrainingIds);
+              await deleteTrainingsExcept(employee.id, currentTrainingIds, tx);
 
-              const todayIso = new Date().toISOString().slice(0, 10);
               for (const training of employee.trainings) {
-                const completionDate = training.completionDate || todayIso;
+                const completionDate = training.completionDate || "";
                 // Mesma regra do upsertOne: a validade vem do catálogo, não
                 // do que a planilha trouxer — a coluna "Data de Vencimento"
                 // do modelo de importação é ignorada quando o nome do
                 // treinamento bate com um tipo cadastrado.
                 const trainingType = await getTrainingTypeByName(training.name);
-                const expirationDate = trainingType
+                const expirationDate = trainingType && completionDate
                   ? addMonthsToDate(completionDate, trainingType.validityMonths)
-                  : training.expirationDate || todayIso;
+                  : training.expirationDate || "";
 
                 await upsertTraining({
                   id: training.id,
@@ -424,8 +428,9 @@ export const employeesRouter = router({
                   name: training.name,
                   completionDate,
                   expirationDate,
-                });
+                }, tx);
               }
+              });
               results.updated++;
             } catch (employeeError) {
               // Um colaborador com problema (ex: dado inválido) não pode travar

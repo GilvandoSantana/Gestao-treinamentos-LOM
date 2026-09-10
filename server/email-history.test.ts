@@ -8,6 +8,7 @@ vi.mock("./db", () => ({
 }));
 
 vi.mock("./db-employees", () => ({
+  withEmployeeTransaction: vi.fn(async (_id, _contract, write) => write({})),
   upsertEmployee: vi.fn(),
   upsertTraining: vi.fn(),
   getAllEmployees: vi.fn(() => Promise.resolve([])),
