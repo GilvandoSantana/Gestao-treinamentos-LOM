@@ -1,3 +1,4 @@
+import { daysUntilDate } from '@shared/calendar-date';
 import { SimpleWorkbook, readSheetAsJson } from './xlsx-compat';
 import type { Employee } from './types';
 
@@ -61,10 +62,10 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
     if (trainingName) {
       const completionDate =
         parseDate(row['Data de Realização'] ?? row['completionDate']) ||
-        new Date().toISOString().split('T')[0];
+        '';
       const expirationDate =
         parseDate(row['Data de Vencimento'] ?? row['expirationDate']) ||
-        new Date().toISOString().split('T')[0];
+        '';
 
       const training = {
         id: `train-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -102,6 +103,12 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
  * - um texto DD/MM/AAAA ou AAAA-MM-DD, quando a célula é só texto
  */
 function parseDate(value: unknown): string | null {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const result = parseDateValue(value);
+  if (!result || daysUntilDate(result) === null) throw new Error('Data inválida na planilha. Use DD/MM/AAAA ou deixe a célula vazia quando desconhecida.');
+  return result;
+}
+function parseDateValue(value: unknown): string | null {
   if (!value) return null;
 
   if (value instanceof Date) {
@@ -260,3 +267,4 @@ export function generateExcelTemplate(): void {
   ]);
   void workbook.download('template_colaboradores.xlsx');
 }
+

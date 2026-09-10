@@ -7,7 +7,7 @@ const m = vi.hoisted(() => ({
   uploadCertificateToSupabase: vi.fn(), getContractBySlug: vi.fn(), listContracts: vi.fn(),
 }));
 vi.mock('./db', () => ({ getDb: vi.fn(async () => null) }));
-vi.mock('./db-employees', () => ({ ...m, getTrainingsGroupedByEmployee: vi.fn(async () => new Map()), getTrainingsByEmployeeId: vi.fn(async () => []) }));
+vi.mock('./db-employees', () => ({ ...m, withEmployeeTransaction: vi.fn(async (_id, _contract, write) => write({})), getTrainingsGroupedByEmployee: vi.fn(async () => new Map()), getTrainingsByEmployeeId: vi.fn(async () => []) }));
 vi.mock('./supabase-storage', () => ({ ...m, getAllPhotoUrls: vi.fn(async () => new Map()) }));
 vi.mock('./db-admins', () => ({ getAdminByUsername: m.getAdminByUsername, getAdminById: m.getAdminById, deleteAdmin: m.deleteAdmin }));
 vi.mock('./db-desktop-sessions', () => ({ createDesktopSession: m.createDesktopSession }));

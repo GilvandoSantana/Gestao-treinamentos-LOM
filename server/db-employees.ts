@@ -5,6 +5,19 @@
 import { eq, and, notInArray } from "drizzle-orm";
 import { employees, trainings, type InsertEmployee, type InsertTraining } from "../drizzle/schema";
 import { getDb } from "./db";
+import { daysUntilDate } from "../shared/calendar-date";
+type EmployeeTransaction = Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>['transaction']>[0]>[0];
+
+export async function withEmployeeTransaction<T>(id: string, contract: string, write: (tx: EmployeeTransaction) => Promise<T>): Promise<T> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const [existing] = await tx.select({ contract: employees.contract }).from(employees).where(eq(employees.id, id)).for('update');
+    if (existing && existing.contract !== contract) throw new Error("Colaborador não encontrado.");
+    return write(tx);
+  }, { isolationLevel: 'read committed' });
+}
+
 
 /**
  * Calcula a idade a partir da data de nascimento (formato YYYY-MM-DD).
@@ -23,13 +36,16 @@ function calculateAgeFromBirthDate(birthDate?: string | null): number | undefine
   return age;
 }
 
-export async function upsertEmployee(employee: InsertEmployee): Promise<void> {
-  const db = await getDb();
+export async function upsertEmployee(employee: InsertEmployee, tx?: EmployeeTransaction): Promise<void> {
+  const db = tx ?? await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert employee: database not available");
     throw new Error("Database not available");
   }
 
+  for (const value of [employee.birthDate, employee.admissionDate, employee.cnhValidade]) {
+    if (value && daysUntilDate(value) === null) throw new Error("Data do colaborador inválida.");
+  }
   // Sempre recalcula a idade a partir da data de nascimento antes de salvar
   const computedAge = calculateAgeFromBirthDate(employee.birthDate) ?? employee.age;
 
@@ -142,8 +158,11 @@ export async function deleteEmployee(id: string): Promise<void> {
   }
 }
 
-export async function upsertTraining(training: InsertTraining): Promise<void> {
-  const db = await getDb();
+export async function upsertTraining(training: InsertTraining, tx?: EmployeeTransaction): Promise<void> {
+  for (const value of [training.completionDate, training.expirationDate]) {
+    if (value && daysUntilDate(value) === null) throw new Error("Data de treinamento inválida.");
+  }
+  const db = tx ?? await getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert training: database not available");
     throw new Error("Database not available");
@@ -202,8 +221,8 @@ export async function deleteTraining(id: string): Promise<void> {
   }
 }
 
-export async function deleteTrainingsExcept(employeeId: string, trainingIds: string[]): Promise<void> {
-  const db = await getDb();
+export async function deleteTrainingsExcept(employeeId: string, trainingIds: string[], tx?: EmployeeTransaction): Promise<void> {
+  const db = tx ?? await getDb();
   if (!db) return;
 
   try {
