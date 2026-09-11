@@ -92,6 +92,7 @@ export default function ExcelImportModal({ isOpen, onClose, onImport, employees 
                 <ul className="list-disc list-inside space-y-1 text-xs">
                   <li><strong>Nome</strong> - obrigatório</li>
                   <li><strong>Matrícula, Função, Escolaridade, Data de Nascimento, Telefone</strong> - opcionais</li>
+                  <li><strong>CPF, Data de Admissão, CNH Número, CNH Validade, CNH Categoria</strong> - opcionais</li>
                   <li><strong>Treinamento, Data de Realização, Data de Vencimento</strong> - opcionais</li>
                 </ul>
                 <p className="text-xs mt-2">

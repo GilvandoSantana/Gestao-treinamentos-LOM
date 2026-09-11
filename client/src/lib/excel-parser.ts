@@ -15,12 +15,20 @@ export interface ExcelRow {
  * - Escolaridade (opcional)
  * - Data de Nascimento (opcional, formato: DD/MM/YYYY)
  * - Telefone (opcional)
+ * - CPF (opcional)
+ * - Data de Admissão (opcional, formato: DD/MM/YYYY)
+ * - CNH Número (opcional)
+ * - CNH Validade (opcional, formato: DD/MM/YYYY)
+ * - CNH Categoria (opcional)
  * - Treinamento (opcional)
  * - Data de Realização (opcional, formato: DD/MM/YYYY)
  * - Data de Vencimento (opcional, formato: DD/MM/YYYY)
  *
  * Uma linha por treinamento: para dar vários treinamentos à mesma pessoa,
  * repita o nome dela em várias linhas (o modelo baixável já mostra isso).
+ *
+ * Gerência não entra aqui: é do contrato (cadastrada uma vez em "Gerenciar
+ * Contratos"), não de cada colaborador.
  */
 export async function parseExcelFile(file: File): Promise<Employee[]> {
   const data = await file.arrayBuffer();
@@ -42,6 +50,8 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
     let employee = employeeMap.get(nome);
     if (!employee) {
       const birthDate = parseDate(row['Data de Nascimento'] ?? row['birthDate']) || undefined;
+      const admissionDate = parseDate(row['Data de Admissão'] ?? row['admissionDate']) || undefined;
+      const cnhValidade = parseDate(row['CNH Validade'] ?? row['cnhValidade']) || undefined;
 
       employee = {
         id: `emp-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -51,6 +61,11 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
         educationLevel: String(row['Escolaridade'] || row['educationLevel'] || '').trim() || undefined,
         birthDate,
         phone: String(row['Telefone'] || row['phone'] || '').trim() || undefined,
+        cpf: String(row['CPF'] || row['cpf'] || '').trim() || undefined,
+        admissionDate,
+        cnhNumero: String(row['CNH Número'] || row['cnhNumero'] || '').trim() || undefined,
+        cnhValidade,
+        cnhCategoria: String(row['CNH Categoria'] || row['cnhCategoria'] || '').trim().toUpperCase() || undefined,
         trainings: [],
       };
       employeeMap.set(nome, employee);
@@ -180,21 +195,25 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
   const rows = [...employees]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((emp) => {
-      let birthDateDisplay = '';
-      if (emp.birthDate) {
-        const match = emp.birthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (match) {
-          const [, year, month, day] = match;
-          birthDateDisplay = `${day}/${month}/${year}`;
-        }
-      }
+      const toDisplayDate = (value?: string) => {
+        if (!value) return '';
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return '';
+        const [, year, month, day] = match;
+        return `${day}/${month}/${year}`;
+      };
       return {
         Nome: emp.name,
         Matrícula: emp.registration || '',
         Função: emp.role || '',
         Escolaridade: emp.educationLevel || '',
-        'Data de Nascimento': birthDateDisplay,
+        'Data de Nascimento': toDisplayDate(emp.birthDate),
         Telefone: emp.phone || '',
+        CPF: emp.cpf || '',
+        'Data de Admissão': toDisplayDate(emp.admissionDate),
+        'CNH Número': emp.cnhNumero || '',
+        'CNH Validade': toDisplayDate(emp.cnhValidade),
+        'CNH Categoria': emp.cnhCategoria || '',
         Treinamento: '',
         'Data de Realização': '',
         'Data de Vencimento': '',
@@ -209,6 +228,11 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
     { wch: 18 }, // Escolaridade
     { wch: 16 }, // Data de Nascimento
     { wch: 16 }, // Telefone
+    { wch: 16 }, // CPF
+    { wch: 16 }, // Data de Admissão
+    { wch: 14 }, // CNH Número
+    { wch: 14 }, // CNH Validade
+    { wch: 14 }, // CNH Categoria
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento
@@ -225,6 +249,11 @@ export function generateExcelTemplate(): void {
       Escolaridade: 'Ensino Médio',
       'Data de Nascimento': '12/03/1990',
       Telefone: '(11) 99999-9999',
+      CPF: '123.456.789-00',
+      'Data de Admissão': '03/01/2023',
+      'CNH Número': '01234567890',
+      'CNH Validade': '20/11/2029',
+      'CNH Categoria': 'AB',
       Treinamento: 'Direção Defensiva',
       'Data de Realização': '15/06/2025',
       'Data de Vencimento': '15/06/2026',
@@ -236,6 +265,11 @@ export function generateExcelTemplate(): void {
       Escolaridade: 'Ensino Técnico',
       'Data de Nascimento': '25/08/1988',
       Telefone: '(11) 98888-8888',
+      CPF: '987.654.321-00',
+      'Data de Admissão': '10/05/2022',
+      'CNH Número': '',
+      'CNH Validade': '',
+      'CNH Categoria': '',
       Treinamento: 'Proteção de Máquinas',
       'Data de Realização': '10/05/2025',
       'Data de Vencimento': '10/05/2026',
@@ -247,6 +281,11 @@ export function generateExcelTemplate(): void {
       Escolaridade: 'Ensino Técnico',
       'Data de Nascimento': '25/08/1988',
       Telefone: '(11) 98888-8888',
+      CPF: '987.654.321-00',
+      'Data de Admissão': '10/05/2022',
+      'CNH Número': '',
+      'CNH Validade': '',
+      'CNH Categoria': '',
       Treinamento: 'Trabalho a Quente',
       'Data de Realização': '20/07/2025',
       'Data de Vencimento': '20/07/2026',
@@ -261,6 +300,11 @@ export function generateExcelTemplate(): void {
     { wch: 18 }, // Escolaridade
     { wch: 16 }, // Data de Nascimento
     { wch: 16 }, // Telefone
+    { wch: 16 }, // CPF
+    { wch: 16 }, // Data de Admissão
+    { wch: 14 }, // CNH Número
+    { wch: 14 }, // CNH Validade
+    { wch: 14 }, // CNH Categoria
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento
