@@ -14,6 +14,7 @@ import {
   canAccessFolder,
   createFileRecord,
   createFolder,
+  getFolderByNameInParent,
   createGroup,
   createShare,
   deleteFolderRecursive,
@@ -145,6 +146,19 @@ export const cloudRouter = router({
             throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta pasta." });
           }
         }
+
+        // Idempotente de propósito (achado real reportado pelo Gilvando,
+        // 11/09: o programa de sincronização duplicava pasta inteira ao
+        // sincronizar) — se já existe uma pasta ativa com esse nome no
+        // mesmo lugar, devolve ela em vez de criar outra igual. Cobre
+        // tanto o clique repetido de "Nova pasta" quanto qualquer chamada
+        // automática (como o programa de sincronização) que tente criar
+        // de novo algo que já existe.
+        const existing = await getFolderByNameInParent(ctx.siteContract, input.parentId, input.name);
+        if (existing) {
+          return { ...existing, alreadyExisted: true } as const;
+        }
+
         const folder = await createFolder({
           id: uuidv4(),
           contractSlug: ctx.siteContract,
@@ -161,7 +175,7 @@ export const cloudRouter = router({
           targetId: folder.id,
           targetName: folder.name,
         });
-        return folder;
+        return { ...folder, alreadyExisted: false } as const;
       }),
 
     renameFolder: requirePermission('manageCloud')

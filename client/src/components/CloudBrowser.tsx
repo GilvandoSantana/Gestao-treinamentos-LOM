@@ -138,7 +138,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await createFolderMutation.mutateAsync({
+      const result = await createFolderMutation.mutateAsync({
         parentId: currentFolderId,
         name: newFolderName.trim(),
         // '' = não escolheu nada, herda da pasta atual (undefined faz isso
@@ -151,7 +151,15 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
       setNewFolderGroupId('');
       setShowNewFolder(false);
       await refresh();
-      toast.success('Pasta criada.');
+      // A criação é idempotente (achado de auditoria, 11/09): se já
+      // existia uma pasta com esse nome aqui, o servidor devolve ela em
+      // vez de criar outra igual — vale avisar, pra não parecer que
+      // sumiu ou que nada aconteceu.
+      if (result.alreadyExisted) {
+        toast.info('Já existia uma pasta com esse nome aqui — nada novo foi criado.');
+      } else {
+        toast.success('Pasta criada.');
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao criar pasta.');
     }

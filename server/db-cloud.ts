@@ -419,6 +419,36 @@ export async function getFolderPath(id: string): Promise<CloudFolderInfo[]> {
   return path;
 }
 
+/**
+ * Busca uma pasta ativa (não excluída) pelo nome dentro de um mesmo pai —
+ * comparação sem diferenciar maiúscula/minúscula, já que é assim que a
+ * maioria das pessoas espera "nome igual" funcionar. Usada por
+ * createFolder pra nunca criar duas pastas com o mesmo nome no mesmo
+ * lugar (achado real reportado pelo Gilvando, 11/09: o programa de
+ * sincronização estava duplicando pasta inteira ao sincronizar — a causa
+ * exata do lado do programa Windows é mais profunda e precisa de uma
+ * nova versão pra corrigir de vez, mas tornar a criação no servidor
+ * idempotente já fecha o problema imediatamente, sem depender de
+ * recompilar/redistribuir nada).
+ */
+export async function getFolderByNameInParent(
+  contractSlug: string,
+  parentId: string | null,
+  name: string
+): Promise<CloudFolderInfo | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const parentCondition = parentId === null ? isNull(cloudFolders.parentId) : eq(cloudFolders.parentId, parentId);
+  const rows = await db
+    .select()
+    .from(cloudFolders)
+    .where(and(eq(cloudFolders.contractSlug, contractSlug), parentCondition, isNull(cloudFolders.deletedAt)));
+
+  const match = rows.find((r) => r.name.trim().toLowerCase() === name.trim().toLowerCase());
+  return match ? toFolderInfo(match) : undefined;
+}
+
 export async function createFolder(input: {
   id: string;
   contractSlug: string;
