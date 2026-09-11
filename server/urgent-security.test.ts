@@ -30,6 +30,7 @@ beforeEach(() => {
   m.getEmployeeById.mockResolvedValue({ id: 'own', contract: 'contract-a' });
   m.getEmployeeScoped.mockResolvedValue({ id: 'own', contract: 'contract-a' });
   m.getAllEmployees.mockResolvedValue([]);
+  m.listContracts.mockResolvedValue([]);
 });
 describe('urgent security regressions', () => {
   it('rejects deleting an account from another organization', async () => {
