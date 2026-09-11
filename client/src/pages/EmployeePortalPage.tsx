@@ -31,19 +31,17 @@ function formatCpfInput(value: string): string {
 export default function EmployeePortalPage() {
   const [step, setStep] = useState<Step>('checking');
   const [cpf, setCpf] = useState('');
-  const [birthDate, setBirthDate] = useState('');
+  const [activationCode, setActivationCode] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const meQuery = trpc.employeePortal.me.useQuery(undefined, { retry: false });
-  const checkAccessMutation = trpc.employeePortal.checkAccess.useMutation();
   const firstAccessMutation = trpc.employeePortal.firstAccessSetup.useMutation();
   const loginMutation = trpc.employeePortal.login.useMutation();
   const logoutMutation = trpc.employeePortal.logout.useMutation();
 
   const isLoading =
-    checkAccessMutation.isPending ||
     firstAccessMutation.isPending ||
     loginMutation.isPending ||
     logoutMutation.isPending;
@@ -63,12 +61,11 @@ export default function EmployeePortalPage() {
   async function handleCpfSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    try {
-      const result = await checkAccessMutation.mutateAsync({ cpf });
-      setStep(result.hasPortalAccess ? 'login' : 'firstAccess');
-    } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : 'Não foi possível continuar.');
+    if (cpf.replace(/\D/g, '').length !== 11) {
+      setError('Digite os 11 números do CPF.');
+      return;
     }
+    setStep('login');
   }
 
   async function handleFirstAccessSubmit(e: React.FormEvent) {
@@ -83,7 +80,7 @@ export default function EmployeePortalPage() {
       return;
     }
     try {
-      await firstAccessMutation.mutateAsync({ cpf, birthDate, pin });
+      await firstAccessMutation.mutateAsync({ cpf, activationCode, pin });
       setPin('');
       setPinConfirm('');
       await meQuery.refetch();
@@ -110,7 +107,7 @@ export default function EmployeePortalPage() {
   async function handleLogout() {
     await logoutMutation.mutateAsync();
     setCpf('');
-    setBirthDate('');
+    setActivationCode('');
     setPin('');
     setPinConfirm('');
     setError(null);
@@ -211,10 +208,10 @@ export default function EmployeePortalPage() {
           {step === 'cpf' && (
             <form onSubmit={handleCpfSubmit} className="space-y-4">
               <div>
-                <label className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                <label htmlFor="portal-field-1" className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
                   CPF
                 </label>
-                <input
+                <input id="portal-field-1"
                   type="text"
                   inputMode="numeric"
                   value={cpf}
@@ -227,7 +224,7 @@ export default function EmployeePortalPage() {
               </div>
 
               {error && (
-                <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
+                <div role="alert" className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
                   {error}
                 </div>
               )}
@@ -247,27 +244,29 @@ export default function EmployeePortalPage() {
             <form onSubmit={handleFirstAccessSubmit} className="space-y-4">
               <div className="flex items-start gap-2.5 bg-muted/60 rounded-xl px-3.5 py-3 text-xs text-muted-foreground">
                 <ShieldCheck size={15} className="shrink-0 mt-0.5 text-orange" />
-                <span>Confirme sua data de nascimento (a mesma do seu cadastro) e crie um PIN de 6 números.</span>
+                <span>Solicite ao RH um código de ativação, informe-o abaixo e crie um PIN de 6 números.</span>
               </div>
 
               <div>
-                <label className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
-                  Data de nascimento
+                <label htmlFor="portal-field-2" className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                  Código de ativação
                 </label>
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
+                <input id="portal-field-2"
+                  type="text"
+                  autoComplete="one-time-code"
+                  maxLength={128}
+                  value={activationCode}
+                  onChange={(e) => setActivationCode(e.target.value)}
                   disabled={isLoading}
                   className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-orange focus:border-transparent transition"
                 />
               </div>
 
               <div>
-                <label className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                <label htmlFor="portal-field-3" className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
                   Criar PIN (6 números)
                 </label>
-                <input
+                <input id="portal-field-3"
                   type="password"
                   inputMode="numeric"
                   value={pin}
@@ -279,10 +278,10 @@ export default function EmployeePortalPage() {
               </div>
 
               <div>
-                <label className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                <label htmlFor="portal-field-4" className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
                   Confirmar PIN
                 </label>
-                <input
+                <input id="portal-field-4"
                   type="password"
                   inputMode="numeric"
                   value={pinConfirm}
@@ -294,7 +293,7 @@ export default function EmployeePortalPage() {
               </div>
 
               {error && (
-                <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
+                <div role="alert" className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
                   {error}
                 </div>
               )}
@@ -328,10 +327,10 @@ export default function EmployeePortalPage() {
               </div>
 
               <div>
-                <label className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                <label htmlFor="portal-field-5" className="block font-technical text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
                   PIN
                 </label>
-                <input
+                <input id="portal-field-5"
                   type="password"
                   inputMode="numeric"
                   value={pin}
@@ -344,7 +343,7 @@ export default function EmployeePortalPage() {
               </div>
 
               {error && (
-                <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
+                <div role="alert" className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-xl px-3.5 py-2.5">
                   {error}
                 </div>
               )}
@@ -356,6 +355,10 @@ export default function EmployeePortalPage() {
               >
                 {isLoading && <Loader2 size={16} className="animate-spin" />}
                 Entrar
+              </button>
+              <button type="button" onClick={() => { setStep('firstAccess'); setPin(''); setPinConfirm(''); setError(null); }}
+                className="w-full text-center text-sm text-orange hover:underline">
+                Tenho código de ativação
               </button>
               <button
                 type="button"
@@ -380,3 +383,4 @@ export default function EmployeePortalPage() {
     </div>
   );
 }
+

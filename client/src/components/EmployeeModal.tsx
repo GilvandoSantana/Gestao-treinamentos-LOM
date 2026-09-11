@@ -66,6 +66,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const skipDirtyCheck = useRef(true);
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
+  const [portalInvitation, setPortalInvitation] = useState<string | null>(null);
+  const issuePortalInvitationMutation = trpc.employees.issuePortalInvitation.useMutation();
   const resetPortalAccessMutation = trpc.employees.resetPortalAccess.useMutation();
   const customFieldsQuery = trpc.contracts.fields.list.useQuery(undefined, { enabled: isOpen });
   const customRolesQuery = trpc.roles.list.useQuery(undefined, { enabled: isOpen });
@@ -105,6 +107,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const uploadPhotoMutation = trpc.employees.uploadPhoto.useMutation();
 
   useEffect(() => {
+    setPortalInvitation(null);
     if (employee) {
       setName(employee.name);
       setRegistration(employee.registration || '');
@@ -704,13 +707,29 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 placeholder="000.000.000-00"
               />
               {employee && cpf && (
+                <>
+                <button type="button" disabled={issuePortalInvitationMutation.isPending}
+                  onClick={async () => {
+                    try {
+                      const invitation = await issuePortalInvitationMutation.mutateAsync({ employeeId: employee.id });
+                      setPortalInvitation(invitation.code);
+                    } catch (err) { toast.error(err instanceof Error ? err.message : 'Erro ao gerar código.'); }
+                  }} className="mt-2 block text-xs text-orange hover:underline">
+                  Gerar código de ativação do portal
+                </button>
+                {portalInvitation && <div className="mt-2 text-xs space-y-1">
+                  <label htmlFor="portal-invitation">Código de uso único (válido por 24 horas)</label>
+                  <input id="portal-invitation" readOnly value={portalInvitation} className="w-full border rounded p-2" />
+                  <p>Entregue pessoalmente ao colaborador após conferir sua identidade. Gerar outro código invalida o anterior.</p>
+                </div>}
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm('Resetar o acesso do colaborador ao portal de autoatendimento? Ele vai precisar criar um PIN novo no próximo acesso.')) return;
+                    if (!window.confirm('Resetar o acesso do colaborador ao portal de autoatendimento? As sessões serão encerradas. Gere e entregue um novo código de ativação para ele criar outro PIN.')) return;
                     try {
                       await resetPortalAccessMutation.mutateAsync({ employeeId: employee.id });
-                      toast.success('Acesso ao portal resetado.');
+                      setPortalInvitation(null);
+                      toast.success('Acesso resetado. Gere um novo código de ativação.');
                     } catch {
                       toast.error('Erro ao resetar o acesso.');
                     }
@@ -719,6 +738,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 >
                   Resetar acesso ao portal de autoatendimento
                 </button>
+                </>
               )}
             </div>
           </div>

@@ -3,7 +3,7 @@
  */
 
 import { eq, and, notInArray } from "drizzle-orm";
-import { employees, trainings, type InsertEmployee, type InsertTraining } from "../drizzle/schema";
+import { employeePortalInvitations, employees, trainings, type InsertEmployee, type InsertTraining } from "../drizzle/schema";
 import { getDb } from "./db";
 import { daysUntilDate } from "../shared/calendar-date";
 type EmployeeTransaction = Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>['transaction']>[0]>[0];
@@ -282,13 +282,15 @@ export async function setEmployeeDismissed(id: string, dismissed: boolean) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  await db
-    .update(employees)
-    .set({
+  await db.transaction(async tx => {
+    await tx.select({ id: employees.id }).from(employees).where(eq(employees.id, id)).for('update');
+    await tx.update(employees).set({
       dismissed,
       dismissedAt: dismissed ? new Date() : null,
-    })
-    .where(eq(employees.id, id));
+      ...(dismissed ? { portalPinHash: null } : {}),
+    }).where(eq(employees.id, id));
+    if (dismissed) await tx.delete(employeePortalInvitations).where(eq(employeePortalInvitations.employeeId, id));
+  }, { isolationLevel: 'read committed' });
 }
 
 /** Move um colaborador para outro contrato (uso exclusivo do administrador). */

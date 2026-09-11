@@ -23,7 +23,7 @@ import { getAllPhotoUrls, uploadPhotoToSupabase } from "../supabase-storage";
 import { DEFAULT_CONTRACT_SLUG } from "@shared/contracts";
 import { getContractBySlug } from "../db-contracts";
 import { parseCustomFieldValues } from "../db-contract-fields";
-import { clearEmployeePortalPin } from "../db-employee-portal";
+import { clearEmployeePortalPin, issueEmployeePortalInvitation } from "../db-employee-portal";
 import { addMonthsToDate, getTrainingTypeByName } from "../db-training-types";
 import { logActivity } from "../db-activity";
 
@@ -37,9 +37,15 @@ async function assertTrainingOwners(employeeId: string, rows: { id: string }[]) 
 }
 
 export const employeesRouter = router({
-    // Reseta o PIN do portal de autoatendimento — pra quando o colaborador
-    // esquece o PIN e precisa fazer o "primeiro acesso" de novo (com CPF +
-    // data de nascimento) pra criar um PIN novo.
+    issuePortalInvitation: requirePermission('editEmployees')
+      .input(z.object({ employeeId: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const employee = await getEmployeeScoped(input.employeeId, ctx.siteContract);
+        if (!employee) throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
+        return issueEmployeePortalInvitation(employee.id, employee.contract);
+      }),
+
+    // Reset revokes sessions; a new HR-issued activation code is then required.
     resetPortalAccess: requirePermission('editEmployees')
       .input(z.object({ employeeId: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {
@@ -47,7 +53,7 @@ export const employeesRouter = router({
         if (!employee) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Colaborador não encontrado." });
         }
-        await clearEmployeePortalPin(input.employeeId);
+        await clearEmployeePortalPin(input.employeeId, employee.contract);
         return { success: true } as const;
       }),
 

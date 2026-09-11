@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
-import { randomUUID, timingSafeEqual } from "crypto";
+import { randomUUID, timingSafeEqual, createHmac } from "crypto";
 import type { Request } from "express";
 import bcrypt from "bcryptjs";
 import { isDesktopSessionRevoked } from "./db-desktop-sessions";
@@ -414,8 +414,12 @@ export function registerSignupAttempt(key: string): void {
 export const EMPLOYEE_SESSION_COOKIE = "employee_session";
 const EMPLOYEE_SESSION_TTL_SECONDS = 60 * 60 * 2; // 2 horas — sessão mais curta que a de admin, de propósito
 
-export async function createEmployeeSessionToken(employeeId: string, contractSlug: string): Promise<string> {
-  return new SignJWT({ scope: "employee-portal", employeeId, contractSlug })
+export function employeePortalSessionVersion(pinHash: string): string {
+  return createHmac('sha256', getSecretKey()).update('employee-portal:' + pinHash).digest('hex');
+}
+
+export async function createEmployeeSessionToken(employeeId: string, contractSlug: string, pinHash: string): Promise<string> {
+  return new SignJWT({ scope: "employee-portal", employeeId, contractSlug, version: employeePortalSessionVersion(pinHash) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${EMPLOYEE_SESSION_TTL_SECONDS}s`)
@@ -424,11 +428,11 @@ export async function createEmployeeSessionToken(employeeId: string, contractSlu
 
 export async function verifyEmployeeSessionToken(
   token: string
-): Promise<{ employeeId: string; contractSlug: string } | null> {
+): Promise<{ employeeId: string; contractSlug: string; version: string } | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
-    if (payload.scope !== "employee-portal" || typeof payload.employeeId !== "string") return null;
-    return { employeeId: payload.employeeId, contractSlug: String(payload.contractSlug ?? "") };
+    if (payload.scope !== "employee-portal" || typeof payload.employeeId !== "string" || typeof payload.contractSlug !== "string" || typeof payload.version !== "string") return null;
+    return { employeeId: payload.employeeId, contractSlug: payload.contractSlug, version: payload.version };
   } catch {
     return null;
   }
@@ -489,3 +493,4 @@ export async function hashEmployeePin(pin: string): Promise<string> {
 export async function verifyEmployeePin(pin: string, hash: string): Promise<boolean> {
   return bcrypt.compare(pin, hash);
 }
+

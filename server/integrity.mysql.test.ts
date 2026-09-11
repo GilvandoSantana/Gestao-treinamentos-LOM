@@ -1,4 +1,6 @@
-import { withEmployeeTransaction, upsertEmployee, upsertTraining, deleteTrainingsExcept, getEmployeeById, getTrainingsByEmployeeId } from './db-employees';
+import { withEmployeeTransaction, upsertEmployee, upsertTraining, deleteTrainingsExcept, getEmployeeById, getTrainingsByEmployeeId, setEmployeeDismissed } from './db-employees';
+import { issueEmployeePortalInvitation, activateEmployeePortal, clearEmployeePortalPin } from './db-employee-portal';
+import { employeePortalInvitations } from '../drizzle/schema';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -24,6 +26,45 @@ describe.runIf(process.env.RUN_DB_INTEGRATION === '1')('MySQL integrity and back
     await db.insert(warehouseItems).values({ id, contract, code: id, name: 'Synthetic stock', type: 'ferramenta', unit: 'un', quantity: String(quantity) });
     return { id, contract };
   }
+  it('consumes an activation code exactly once under concurrency', async () => {
+    const id = randomUUID(), contract = randomUUID(), cpf = '00000000000';
+    await upsertEmployee({ id, contract, cpf, name: 'Synthetic portal', role: 'Test' });
+    await expect(issueEmployeePortalInvitation(id, 'foreign')).rejects.toThrow();
+    const first = await issueEmployeePortalInvitation(id, contract);
+    const invite = await issueEmployeePortalInvitation(id, contract);
+    expect(await activateEmployeePortal(id, cpf, first.code, 'hash')).toBeNull();
+    expect(await activateEmployeePortal(id, '11111111111', invite.code, 'hash')).toBeNull();
+    const results = await Promise.all([1, 2].map(() => activateEmployeePortal(id, cpf, invite.code, 'hash')));
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await activateEmployeePortal(id, cpf, invite.code, 'hash')).toBeNull();
+    await clearEmployeePortalPin(id, contract);
+    expect((await getEmployeeById(id))?.portalPinHash).toBeNull();
+    expect(await activateEmployeePortal(id, cpf, invite.code, 'hash')).toBeNull();
+  });
+  it('rejects expired activation and invalidates pending codes on reset', async () => {
+    const id = randomUUID(), contract = randomUUID(), cpf = '00000000000';
+    await upsertEmployee({ id, contract, cpf, name: 'Synthetic expired invite', role: 'Test' });
+    const invite = await issueEmployeePortalInvitation(id, contract);
+    await db.update(employeePortalInvitations).set({ expiresAt: new Date(Date.now() - 60000) }).where(eq(employeePortalInvitations.employeeId, id));
+    expect(await activateEmployeePortal(id, cpf, invite.code, 'hash')).toBeNull();
+    const replacement = await issueEmployeePortalInvitation(id, contract);
+    await clearEmployeePortalPin(id, contract);
+    expect(await activateEmployeePortal(id, cpf, replacement.code, 'hash')).toBeNull();
+  });
+  it('does not restore old portal credentials when rehiring an employee', async () => {
+    const id = randomUUID(), contract = randomUUID(), cpf = '00000000000';
+    await upsertEmployee({ id, contract, cpf, name: 'Synthetic rehiring', role: 'Test' });
+    const invite = await issueEmployeePortalInvitation(id, contract);
+    await activateEmployeePortal(id, cpf, invite.code, 'old-hash');
+    await setEmployeeDismissed(id, true);
+    await expect(issueEmployeePortalInvitation(id, contract)).rejects.toThrow();
+    await setEmployeeDismissed(id, false);
+    expect((await getEmployeeById(id))?.portalPinHash).toBeNull();
+    const pending = await issueEmployeePortalInvitation(id, contract);
+    await setEmployeeDismissed(id, true);
+    await setEmployeeDismissed(id, false);
+    expect(await activateEmployeePortal(id, cpf, pending.code, 'hash')).toBeNull();
+  });
   it('rolls back employee and removed trainings when a replacement fails', async () => {
     const id = randomUUID(), contract = randomUUID(), trainingId = randomUUID();
     await upsertEmployee({ id, contract, name: 'Original', role: 'Test' });
