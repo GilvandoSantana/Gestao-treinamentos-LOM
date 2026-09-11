@@ -46,7 +46,7 @@ export const generateOsFormPDF = async (employee: Employee, sharedDoc?: jsPDF): 
 
   const contractName = contractInfo?.contractName ?? employee.contract ?? '';
 
-  if (!contractInfo?.pgrFileUrl) {
+  if (!contractInfo?.hasPgr) {
     throw new Error(
       `Não é possível gerar a Ordem de Serviço de ${employee.name}: o contrato "${contractName || employee.contract}" ainda não possui o PGR anexado. Anexe o PGR no cadastro do contrato antes de continuar.`
     );

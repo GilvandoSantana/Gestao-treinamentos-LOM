@@ -4,7 +4,7 @@ import { organizationAdminProcedure, requirePermission, router, siteAdminProcedu
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { employees } from "../../drizzle/schema";
-import { deleteFdsFromSupabase, uploadFdsToSupabase } from "../supabase-storage";
+import { deleteFdsFromSupabase, uploadFdsToSupabase, getSignedFdsUrl } from "../supabase-storage";
 import {
   countContractUsage,
   createContract,
@@ -35,14 +35,23 @@ export const contractsRouter = router({
           contractName: contract?.name ?? null,
           companyName: contract?.companyName ?? null,
           gerencia: contract?.gerencia ?? null,
-          pgrFileUrl: contract?.pgrFileUrl ?? null,
+          hasPgr: !!contract.pgrFileUrl,
         };
       }),
 
     list: organizationAdminProcedure
       .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
       .query(async ({ input, ctx }) => {
-        return listContracts(input?.includeDeleted ?? false, ctx.siteOrganizationId);
+        const rows = await listContracts(input?.includeDeleted ?? false, ctx.siteOrganizationId);
+        return rows.map(contract => ({ ...contract, pgrFileUrl: null, hasPgr: !!contract.pgrFileUrl }));
+      }),
+
+    downloadPgr: organizationAdminProcedure
+      .input(z.object({ slug: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const contract = await requireContractAccess(ctx, input.slug);
+        if (!contract.pgrFileUrl) throw new TRPCError({ code: "NOT_FOUND", message: "PGR não encontrado." });
+        return { url: await getSignedFdsUrl(contract.pgrFileUrl, 300) };
       }),
 
     create: organizationAdminProcedure
@@ -179,9 +188,8 @@ export const contractsRouter = router({
           throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 10MB." });
         }
 
-        // Se já havia um PGR anexado, remove o arquivo antigo do Storage.
-        if (existing.pgrFileUrl) {
-          await deleteFdsFromSupabase(existing.pgrFileUrl);
+        if (!fileBuffer.subarray(0, 5).equals(Buffer.from('%PDF-')) || !fileBuffer.subarray(-1024).includes(Buffer.from('%%EOF'))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Envie um arquivo PDF válido." });
         }
 
         const upload = await uploadFdsToSupabase(
@@ -192,7 +200,14 @@ export const contractsRouter = router({
           "contract-pgr"
         );
 
-        await setContractPgr(input.id, { fileUrl: upload.url, fileName: input.fileName });
+        try {
+          await setContractPgr(input.id, { fileUrl: upload.url, fileName: input.fileName });
+        } catch (error) {
+          await deleteFdsFromSupabase(upload.url);
+          throw error;
+        }
+        // Keep the old file until both upload and database commit succeed.
+        if (existing.pgrFileUrl) await deleteFdsFromSupabase(existing.pgrFileUrl);
 
         void logActivity({
           username: ctx.siteAdminUsername,
@@ -212,10 +227,10 @@ export const contractsRouter = router({
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }
+        await removeContractPgr(input.id);
         if (existing.pgrFileUrl) {
           await deleteFdsFromSupabase(existing.pgrFileUrl);
         }
-        await removeContractPgr(input.id);
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
