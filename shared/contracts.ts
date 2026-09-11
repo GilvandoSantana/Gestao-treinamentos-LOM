@@ -25,6 +25,7 @@ export interface ContractInfo {
   gerencia: string | null;
   /** PGR anexado no cadastro do contrato — pré-requisito para gerar uma Ordem de Serviço. */
   pgrFileUrl: string | null;
+  hasPgr?: boolean;
   pgrFileName: string | null;
   pgrUploadedAt: string | null;
   /** Razão social impressa no cabeçalho da Ordem de Serviço (Documentação). */

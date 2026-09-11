@@ -61,6 +61,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
+  const downloadPgrMutation = trpc.contracts.downloadPgr.useMutation();
   const activeQuery = trpc.contracts.list.useQuery(
     { includeDeleted: false },
     { enabled: isOpen }
@@ -506,7 +507,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                         PGR do contrato
                       </p>
 
-                      {editingContract?.pgrFileUrl ? (
+                      {editingContract?.hasPgr ? (
                         <div className="flex items-center gap-2 p-2.5 rounded-lg border border-border bg-muted/30 mb-2">
                           <ShieldCheck size={16} className="text-teal shrink-0" />
                           <div className="min-w-0 flex-1">
@@ -517,15 +518,26 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                               </p>
                             )}
                           </div>
-                          <a
-                            href={editingContract.pgrFileUrl}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            disabled={downloadPgrMutation.isPending}
+                            onClick={async () => {
+                              const downloadWindow = window.open('', '_blank');
+                              if (downloadWindow) downloadWindow.opener = null;
+                              try {
+                                const result = await downloadPgrMutation.mutateAsync({ slug: editingContract.slug });
+                                if (downloadWindow) downloadWindow.location.replace(result.url);
+                                else toast.error('Permita abrir uma nova aba para baixar o PGR.');
+                              } catch {
+                                downloadWindow?.close();
+                                toast.error('Não foi possível baixar o PGR.');
+                              }
+                            }}
                             className="shrink-0 p-1.5 text-muted-foreground hover:text-orange transition-colors"
                             title="Baixar PGR"
                           >
                             <Download size={16} />
-                          </a>
+                          </button>
                           <button
                             type="button"
                             onClick={handleRemovePgr}
@@ -560,7 +572,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                           className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
                         >
                           <Upload size={13} />
-                          {isUploadingPgr ? 'Enviando...' : editingContract?.pgrFileUrl ? 'Substituir' : 'Anexar'}
+                          {isUploadingPgr ? 'Enviando...' : editingContract?.hasPgr ? 'Substituir' : 'Anexar'}
                         </button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1.5">
