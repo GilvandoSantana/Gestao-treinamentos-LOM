@@ -103,6 +103,11 @@ export async function setOrganizationStripeInfo(
 export async function ensureIntegrityTables() {
   const db = await getDb();
   if (!db) return;
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS employeePortalInvitations (
+    employeeId VARCHAR(64) PRIMARY KEY,
+    tokenHash VARCHAR(64) NOT NULL,
+    expiresAt TIMESTAMP NOT NULL
+  ) ENGINE=InnoDB`);
   await db.execute(sql`CREATE TABLE IF NOT EXISTS completedSignups (
     pendingSignupId VARCHAR(64) PRIMARY KEY,
     checkoutSessionId VARCHAR(255) NOT NULL UNIQUE,

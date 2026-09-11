@@ -1,16 +1,3 @@
-/**
- * Portal de autoatendimento do colaborador — acesso só de LEITURA aos
- * próprios treinamentos, por CPF + PIN (bem mais fraco que
- * usuário/senha de administrador, então tudo aqui é mais restritivo:
- * limite de tentativas mais apertado, sessão mais curta — ver os
- * comentários completos em server/site-auth.ts).
- *
- * Primeiro acesso: confirma identidade com CPF + data de nascimento
- * (dado que já existe no cadastro feito pelo administrador) antes de
- * deixar a pessoa criar um PIN. Depois disso, login normal é só
- * CPF + PIN.
- */
-
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
@@ -22,12 +9,13 @@ import {
   clearEmployeePortalAttempts,
   createEmployeeSessionToken,
   verifyEmployeeSessionToken,
+  employeePortalSessionVersion,
   hashEmployeePin,
   verifyEmployeePin,
   getRawCookie,
   EMPLOYEE_SESSION_COOKIE,
 } from "../site-auth";
-import { getEmployeeByCpf, setEmployeePortalPin, normalizeCpf } from "../db-employee-portal";
+import { getEmployeeByCpf, activateEmployeePortal, normalizeCpf } from "../db-employee-portal";
 import { getEmployeeById, getTrainingsByEmployeeId } from "../db-employees";
 
 const pinSchema = z
@@ -47,67 +35,29 @@ function rateLimitOrThrow(ip: string, cpf: string) {
 }
 
 export const employeePortalRouter = router({
-  /** Primeiro passo: informa só o CPF, e a tela decide se mostra "criar
-   * PIN" (primeiro acesso) ou "digitar PIN" (já configurado). Mensagem
-   * de erro genérica de propósito — não revela se um CPF existe ou não
-   * no sistema pra quem só está adivinhando CPFs. */
+  // Compatibility endpoint: never reveals whether a CPF exists or has a PIN.
   checkAccess: publicProcedure
-    .input(z.object({ cpf: z.string().min(1) }))
-    .mutation(async ({ input, ctx }) => {
-      const clientKey = getClientKey(ctx.req);
-      rateLimitOrThrow(clientKey, input.cpf);
-
-      const employee = await getEmployeeByCpf(input.cpf);
-      if (!employee) {
-        registerEmployeePortalAttempt(clientKey, normalizeCpf(input.cpf));
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "CPF não encontrado. Confira com o RH se o cadastro está certo.",
-        });
-      }
-
-      return { hasPortalAccess: !!employee.portalPinHash } as const;
+    .input(z.object({ cpf: z.string().min(1).max(32) }))
+    .mutation(({ input, ctx }) => {
+      const key = getClientKey(ctx.req);
+      rateLimitOrThrow(key, input.cpf);
+      registerEmployeePortalAttempt(key, normalizeCpf(input.cpf));
+      return { hasPortalAccess: true } as const;
     }),
 
-  /** Confirma identidade (CPF + data de nascimento, já cadastrados pelo
-   * administrador) e cria o PIN — só funciona pra quem ainda não tem
-   * PIN configurado (ver checkAccess). Já loga a pessoa em seguida. */
   firstAccessSetup: publicProcedure
-    .input(
-      z.object({
-        cpf: z.string().min(1),
-        birthDate: z.string().min(1),
-        pin: pinSchema,
-      })
-    )
+    .input(z.object({ cpf: z.string().min(1).max(32), activationCode: z.string().trim().min(1).max(128), pin: pinSchema }))
     .mutation(async ({ input, ctx }) => {
-      const clientKey = getClientKey(ctx.req);
-      rateLimitOrThrow(clientKey, input.cpf);
-
+      const key = getClientKey(ctx.req);
+      rateLimitOrThrow(key, input.cpf);
+      registerEmployeePortalAttempt(key, normalizeCpf(input.cpf));
       const employee = await getEmployeeByCpf(input.cpf);
-      if (!employee) {
-        registerEmployeePortalAttempt(clientKey, normalizeCpf(input.cpf));
-        throw new TRPCError({ code: "NOT_FOUND", message: "CPF não encontrado." });
-      }
-      if (employee.portalPinHash) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Esse CPF já tem um PIN configurado. Use a opção de entrar normalmente.",
-        });
-      }
-      if (!employee.birthDate || employee.birthDate !== input.birthDate) {
-        registerEmployeePortalAttempt(clientKey, normalizeCpf(input.cpf));
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Data de nascimento não confere." });
-      }
-
-      clearEmployeePortalAttempts(clientKey, normalizeCpf(input.cpf));
-
       const pinHash = await hashEmployeePin(input.pin);
-      await setEmployeePortalPin(employee.id, pinHash);
-
-      const token = await createEmployeeSessionToken(employee.id, employee.contract);
+      const activated = employee && await activateEmployeePortal(employee.id, input.cpf, input.activationCode, pinHash);
+      if (!activated) throw new TRPCError({ code: "UNAUTHORIZED", message: "Não foi possível ativar. Confira os dados e solicite um código válido ao RH." });
+      clearEmployeePortalAttempts(key, normalizeCpf(input.cpf));
+      const token = await createEmployeeSessionToken(activated.id, activated.contract, pinHash);
       ctx.res.cookie(EMPLOYEE_SESSION_COOKIE, token, getEmployeeSessionCookieOptions(ctx.req));
-
       return { success: true } as const;
     }),
 
@@ -123,7 +73,7 @@ export const employeePortalRouter = router({
       // dá pista de qual dos dois está errado.
       const genericError = new TRPCError({ code: "UNAUTHORIZED", message: "CPF ou PIN incorretos." });
 
-      if (!employee || !employee.portalPinHash) {
+      if (!employee || employee.dismissed || !employee.portalPinHash) {
         registerEmployeePortalAttempt(clientKey, normalizeCpf(input.cpf));
         throw genericError;
       }
@@ -136,7 +86,7 @@ export const employeePortalRouter = router({
 
       clearEmployeePortalAttempts(clientKey, normalizeCpf(input.cpf));
 
-      const token = await createEmployeeSessionToken(employee.id, employee.contract);
+      const token = await createEmployeeSessionToken(employee.id, employee.contract, employee.portalPinHash);
       ctx.res.cookie(EMPLOYEE_SESSION_COOKIE, token, getEmployeeSessionCookieOptions(ctx.req));
 
       return { success: true } as const;
@@ -153,7 +103,7 @@ export const employeePortalRouter = router({
     if (!session) return null;
 
     const employee = await getEmployeeById(session.employeeId);
-    if (!employee) return null;
+    if (!employee || employee.dismissed || !employee.portalPinHash || employee.contract !== session.contractSlug || employeePortalSessionVersion(employee.portalPinHash) !== session.version) return null;
 
     const employeeTrainings = await getTrainingsByEmployeeId(employee.id);
 
@@ -175,3 +125,4 @@ export const employeePortalRouter = router({
     return { success: true } as const;
   }),
 });
+

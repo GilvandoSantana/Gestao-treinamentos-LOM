@@ -844,3 +844,10 @@ export const cloudStorageReservations = mysqlTable("cloudStorageReservations", {
   bytes: bigint("bytes", { mode: 'number' }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
 });
+
+// Only a digest is stored; HR hands the one-use activation code to its owner.
+export const employeePortalInvitations = mysqlTable("employeePortalInvitations", {
+  employeeId: varchar("employeeId", { length: 64 }).primaryKey(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+});

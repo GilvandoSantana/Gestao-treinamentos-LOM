@@ -1,5 +1,6 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq, isNotNull } from "drizzle-orm";
-import { employees, type Employee } from "../drizzle/schema";
+import { employeePortalInvitations, employees, type Employee } from "../drizzle/schema";
 import { getDb } from "./db";
 
 /** Deixa só os dígitos — aceita CPF digitado com ou sem pontuação
@@ -30,17 +31,50 @@ export async function getEmployeeByCpf(cpf: string): Promise<Employee | undefine
   return matches[0];
 }
 
-export async function setEmployeePortalPin(employeeId: string, pinHash: string): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(employees).set({ portalPinHash: pinHash }).where(eq(employees.id, employeeId));
+function digest(code: string): string {
+  return createHash('sha256').update(code.trim()).digest('hex');
 }
 
-/** Admin pode resetar o PIN de um colaborador (esqueceu, perdeu acesso)
- * — volta pro estado de "primeiro acesso", sem precisar mexer em nada
- * mais do cadastro. */
-export async function clearEmployeePortalPin(employeeId: string): Promise<void> {
+/** Lock order is always employee then invitation, including reset and activation. */
+export async function issueEmployeePortalInvitation(employeeId: string, contract: string) {
   const db = await getDb();
-  if (!db) return;
-  await db.update(employees).set({ portalPinHash: null }).where(eq(employees.id, employeeId));
+  if (!db) throw new Error("Banco de dados não disponível.");
+  return db.transaction(async tx => {
+    const [employee] = await tx.select().from(employees).where(eq(employees.id, employeeId)).for('update');
+    if (!employee || employee.contract !== contract || employee.dismissed || !employee.cpf || employee.portalPinHash) {
+      throw new Error("Salve o CPF de um colaborador ativo e sem PIN. Para substituir um acesso existente, resete-o primeiro.");
+    }
+    const code = randomBytes(24).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await tx.insert(employeePortalInvitations).values({ employeeId, tokenHash: digest(code), expiresAt })
+      .onDuplicateKeyUpdate({ set: { tokenHash: digest(code), expiresAt } });
+    return { code, expiresAt };
+  }, { isolationLevel: 'read committed' });
+}
+
+export async function activateEmployeePortal(employeeId: string, cpf: string, code: string, pinHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados não disponível.");
+  return db.transaction(async tx => {
+    const [employee] = await tx.select().from(employees).where(eq(employees.id, employeeId)).for('update');
+    const [invitation] = await tx.select().from(employeePortalInvitations).where(eq(employeePortalInvitations.employeeId, employeeId)).for('update');
+    if (!employee || employee.dismissed || employee.portalPinHash || normalizeCpf(employee.cpf ?? '') !== normalizeCpf(cpf) ||
+        !invitation || invitation.expiresAt.getTime() <= Date.now() ||
+        !timingSafeEqual(Buffer.from(invitation.tokenHash), Buffer.from(digest(code)))) return null;
+    await tx.update(employees).set({ portalPinHash: pinHash }).where(eq(employees.id, employeeId));
+    await tx.delete(employeePortalInvitations).where(eq(employeePortalInvitations.employeeId, employeeId));
+    return { id: employee.id, contract: employee.contract };
+  }, { isolationLevel: 'read committed' });
+}
+
+/** Changing the PIN invalidates the session version and every pending invitation. */
+export async function clearEmployeePortalPin(employeeId: string, contract: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados não disponível.");
+  await db.transaction(async tx => {
+    const [employee] = await tx.select().from(employees).where(eq(employees.id, employeeId)).for('update');
+    if (!employee || employee.contract !== contract) throw new Error("Colaborador não encontrado.");
+    await tx.update(employees).set({ portalPinHash: null }).where(eq(employees.id, employeeId));
+    await tx.delete(employeePortalInvitations).where(eq(employeePortalInvitations.employeeId, employeeId));
+  }, { isolationLevel: 'read committed' });
 }
