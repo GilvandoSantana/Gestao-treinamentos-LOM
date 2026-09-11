@@ -734,6 +734,25 @@ try
                         .ToList();
                     var folderEntries = manifestToApply.Entries!
                         .Where(e => e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .Where(e =>
+                        {
+                            if (Directory.Exists(Path.Combine(rootPath, e.RelativePath)))
+                            {
+                                // Mesma lógica do File.Exists acima, agora
+                                // espelhada pra pasta (achado real,
+                                // Gilvando, 11/09: faltava essa proteção
+                                // aqui — combinado com a falta de proteção
+                                // equivalente no servidor na época, isso
+                                // contribuiu pra pasta aparecer duplicada
+                                // na Nuvem). Pasta já existe de verdade no
+                                // disco (não é placeholder, é pasta real
+                                // desde a criação) — marca como
+                                // "resolvida" sem tentar recriar.
+                                createdPaths.Add(e.RelativePath);
+                                return false;
+                            }
+                            return true;
+                        })
                         .ToList();
 
                     // Cria as pastas marcadas explicitamente no manifesto —

@@ -243,6 +243,30 @@ describe("sync-engine (desktop) — subpastas recursivas", () => {
     const second = await runSyncTick(tmpDir, first.knownFiles, cloud);
     expect(second.log.length).toBe(0);
   });
+
+  it("reconhece pasta já existente na Nuvem mesmo com maiúscula/minúscula diferente, sem duplicar", async () => {
+    // Achado real reportado pelo Gilvando (11/09): pasta duplicada na
+    // Nuvem depois de sincronizar. Antes desta correção, a comparação de
+    // nome usava o valor exato — "SSMA" (local) não batia com "ssma" (já
+    // salva na Nuvem, por exemplo se a pessoa tivesse renomeado só a
+    // caixa antes), e o programa criava outra pasta em vez de descer na
+    // que já existia.
+    const cloud = makeFakeCloud([{ name: "ssma", parentId: null, files: [] }]);
+    await fs.mkdir(path.join(tmpDir, "SSMA"));
+    await fs.writeFile(path.join(tmpDir, "SSMA", "novo.txt"), "conteudo local novo");
+
+    await runSyncTick(tmpDir, new Map(), cloud);
+
+    const raiz = await cloud.listFolder(null);
+    // Continua só UMA pasta na raiz — não duas.
+    expect(raiz.folders).toHaveLength(1);
+    expect(raiz.folders[0].name).toBe("ssma");
+
+    // O arquivo novo local foi pra DENTRO da pasta que já existia
+    // ("ssma"), não pra uma pasta duplicada criada do zero.
+    const dentro = await cloud.listFolder(raiz.folders[0].id);
+    expect(dentro.files.some((f) => f.name === "novo.txt")).toBe(true);
+  });
 });
 
 describe("sync-engine (desktop) — nunca envia arquivo do próprio sistema", () => {

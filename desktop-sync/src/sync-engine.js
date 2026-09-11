@@ -318,12 +318,29 @@ async function syncFolderTree(
     return;
   }
   const localFolderNames = localEntries.filter((e) => e.isDirectory()).map((e) => e.name);
-  const cloudFolderByName = new Map(cloudFolders.map((f) => [f.name, f]));
+  // Comparação sem diferenciar maiúscula/minúscula nem espaço nas pontas —
+  // achado real (Gilvando, 11/09): pasta aparecendo duplicada na Nuvem
+  // depois de sincronizar. Antes, a chave do mapa usava o nome exato
+  // (f.name), então qualquer diferença sutil de grafia entre o nome local
+  // e o da Nuvem (por exemplo "SSMA" local vs " SSMA" ou "ssma" na Nuvem,
+  // algo que pode acontecer facilmente ao renomear/copiar pasta no
+  // Windows) fazia o programa achar que a pasta local "ainda não existia"
+  // e criar outra igual. O servidor também ficou protegido contra isso
+  // (cloud.createFolder agora é idempotente), mas aqui evita até tentar.
+  const normalizeFolderName = (name) => name.trim().toLowerCase();
+  const cloudFolderByName = new Map(cloudFolders.map((f) => [normalizeFolderName(f.name), f]));
+  // Nome real, como está gravado NO DISCO, pra cada nome local (por
+  // versão normalizada) — usado abaixo pra continuar operando na pasta
+  // que já existe fisicamente, com a grafia que ela já tem, em vez de
+  // usar o nome da Nuvem (que pode diferir só na caixa) e sem querer
+  // acabar mexendo/criando um caminho local diferente do que já existe.
+  const localNameByNormalized = new Map(localFolderNames.map((n) => [normalizeFolderName(n), n]));
 
   // --- Pastas que já existem na Nuvem → garante que existem localmente e desce ---
   for (const folder of cloudFolders) {
-    const childLocalPath = path.join(localDirPath, folder.name);
-    const childRelative = relativePrefix ? `${relativePrefix}/${folder.name}` : folder.name;
+    const localName = localNameByNormalized.get(normalizeFolderName(folder.name)) ?? folder.name;
+    const childLocalPath = path.join(localDirPath, localName);
+    const childRelative = relativePrefix ? `${relativePrefix}/${localName}` : localName;
 
     if (folder.hasAccess === false) {
       // Mesmo comportamento do site: a pasta restrita a um grupo que a
@@ -351,7 +368,7 @@ async function syncFolderTree(
 
   // --- Pastas novas criadas só localmente → cria na Nuvem e sobe o conteúdo ---
   for (const name of localFolderNames) {
-    if (cloudFolderByName.has(name)) continue;
+    if (cloudFolderByName.has(normalizeFolderName(name))) continue;
     const childLocalPath = path.join(localDirPath, name);
     const childRelative = relativePrefix ? `${relativePrefix}/${name}` : name;
     try {
