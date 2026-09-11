@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useSiteSession } from '@/hooks/useSiteSession';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor, FolderTree } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { setSessionMarker } from '@/lib/session-marker';
@@ -59,6 +59,24 @@ export default function AdminManagementModal({
   const runBackupMutation = trpc.backup.runNow.useMutation();
   const desktopSessionsQuery = trpc.auth.desktopSessions.list.useQuery(undefined, { enabled: isOpen && isGlobalAdmin });
   const revokeDesktopSessionMutation = trpc.auth.desktopSessions.revoke.useMutation();
+  const duplicateFoldersQuery = trpc.cloud.findDuplicateFolders.useQuery(undefined, { enabled: false });
+  const mergeDuplicatesMutation = trpc.cloud.mergeDuplicateFolders.useMutation();
+
+  const handleMergeDuplicates = async (keepId: string, duplicateIds: string[], name: string) => {
+    if (
+      !window.confirm(
+        `Mesclar ${duplicateIds.length} pasta(s) duplicada(s) de "${name}" na mais antiga? O conteúdo delas será movido pra dentro da que ficar, e as duplicadas vão pra lixeira (recuperável se algo der errado).`
+      )
+    )
+      return;
+    try {
+      const result = await mergeDuplicatesMutation.mutateAsync({ keepId, duplicateIds });
+      toast.success(`Mesclado: ${result.filesMoved} arquivo(s) e ${result.foldersMoved} subpasta(s) movidos.`);
+      duplicateFoldersQuery.refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao mesclar pastas.');
+    }
+  };
 
   const handleRevokeDesktopSession = async (id: string, deviceName: string | null) => {
     if (!window.confirm(`Revogar o acesso de "${deviceName || 'este dispositivo'}"? Ele vai precisar entrar de novo.`)) return;
@@ -432,6 +450,77 @@ export default function AdminManagementModal({
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">Nenhum dispositivo conectado no momento.</p>
+          )}
+        </div>
+
+        {/* Limpeza de pastas duplicadas na Nuvem — ferramenta pontual pra
+            corrigir duplicata já existente (de antes de createFolder
+            virar idempotente). Não roda sozinha ao abrir — a pessoa pede
+            pra verificar, já que percorre toda a árvore de pastas do
+            contrato. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <FolderTree size={15} /> Pastas duplicadas na Nuvem
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Verifica se existe mais de uma pasta com o mesmo nome no mesmo lugar (do contrato
+            selecionado no cabeçalho) e permite mesclar — o conteúdo é movido pra pasta mais antiga, e a
+            duplicada vai pra lixeira, recuperável se algo der errado.
+          </p>
+          <button
+            onClick={() => duplicateFoldersQuery.refetch()}
+            disabled={duplicateFoldersQuery.isFetching}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {duplicateFoldersQuery.isFetching ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Verificando...
+              </>
+            ) : (
+              <>
+                <FolderTree size={14} /> Verificar duplicatas
+              </>
+            )}
+          </button>
+          {duplicateFoldersQuery.data && duplicateFoldersQuery.data.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">Nenhuma pasta duplicada encontrada.</p>
+          )}
+          {duplicateFoldersQuery.data && duplicateFoldersQuery.data.length > 0 && (
+            <div className="mt-2.5 space-y-2.5">
+              {duplicateFoldersQuery.data.map((group) => (
+                <div key={`${group.parentId ?? 'root'}-${group.name}`} className="border border-border rounded-lg p-2.5">
+                  <p className="text-sm font-semibold text-foreground truncate">
+                    {group.parentPath ? `${group.parentPath} / ` : ''}
+                    {group.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-1.5">
+                    {group.entries.length} cópias encontradas
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-0.5 mb-2">
+                    {group.entries.map((entry, i) => (
+                      <li key={entry.id}>
+                        {i === 0 ? '🟢 Mantida: ' : '🔁 Duplicada: '}
+                        {new Date(entry.createdAt).toLocaleDateString('pt-BR')} — {entry.fileCount} arquivo(s),{' '}
+                        {entry.subfolderCount} subpasta(s)
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={() =>
+                      handleMergeDuplicates(
+                        group.entries[0].id,
+                        group.entries.slice(1).map((e) => e.id),
+                        group.name
+                      )
+                    }
+                    disabled={mergeDuplicatesMutation.isPending}
+                    className="w-full text-xs font-semibold text-white bg-orange rounded-lg py-1.5 hover:opacity-90 disabled:opacity-50 transition"
+                  >
+                    Mesclar na mais antiga
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

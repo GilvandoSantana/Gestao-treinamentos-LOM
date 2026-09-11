@@ -58,6 +58,7 @@ import {
   updateGroupAutoSetor,
   uploadNewVersion,
 } from "../db-cloud";
+import { findDuplicateFolderGroups, mergeFolderInto } from "../db-cloud-dedup";
 import { deleteFromR2, getR2DownloadUrl, getR2PreviewUrl, isR2Configured, uploadToR2 } from "../r2-storage";
 import { logActivity } from "../db-activity";
 
@@ -1137,5 +1138,39 @@ export const cloudRouter = router({
 
       return { total: pending.length, migrated, failed } as const;
     }),
+
+    // Limpeza de pastas duplicadas — ferramenta pontual pra corrigir
+    // duplicata já existente (de antes de createFolder virar idempotente
+    // — achado reportado pelo Gilvando, 11/09). Só administrador
+    // principal: mexe em pastas de qualquer área do contrato, inclusive
+    // as que a conta comum não teria acesso pra ver.
+    findDuplicateFolders: masterAdminProcedure.query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      return findDuplicateFolderGroups(ctx.siteContract);
+    }),
+
+    mergeDuplicateFolders: masterAdminProcedure
+      .input(z.object({ keepId: z.string().min(1), duplicateIds: z.array(z.string().min(1)).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const totals = { filesMoved: 0, foldersMoved: 0, foldersMerged: 0 };
+        for (const duplicateId of input.duplicateIds) {
+          const result = await mergeFolderInto(duplicateId, input.keepId, ctx.siteContract, ctx.siteAdminUsername);
+          totals.filesMoved += result.filesMoved;
+          totals.foldersMoved += result.foldersMoved;
+          totals.foldersMerged += result.foldersMerged;
+        }
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "cloud.mergeDuplicateFolders",
+          targetType: "cloudFolder",
+          targetId: input.keepId,
+          details: `mesclou ${input.duplicateIds.length} pasta(s) duplicada(s) — ${totals.filesMoved} arquivo(s) e ${totals.foldersMoved} subpasta(s) movidos`,
+        });
+        return totals;
+      }),
   });
 

@@ -63,6 +63,7 @@ export type ActivityAction =
   | "cloud.share"
   | "cloud.unshare"
   | "cloud.migrateLegacy"
+  | "cloud.mergeDuplicateFolders"
   | "cloud.groupCreate"
   | "cloud.groupDelete"
   | "cloud.groupAddMember"
