@@ -1,10 +1,26 @@
-# CloudFilterHost — etapa experimental (unidade de sincronização estilo Drive)
+# CloudFilterHost — modo "arquivo aparece na hora, baixa ao abrir"
 
-**Aviso importante**: este código nunca foi compilado nem testado. Eu
-(Claude) não tenho acesso a Windows nem ao repositório de pacotes NuGet no
-ambiente onde escrevo código — cheguei até confirmar que a estrutura do
-projeto está correta (compila até o ponto de baixar pacotes), mas a partir
-daí só dá pra continuar testando na sua máquina Windows de verdade.
+**Atualização (11/09): CONFIRMADO FUNCIONANDO DE VERDADE, em uso real.**
+O aviso original abaixo ("nunca foi compilado nem testado") descrevia o
+início deste trabalho — desde então, o Gilvando testou cada etapa na
+própria máquina Windows, incluindo a árvore inteira de pastas
+sincronizando nos dois sentidos com dado real (confirmado por captura de
+tela da tela de status do programa, mostrando "Arquivos aparecem na
+hora, baixam..." e atividade recente real de envio/remoção). Este modo
+já é o que roda por padrão — o programa tenta ele primeiro, e só cai
+pro modo antigo (baixa tudo) se este falhar.
+
+Texto original abaixo, mantido como registro histórico de como cada
+etapa foi validada:
+
+---
+
+**Aviso importante (histórico)**: este código nunca foi compilado nem
+testado. Eu (Claude) não tenho acesso a Windows nem ao repositório de
+pacotes NuGet no ambiente onde escrevo código — cheguei até confirmar que
+a estrutura do projeto está correta (compila até o ponto de baixar
+pacotes), mas a partir daí só dá pra continuar testando na sua máquina
+Windows de verdade.
 
 Isso é bem diferente do resto do programa (`desktop-sync/`), que testei
 várias vezes antes de te entregar. Aqui, cada etapa vai exigir você
@@ -154,3 +170,23 @@ testar com a estrutura de pastas inteira da sua Nuvem de uma vez.
    confira se cada um baixa e abre certo.
 6. Me conta o resultado — quantos arquivos apareceram, se as pastas
    vieram certas, e se os arquivos que você abriu funcionaram.
+
+## Confirmado: já integrado e em uso real (11/09)
+
+O programa Electron principal já usa exatamente este mesmo comando
+(`sync-tree`) automaticamente, sempre que abre — não é mais só um teste
+manual isolado. Confirmado funcionando de verdade, com a estrutura de
+pastas inteira da Nuvem sincronizando nos dois sentidos (a tela de
+status do programa mostra "Modo: Arquivos aparecem na hora, baixam...",
+e o histórico de atividade recente mostra envio/remoção real de
+arquivo refletindo o que muda na Nuvem).
+
+Achado corrigido nesta integração: `Directory.CreateDirectory` (na
+função `ApplyManifest`, chamada tanto na primeira vez quanto a cada
+30 segundos depois) não conferia se a pasta já existia antes de tentar
+criar — diferente do que já acontecia pra arquivo (`File.Exists`, ver
+comentário no código). Isso contribuía pra pasta aparecer duplicada na
+Nuvem depois de sincronizar. Corrigido em conjunto com a mesma proteção
+do lado do servidor (que agora nunca cria pasta duplicada, não importa
+quem pede) — ver histórico de commits do repositório principal pra
+detalhes completos.

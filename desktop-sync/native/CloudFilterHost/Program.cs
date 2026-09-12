@@ -725,7 +725,7 @@ try
                                 // Já existe de verdade — provavelmente a
                                 // pessoa criou/editou local e já subiu
                                 // sozinho. Marca como "resolvido" pra não
-                                // ficar checando de novo a cada 30s.
+                                // ficar checando de novo a cada ciclo.
                                 createdPaths.Add(e.RelativePath);
                                 return false;
                             }
@@ -863,7 +863,7 @@ try
 
                 Console.WriteLine();
                 Console.WriteLine("Navegue pela pasta e abra qualquer arquivo — deve baixar na hora.");
-                Console.WriteLine("Verificando a Nuvem de novo a cada 30 segundos, pra pegar arquivo/pasta novos...");
+                Console.WriteLine("Verificando a Nuvem de novo a cada 5 segundos, pra pegar arquivo/pasta novos...");
 
                 // Fica rodando pra sempre, checando a Nuvem de novo
                 // periodicamente (o programa Electron reescreve o mesmo
@@ -872,9 +872,19 @@ try
                 // Electron, ao desconectar ou fechar). O próprio Windows
                 // cuida da limpeza da conexão automaticamente nesse caso,
                 // mesmo sem chamar CfDisconnectSyncRoot explicitamente.
+                //
+                // Antes 30s — diminuído a pedido do Gilvando (11/09). Esta
+                // releitura é só de um ARQUIVO LOCAL (sem custo de rede,
+                // quem já pagou o custo de ir até o servidor foi o lado
+                // Electron, ao gerar o manifesto) — por isso pode ficar
+                // mais curto que o intervalo do lado Electron
+                // (MANIFEST_REFRESH_INTERVAL_MS, 10s): assim que o
+                // manifesto novo chega no disco, este processo pega ele
+                // quase na hora, em vez de esperar mais um ciclo inteiro
+                // por cima do que o Electron já esperou.
                 while (true)
                 {
-                    Thread.Sleep(30_000);
+                    Thread.Sleep(5_000);
                     try
                     {
                         if (!File.Exists(manifestPath)) continue;

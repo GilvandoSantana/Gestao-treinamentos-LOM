@@ -29,7 +29,12 @@ let uploadWatcherHandle = null;
 // mecanismo de placeholder mexendo.
 let knownCloudFiles = new Map();
 let knownCloudFolders = new Map();
-const MANIFEST_REFRESH_INTERVAL_MS = 30_000;
+// Antes 30s — diminuído a pedido do Gilvando (11/09), junto com o
+// intervalo equivalente do lado nativo (Program.cs). Mais barato que o
+// modo antigo (sync-engine.js): busca a árvore inteira numa chamada só
+// (getFullTree), não uma por pasta — então dá pra folgar mais aqui sem
+// pesar tanto no servidor.
+const MANIFEST_REFRESH_INTERVAL_MS = 10_000;
 
 /** Escreve o manifesto de forma segura contra leitura no meio do
  * caminho: grava num arquivo à parte e troca de nome no fim (operação
@@ -317,7 +322,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         // Token de 30 dias expirou (ou foi revogado) — sem isso, o
-        // programa ficaria tentando de novo a cada 30s pra sempre, sem
+        // programa ficaria tentando de novo a cada ciclo pra sempre, sem
         // nunca avisar a pessoa que precisa entrar de novo. Para tudo e
         // avisa o processo principal, que reabre a tela de login.
         onLog("Sessão expirada — é preciso entrar de novo.", "error");
@@ -369,7 +374,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
           settled = true;
           onLog(
             "Pasta sincronizada — os arquivos aparecem na hora e baixam quando você abrir. " +
-              "A Nuvem é consultada de novo a cada 30 segundos, pra pegar arquivo ou pasta que outra pessoa adicionar.",
+              "A Nuvem é consultada de novo a cada 10 segundos, pra pegar arquivo ou pasta que outra pessoa adicionar.",
             "info"
           );
           resolve(true);
