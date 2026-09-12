@@ -22,6 +22,7 @@ import {
   getFileById,
   getFolderPath,
   getStorageInfo,
+  getStorageByTopFolder,
   getVersionContentInfo,
   isLockActive,
   listEffectiveGroupMembers,
@@ -102,6 +103,16 @@ export const cloudRouter = router({
     storageInfo: requirePermission('viewCloud').query(async ({ ctx }) => {
       if (!ctx.siteContract) return { limitBytes: 0, usedBytes: 0 };
       return getStorageInfo(ctx.siteContract);
+    }),
+
+    // Ideia 6 do Gilvando (indicador de espaço por pasta): quais pastas
+    // de nível raiz estão ocupando mais espaço. Só administrador
+    // principal — soma o tamanho de TODO arquivo, mesmo dentro de área
+    // restrita que uma conta comum não teria acesso pra ver.
+    storageByFolder: masterAdminProcedure.query(async ({ ctx }) => {
+      if (!ctx.siteContract) return [];
+      const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: true };
+      return getStorageByTopFolder(ctx.siteContract, accessCtx);
     }),
 
     // Só o administrador principal pode aumentar o limite (10GB -> 1TB, etc).

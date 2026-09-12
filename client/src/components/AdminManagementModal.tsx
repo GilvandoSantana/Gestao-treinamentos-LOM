@@ -7,10 +7,11 @@
 
 import { useState } from 'react';
 import { useSiteSession } from '@/hooks/useSiteSession';
-import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor, FolderTree } from 'lucide-react';
+import { X, UserPlus, Trash2, ShieldCheck, Loader, User as UserIcon, Settings2, Mail, Send, Eye, MessageCircle, Monitor, FolderTree, HardDrive } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { setSessionMarker } from '@/lib/session-marker';
+import { formatBytes } from '@shared/cloud';
 import {
   PERMISSION_KEYS,
   PERMISSION_LABELS,
@@ -60,6 +61,7 @@ export default function AdminManagementModal({
   const desktopSessionsQuery = trpc.auth.desktopSessions.list.useQuery(undefined, { enabled: isOpen && isGlobalAdmin });
   const revokeDesktopSessionMutation = trpc.auth.desktopSessions.revoke.useMutation();
   const duplicateFoldersQuery = trpc.cloud.findDuplicateFolders.useQuery(undefined, { enabled: false });
+  const storageByFolderQuery = trpc.cloud.storageByFolder.useQuery(undefined, { enabled: false });
   const mergeDuplicatesMutation = trpc.cloud.mergeDuplicateFolders.useMutation();
 
   const handleMergeDuplicates = async (keepId: string, duplicateIds: string[], name: string) => {
@@ -520,6 +522,58 @@ export default function AdminManagementModal({
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Indicador de espaço por pasta — ideia 6 do Gilvando: ajuda a
+            decidir o que arquivar/limpar quando o espaço do contrato
+            está ficando apertado, mostrando quem está ocupando mais. */}
+        <div className="mb-5 p-3 rounded-xl border border-border bg-muted/30">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <HardDrive size={15} /> Espaço por pasta
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+            Mostra quais pastas de nível raiz (do contrato selecionado no cabeçalho) estão
+            ocupando mais espaço — ajuda a decidir o que arquivar ou limpar.
+          </p>
+          <button
+            onClick={() => storageByFolderQuery.refetch()}
+            disabled={storageByFolderQuery.isFetching}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-navy text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
+          >
+            {storageByFolderQuery.isFetching ? (
+              <>
+                <Loader size={14} className="animate-spin" /> Calculando...
+              </>
+            ) : (
+              <>
+                <HardDrive size={14} /> Ver espaço por pasta
+              </>
+            )}
+          </button>
+          {storageByFolderQuery.data && storageByFolderQuery.data.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">Nenhum arquivo encontrado.</p>
+          )}
+          {storageByFolderQuery.data && storageByFolderQuery.data.length > 0 && (
+            <div className="mt-2.5 space-y-2">
+              {storageByFolderQuery.data.map((folder) => {
+                const maxBytes = storageByFolderQuery.data![0].totalBytes || 1;
+                const percent = Math.max(2, Math.round((folder.totalBytes / maxBytes) * 100));
+                return (
+                  <div key={folder.folderId ?? 'root'}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-foreground font-medium truncate">{folder.folderName}</span>
+                      <span className="text-muted-foreground shrink-0 ml-2">
+                        {formatBytes(folder.totalBytes)} · {folder.fileCount} arquivo(s)
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full bg-orange" style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

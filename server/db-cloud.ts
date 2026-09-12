@@ -392,6 +392,70 @@ export async function getFullFolderTree(
   return { folders: resultFolders, files: resultFiles };
 }
 
+export interface FolderStorageBreakdown {
+  folderId: string | null;
+  folderName: string;
+  totalBytes: number;
+  fileCount: number;
+}
+
+/**
+ * Soma o tamanho de todo arquivo por pasta de NÍVEL RAIZ (recursivamente
+ * — inclui subpasta) — parte pura, sem banco, fácil de testar. Separada
+ * de getStorageByTopFolder só pra isso.
+ */
+export function computeStorageByTopFolder(
+  folders: { id: string; name: string; parentId: string | null }[],
+  files: { folderId: string | null; fileSize: number | null }[]
+): FolderStorageBreakdown[] {
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+  const topAncestorCache = new Map<string, string | null>();
+
+  function findTopAncestor(folderId: string | null): string | null {
+    if (folderId === null) return null;
+    if (topAncestorCache.has(folderId)) return topAncestorCache.get(folderId)!;
+    // Marca ANTES de recursar, mesma proteção contra referência circular
+    // usada em outros lugares deste arquivo.
+    topAncestorCache.set(folderId, folderId);
+    const folder = folderById.get(folderId);
+    const result = folder?.parentId ? findTopAncestor(folder.parentId) : folderId;
+    topAncestorCache.set(folderId, result);
+    return result;
+  }
+
+  const totals = new Map<string | null, { bytes: number; count: number }>();
+  for (const file of files) {
+    const topId = findTopAncestor(file.folderId);
+    const current = totals.get(topId) ?? { bytes: 0, count: 0 };
+    current.bytes += file.fileSize || 0;
+    current.count += 1;
+    totals.set(topId, current);
+  }
+
+  const result: FolderStorageBreakdown[] = [];
+  for (const [folderId, { bytes, count }] of Array.from(totals)) {
+    const folderName = folderId === null ? "Meus arquivos (raiz)" : folderById.get(folderId)?.name ?? "(pasta removida)";
+    result.push({ folderId, folderName, totalBytes: bytes, fileCount: count });
+  }
+
+  result.sort((a, b) => b.totalBytes - a.totalBytes);
+  return result;
+}
+
+/**
+ * Ideia 6 do Gilvando (indicador de espaço por pasta): ajuda a decidir o
+ * que arquivar/limpar quando o espaço do contrato está ficando apertado,
+ * em vez de só ver o total geral. Reaproveita getFullFolderTree (mesma
+ * consulta que a árvore inteira já usa) em vez de bater no banco de novo.
+ */
+export async function getStorageByTopFolder(
+  contractSlug: string,
+  ctx: CloudAccessContext
+): Promise<FolderStorageBreakdown[]> {
+  const { folders, files } = await getFullFolderTree(contractSlug, ctx);
+  return computeStorageByTopFolder(folders, files);
+}
+
 export async function getFolderById(id: string): Promise<CloudFolderInfo | undefined> {
   const db = await getDb();
   if (!db) return undefined;
