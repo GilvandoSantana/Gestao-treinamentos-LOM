@@ -90,6 +90,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const createMutation = trpc.contracts.create.useMutation();
   const folderTemplateQuery = trpc.contracts.getFolderTemplate.useQuery(undefined, { enabled: isOpen });
   const setFolderTemplateMutation = trpc.contracts.setFolderTemplate.useMutation();
+  const applyTemplateMutation = trpc.contracts.applyFolderTemplate.useMutation();
   const updateMutation = trpc.contracts.update.useMutation();
   const deleteMutation = trpc.contracts.delete.useMutation();
   const restoreMutation = trpc.contracts.restore.useMutation();
@@ -669,8 +670,8 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                     </div>
                   )}
 
-                  {!editingId && (
-                    <div className="border-t border-border pt-4">
+                  <div className="border-t border-border pt-4">
+                    {!editingId && (
                       <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
                         <input
                           type="checkbox"
@@ -686,50 +687,71 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                           )}
                         </span>
                       </label>
+                    )}
+                    {editingId && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setTemplateText((folderTemplateQuery.data ?? []).join('\n'));
-                          setShowTemplateEditor((v) => !v);
+                        disabled={applyTemplateMutation.isPending || !folderTemplateQuery.data?.length}
+                        onClick={async () => {
+                          try {
+                            const result = await applyTemplateMutation.mutateAsync({ id: editingId });
+                            toast.success(
+                              result.foldersCreated > 0
+                                ? `${result.foldersCreated} pasta(s) nova(s) criada(s) na Nuvem deste contrato.`
+                                : 'Todas as pastas do modelo já existiam neste contrato.'
+                            );
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : 'Erro ao aplicar o modelo.');
+                          }
                         }}
-                        className="text-xs text-orange hover:underline mt-1.5"
+                        className="text-sm font-semibold text-white bg-navy rounded-lg px-3 py-2 hover:opacity-90 disabled:opacity-50 w-full"
                       >
-                        {showTemplateEditor ? 'Fechar' : 'Editar lista de pastas padrão'}
+                        {applyTemplateMutation.isPending ? 'Aplicando...' : 'Aplicar modelo de pastas neste contrato'}
                       </button>
-                      {showTemplateEditor && (
-                        <div className="mt-2">
-                          <textarea
-                            value={templateText}
-                            onChange={(e) => setTemplateText(e.target.value)}
-                            placeholder={'Uma pasta por linha, ex:\nAET\nCIPAMIN\nDDS'}
-                            rows={5}
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange"
-                          />
-                          <button
-                            type="button"
-                            disabled={setFolderTemplateMutation.isPending}
-                            onClick={async () => {
-                              const names = templateText
-                                .split('\n')
-                                .map((n) => n.trim())
-                                .filter(Boolean);
-                              try {
-                                await setFolderTemplateMutation.mutateAsync({ folderNames: names });
-                                await folderTemplateQuery.refetch();
-                                toast.success('Lista de pastas padrão salva.');
-                                setShowTemplateEditor(false);
-                              } catch (error) {
-                                toast.error(error instanceof Error ? error.message : 'Erro ao salvar a lista.');
-                              }
-                            }}
-                            className="mt-1.5 text-xs font-semibold text-white bg-navy rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
-                          >
-                            Salvar lista
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemplateText((folderTemplateQuery.data ?? []).join('\n'));
+                        setShowTemplateEditor((v) => !v);
+                      }}
+                      className="text-xs text-orange hover:underline mt-1.5"
+                    >
+                      {showTemplateEditor ? 'Fechar' : 'Editar lista de pastas padrão'}
+                    </button>
+                    {showTemplateEditor && (
+                      <div className="mt-2">
+                        <textarea
+                          value={templateText}
+                          onChange={(e) => setTemplateText(e.target.value)}
+                          placeholder={'Uma pasta por linha, ex:\nAET\nCIPAMIN\nDDS'}
+                          rows={5}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange"
+                        />
+                        <button
+                          type="button"
+                          disabled={setFolderTemplateMutation.isPending}
+                          onClick={async () => {
+                            const names = templateText
+                              .split('\n')
+                              .map((n) => n.trim())
+                              .filter(Boolean);
+                            try {
+                              await setFolderTemplateMutation.mutateAsync({ folderNames: names });
+                              await folderTemplateQuery.refetch();
+                              toast.success('Lista de pastas padrão salva.');
+                              setShowTemplateEditor(false);
+                            } catch (error) {
+                              toast.error(error instanceof Error ? error.message : 'Erro ao salvar a lista.');
+                            }
+                          }}
+                          className="mt-1.5 text-xs font-semibold text-white bg-navy rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+                        >
+                          Salvar lista
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex gap-2">
                     <button

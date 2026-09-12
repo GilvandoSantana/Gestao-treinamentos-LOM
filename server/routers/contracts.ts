@@ -132,6 +132,33 @@ export const contractsRouter = router({
         return { success: true } as const;
       }),
 
+    // Ideia 5 (parte 2): aplica o modelo de pasta padrão num contrato
+    // JÁ EXISTENTE, não só na criação — útil pra contrato antigo que
+    // nunca teve essa estrutura.
+    applyFolderTemplate: organizationAdminProcedure
+      .input(z.object({ id: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const contract = await getContractById(input.id);
+        if (!contract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
+        }
+        const template = await getFolderTemplate(ctx.siteOrganizationId);
+        let foldersCreated = 0;
+        for (const folderName of template) {
+          const existing = await getFolderByNameInParent(contract.slug, null, folderName);
+          if (existing) continue;
+          await createFolder({
+            id: uuidv4(),
+            contractSlug: contract.slug,
+            parentId: null,
+            name: folderName,
+            createdBy: ctx.siteAdminUsername,
+          });
+          foldersCreated++;
+        }
+        return { foldersCreated, totalInTemplate: template.length } as const;
+      }),
+
     update: organizationAdminProcedure
       .input(
         z.object({
