@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst } from "./upload-watcher.js";
+import { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst, buildConflictFileName } from "./upload-watcher.js";
 
 describe("decideUploadAction", () => {
   it("arquivo sem nenhum registro na Nuvem → novo, deve subir", () => {
@@ -23,6 +23,36 @@ describe("decideUploadAction", () => {
 
   it("arquivo zerado depois de já ter tido conteúdo → ainda conta como edição (tamanho mudou)", () => {
     const result = decideUploadAction(0, { fileId: "abc", fileSize: 5000 });
+    expect(result).toEqual({ action: "update", fileId: "abc" });
+  });
+
+  it("tamanho mudou local, e a Nuvem TAMBÉM mudou desde a última vez que olhamos → conflito", () => {
+    // Achado real: duas edições independentes do mesmo arquivo ao mesmo
+    // tempo (uma local, outra na Nuvem) não podem terminar com uma
+    // sobrescrevendo a outra sem ninguém perceber.
+    const result = decideUploadAction(
+      5001,
+      { fileId: "abc", fileSize: 5000, updatedAt: "2026-01-02T00:00:00.000Z" },
+      "2026-01-01T00:00:00.000Z" // baseline diferente do updatedAt atual
+    );
+    expect(result).toEqual({ action: "conflict", fileId: "abc" });
+  });
+
+  it("tamanho mudou local, mas a Nuvem NÃO mudou desde a última vez → edição normal, sem conflito", () => {
+    const result = decideUploadAction(
+      5001,
+      { fileId: "abc", fileSize: 5000, updatedAt: "2026-01-01T00:00:00.000Z" },
+      "2026-01-01T00:00:00.000Z" // mesmo valor — nada mudou na Nuvem
+    );
+    expect(result).toEqual({ action: "update", fileId: "abc" });
+  });
+
+  it("sem nenhuma linha de base ainda (primeira vez que vemos este arquivo) → nunca é conflito", () => {
+    const result = decideUploadAction(5001, {
+      fileId: "abc",
+      fileSize: 5000,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    });
     expect(result).toEqual({ action: "update", fileId: "abc" });
   });
 });
@@ -132,6 +162,7 @@ describe("performUpload", () => {
     const fakeApiClient = {
       uploadNewVersion: async (fileId, buffer, name) => {
         calls.push({ fileId, buffer, name });
+        return { updatedAt: "2026-01-01T00:00:00.000Z" };
       },
     };
 
@@ -144,7 +175,7 @@ describe("performUpload", () => {
     expect(calls).toEqual([
       { fileId: "id-existente-456", buffer: Buffer.from("conteudo editado"), name: "bora.txt" },
     ]);
-    expect(result).toEqual({ fileId: "id-existente-456" });
+    expect(result).toEqual({ fileId: "id-existente-456", updatedAt: "2026-01-01T00:00:00.000Z" });
   });
 });
 
@@ -191,5 +222,24 @@ describe("checkDeletionBurst", () => {
     // antigas, então esta ainda é permitida.
     const later = checkDeletionBurst(timestamps, windowMs + 100_000, 5, windowMs);
     expect(later.allowed).toBe(true);
+  });
+});
+
+describe("buildConflictFileName", () => {
+  it("mantém a extensão do arquivo, inserindo a marcação antes dela", () => {
+    const result = buildConflictFileName("relatorio.docx");
+    expect(result.endsWith(".docx")).toBe(true);
+    expect(result.startsWith("relatorio (conflito - ")).toBe(true);
+  });
+
+  it("funciona também com arquivo sem extensão nenhuma", () => {
+    const result = buildConflictFileName("LEIAME");
+    expect(result.startsWith("LEIAME (conflito - ")).toBe(true);
+    expect(result.endsWith(")")).toBe(true);
+  });
+
+  it("duas chamadas seguidas não geram o mesmo nome duas vezes seguidas por acaso simples (contém o nome do computador)", () => {
+    const result = buildConflictFileName("planilha.xlsx");
+    expect(result).toContain(require("os").hostname());
   });
 });

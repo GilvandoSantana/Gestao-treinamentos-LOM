@@ -126,7 +126,7 @@ async function generateManifestEntries(apiClient) {
   }
   for (const file of files) {
     const relativePath = file.folderId ? `${pathFor(file.folderId)}\\${file.name}` : file.name;
-    entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0 });
+    entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0, updatedAt: file.updatedAt });
   }
 
   return entries;
@@ -140,7 +140,11 @@ function buildKnownCloudFilesMap(entries) {
   const map = new Map();
   for (const entry of entries) {
     if (!entry.isFolder) {
-      map.set(entry.relativePath.split("\\").join("/"), { fileId: entry.fileId, fileSize: entry.fileSize });
+      map.set(entry.relativePath.split("\\").join("/"), {
+        fileId: entry.fileId,
+        fileSize: entry.fileSize,
+        updatedAt: entry.updatedAt,
+      });
     }
   }
   return map;

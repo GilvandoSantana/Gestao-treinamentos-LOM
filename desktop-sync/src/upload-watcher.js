@@ -17,6 +17,7 @@
 
 const fs = require("fs");
 const fsp = require("fs/promises");
+const os = require("os");
 // path.win32 explicitamente (não o "path" padrão, que muda de
 // comportamento dependendo do sistema operacional que roda o código) —
 // este programa só roda no Windows e todo caminho aqui é no formato
@@ -64,7 +65,31 @@ function checkDeletionBurst(recentTimestamps, now, limit = DELETE_BURST_LIMIT, w
  * @param {{fileId: string, fileSize: number} | undefined} knownCloudEntry
  * @returns {{action: "new"} | {action: "update", fileId: string} | {action: "skip"}}
  */
-function decideUploadAction(localSize, knownCloudEntry) {
+/**
+ * Monta o nome do arquivo de conflito — insere a marcação antes da
+ * extensão (ex: "relatorio.docx" -> "relatorio (conflito - PC-JOAO -
+ * 2026-09-12 1430).docx"), assim ainda abre certo no programa que
+ * normalmente abriria esse tipo de arquivo.
+ */
+function buildConflictFileName(name) {
+  const ext = path.extname(name);
+  const base = name.slice(0, name.length - ext.length);
+  const stamp = new Date()
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ")
+    .replace(":", "");
+  return `${base} (conflito - ${os.hostname()} - ${stamp})${ext}`;
+}
+
+/**
+ * @param {number} localSize
+ * @param {{fileId: string, fileSize: number, updatedAt?: string} | undefined} knownCloudEntry
+ * @param {string | undefined} baselineUpdatedAt - o updatedAt que a gente
+ *   viu da ÚLTIMA vez que sincronizou este arquivo (upload, ou só uma
+ *   observação sem mudança) — usado só pra detectar conflito.
+ */
+function decideUploadAction(localSize, knownCloudEntry, baselineUpdatedAt) {
   if (!knownCloudEntry) {
     return { action: "new" };
   }
@@ -73,6 +98,16 @@ function decideUploadAction(localSize, knownCloudEntry) {
     // mecanismo de placeholder que acabou de criar ou hidratar esse
     // arquivo, não uma edição de verdade da pessoa.
     return { action: "skip" };
+  }
+  // Achado real: se alguém (ou o programa em outro computador) editou
+  // esse MESMO arquivo pela Nuvem enquanto a pessoa editava localmente,
+  // subir por cima sem avisar apagaria uma das duas edições sem
+  // ninguém perceber. Detecta isso comparando o "updatedAt" que a
+  // Nuvem tinha da ÚLTIMA vez que a gente olhou pra esse arquivo
+  // (baselineUpdatedAt) contra o mais recente conhecido agora — se
+  // mudou sem ter sido a gente que mudou, é conflito de verdade.
+  if (baselineUpdatedAt && knownCloudEntry.updatedAt && baselineUpdatedAt !== knownCloudEntry.updatedAt) {
+    return { action: "conflict", fileId: knownCloudEntry.fileId };
   }
   return { action: "update", fileId: knownCloudEntry.fileId };
 }
@@ -139,10 +174,10 @@ async function ensureCloudFolder(relativeFolderPath, deps) {
 async function performUpload(action, { name, buffer, folderId, fileId }, apiClient) {
   if (action === "new") {
     const result = await apiClient.uploadNewFile(folderId ?? null, name, buffer);
-    return { fileId: result.id };
+    return { fileId: result.id, updatedAt: result.updatedAt };
   }
-  await apiClient.uploadNewVersion(fileId, buffer, name);
-  return { fileId };
+  const result = await apiClient.uploadNewVersion(fileId, buffer, name);
+  return { fileId, updatedAt: result.updatedAt };
 }
 
 /**
@@ -159,6 +194,10 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   const timers = new Map();
   const uploading = new Set();
   const folderCreationInFlight = new Map();
+  // "updatedAt" da Nuvem que a gente viu da última vez que olhou pra
+  // cada arquivo (upload feito pela gente, ou só uma observação sem
+  // mudança) — usado só pra detectar conflito (ver decideUploadAction).
+  const lastKnownUpdatedAt = new Map();
   let recentDeletionTimestamps = [];
   let deletionsPaused = false;
 
@@ -269,9 +308,15 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     if (!stat.isFile()) return;
 
     const known = getKnownCloudFiles().get(key);
-    const decision = decideUploadAction(stat.size, known);
+    const decision = decideUploadAction(stat.size, known, lastKnownUpdatedAt.get(key));
 
-    if (decision.action === "skip") return;
+    if (decision.action === "skip") {
+      // Mantém a linha de base em dia mesmo sem upload — é o que permite
+      // detectar conflito na PRÓXIMA edição, mesmo que esta seja a
+      // primeira vez que a gente olha pra esse arquivo.
+      if (known?.updatedAt) lastKnownUpdatedAt.set(key, known.updatedAt);
+      return;
+    }
 
     uploading.add(relativePath);
     try {
@@ -288,16 +333,49 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
           onLog,
         });
         const buffer = await fsp.readFile(fullPath);
-        const { fileId } = await performUpload("new", { name, buffer, folderId }, apiClient);
-        getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length });
+        const { fileId, updatedAt } = await performUpload("new", { name, buffer, folderId }, apiClient);
+        getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length, updatedAt });
+        if (updatedAt) lastKnownUpdatedAt.set(key, updatedAt);
         onUploaded(key, fileId, buffer.length);
         onLog(`Enviado "${key}" (novo no computador).`, "upload");
       } else if (decision.action === "update") {
         const buffer = await fsp.readFile(fullPath);
-        await performUpload("update", { name, buffer, fileId: decision.fileId }, apiClient);
-        getKnownCloudFiles().set(key, { fileId: decision.fileId, fileSize: buffer.length });
+        const { updatedAt } = await performUpload("update", { name, buffer, fileId: decision.fileId }, apiClient);
+        getKnownCloudFiles().set(key, { fileId: decision.fileId, fileSize: buffer.length, updatedAt });
+        if (updatedAt) lastKnownUpdatedAt.set(key, updatedAt);
         onUploaded(key, decision.fileId, buffer.length);
         onLog(`Enviada nova versão de "${key}" (editado no computador).`, "upload");
+      } else if (decision.action === "conflict") {
+        // Achado real: alguém (ou a mesma pessoa, em outro computador)
+        // editou este MESMO arquivo pela Nuvem enquanto havia uma edição
+        // local pendente aqui — nenhuma das duas edições é "menos
+        // importante", então NENHUMA é apagada silenciosamente. A
+        // edição local vira um arquivo novo, separado, com o conflito
+        // marcado no nome; o nome original volta a refletir a versão da
+        // Nuvem no próximo ciclo (a mesma lógica que já materializa
+        // arquivo novo vindo de lá).
+        const conflictName = buildConflictFileName(name);
+        const conflictPath = path.join(path.dirname(fullPath), conflictName);
+        await fsp.rename(fullPath, conflictPath);
+
+        const parentPath = path.dirname(relativePath).split(path.sep).join("/");
+        const folderId = await ensureCloudFolder(parentPath, {
+          apiClient,
+          knownCloudFolders: getKnownCloudFolders(),
+          inFlight: folderCreationInFlight,
+          onLog,
+        });
+        const buffer = await fsp.readFile(conflictPath);
+        const { fileId, updatedAt } = await performUpload("new", { name: conflictName, buffer, folderId }, apiClient);
+        const conflictKey = parentPath ? `${parentPath}/${conflictName}` : conflictName;
+        getKnownCloudFiles().set(conflictKey, { fileId, fileSize: buffer.length, updatedAt });
+        if (updatedAt) lastKnownUpdatedAt.set(conflictKey, updatedAt);
+        onUploaded(conflictKey, fileId, buffer.length);
+        onLog(
+          `Conflito em "${key}": alguém mudou esse arquivo na Nuvem ao mesmo tempo que você editava aqui. ` +
+            `Sua versão foi salva como "${conflictName}" — a versão da Nuvem volta a aparecer com o nome original.`,
+          "conflict"
+        );
       }
     } catch (error) {
       onLog(`Erro ao enviar "${key}": ${error?.message || "erro desconhecido"}`, "error");
@@ -339,4 +417,11 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   };
 }
 
-module.exports = { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst, startUploadWatcher };
+module.exports = {
+  decideUploadAction,
+  ensureCloudFolder,
+  performUpload,
+  checkDeletionBurst,
+  startUploadWatcher,
+  buildConflictFileName,
+};
