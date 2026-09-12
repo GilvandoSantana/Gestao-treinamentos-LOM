@@ -102,6 +102,45 @@ describe("generateManifestEntries", () => {
     for (const ch of fileEntry.relativePath) if (ch === String.fromCharCode(92)) backslashCount++;
     expect(backslashCount).toBe(1);
   });
+
+  it("sincronização seletiva: pasta excluída (e tudo dentro dela) não aparece no manifesto", async () => {
+    // Ideia 3 do Gilvando: escolher quais pastas de nível raiz sincronizar.
+    const client = makeFakeApiClient({
+      folders: [
+        { id: "f1", name: "Contratos Ativos", parentId: null, hasAccess: true },
+        { id: "f2", name: "Arquivo Morto", parentId: null, hasAccess: true },
+        { id: "f3", name: "Sub Arquivo Morto", parentId: "f2", hasAccess: true },
+      ],
+      files: [
+        { id: "file1", name: "atual.txt", folderId: "f1", fileSize: 5 },
+        { id: "file2", name: "antigo.txt", folderId: "f2", fileSize: 5 },
+        { id: "file3", name: "bem-antigo.txt", folderId: "f3", fileSize: 5 },
+      ],
+    });
+
+    const entries = await generateManifestEntries(client, new Set(["f2"]));
+
+    const paths = entries.map((e) => e.relativePath);
+    expect(paths).toContain("Contratos Ativos");
+    expect(paths).toContain("Contratos Ativos\\atual.txt");
+    // Nem a pasta excluída, nem a subpasta dela, nem os arquivos de
+    // nenhuma das duas aparecem.
+    expect(paths).not.toContain("Arquivo Morto");
+    expect(paths).not.toContain("Arquivo Morto\\antigo.txt");
+    expect(paths.some((p) => p.includes("Sub Arquivo Morto"))).toBe(false);
+    expect(paths.some((p) => p.includes("bem-antigo.txt"))).toBe(false);
+  });
+
+  it("sem nenhuma exclusão informada, sincroniza tudo normalmente (compatível com código antigo)", async () => {
+    const client = makeFakeApiClient({
+      folders: [{ id: "f1", name: "Pasta", parentId: null, hasAccess: true }],
+      files: [{ id: "file1", name: "arquivo.txt", folderId: "f1", fileSize: 1 }],
+    });
+
+    const entries = await generateManifestEntries(client);
+
+    expect(entries.map((e) => e.relativePath)).toContain("Pasta\\arquivo.txt");
+  });
 });
 
 describe("findGenuinelyRemoteChanges", () => {

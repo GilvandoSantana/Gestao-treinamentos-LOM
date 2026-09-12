@@ -100,11 +100,35 @@ function runOneShotCommand(exePath, args, diagLog) {
  * única (via path.sep do Node), e sempre funcionou sem esse problema;
  * a barra dupla no download era uma inconsistência, não uma
  * necessidade real. */
-async function generateManifestEntries(apiClient) {
+/**
+ * @param {import('./api-client').ApiClient} apiClient
+ * @param {Set<string>} [excludedFolderIds] - pastas do NÍVEL RAIZ que a
+ *   pessoa escolheu não sincronizar (ideia 3 do Gilvando, sincronização
+ *   seletiva) — a pasta em si e tudo dentro dela (recursivamente) fica de
+ *   fora do manifesto, como se nem existisse na Nuvem.
+ */
+async function generateManifestEntries(apiClient, excludedFolderIds = new Set()) {
   const { folders, files } = await apiClient.getFullTree();
 
   const folderById = new Map(folders.map((f) => [f.id, f]));
   const pathCache = new Map();
+  const excludedCache = new Map();
+
+  function isExcluded(folderId) {
+    if (!folderId) return false;
+    if (excludedCache.has(folderId)) return excludedCache.get(folderId);
+    // Marca ANTES de recursar no pai, pra nunca entrar em loop infinito
+    // caso o dado venha com uma referência circular por engano.
+    excludedCache.set(folderId, false);
+    if (excludedFolderIds.has(folderId)) {
+      excludedCache.set(folderId, true);
+      return true;
+    }
+    const folder = folderById.get(folderId);
+    const parentExcluded = folder?.parentId ? isExcluded(folder.parentId) : false;
+    excludedCache.set(folderId, parentExcluded);
+    return parentExcluded;
+  }
 
   function pathFor(folderId) {
     if (pathCache.has(folderId)) return pathCache.get(folderId);
@@ -123,9 +147,11 @@ async function generateManifestEntries(apiClient) {
   // restritas (hasAccess:false) o servidor já garante que não trazem
   // filhos junto — aqui só precisa mostrar a pasta em si, vazia.
   for (const folder of folders) {
+    if (isExcluded(folder.id)) continue;
     entries.push({ relativePath: pathFor(folder.id), isFolder: true, folderId: folder.id });
   }
   for (const file of files) {
+    if (isExcluded(file.folderId)) continue;
     const relativePath = file.folderId ? `${pathFor(file.folderId)}\\${file.name}` : file.name;
     entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0, updatedAt: file.updatedAt });
   }
@@ -269,7 +295,16 @@ async function findExistingExe(onLog) {
  * @param {import('./api-client').ApiClient} opts.apiClient
  * @param {(message: string, kind: string) => void} opts.onLog
  */
-async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, contractName, onLog, onAuthError }) {
+async function startPlaceholderSync({
+  folderPath,
+  serverUrl,
+  token,
+  apiClient,
+  contractName,
+  onLog,
+  onAuthError,
+  getExcludedFolderIds,
+}) {
   // Sempre manda pro terminal (visível rodando "npm start") E pro log da
   // tela — dobrado de propósito, porque descobrir "por que o modo novo
   // não ativou" só pelo log da tela às vezes corta informação.
@@ -287,6 +322,11 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   }
   diagLog(`Usando: ${exePath}`);
   onLog(`Programa auxiliar encontrado: ${exePath}`, "info");
+
+  // Padrão "nada excluído" se quem chamou não passar nada — mantém o
+  // comportamento de sempre pra qualquer código antigo/teste que ainda
+  // não conhece esta opção.
+  const getExcluded = getExcludedFolderIds || (() => new Set());
 
   // Passo que faltava (achado depois de investigar o erro 0x80070186 num
   // teste real, 01/09): CfConnectSyncRoot EXIGE que a pasta já esteja
@@ -306,7 +346,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   }
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
-  const entries = await generateManifestEntries(apiClient);
+  const entries = await generateManifestEntries(apiClient, getExcluded());
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
   knownCloudFiles = buildKnownCloudFilesMap(entries);
   knownCloudFolders = buildKnownCloudFoldersMap(entries);
@@ -323,7 +363,7 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(async () => {
     try {
-      const freshEntries = await generateManifestEntries(apiClient);
+      const freshEntries = await generateManifestEntries(apiClient, getExcluded());
       await writeManifestAtomic(manifestPath, freshEntries);
 
       const freshMap = buildKnownCloudFilesMap(freshEntries);

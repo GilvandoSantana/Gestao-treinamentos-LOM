@@ -45,6 +45,10 @@ const state = {
   // criar/editar arquivo direto na pasta ainda NÃO sobe sozinho — isso é
   // a próxima etapa.
   syncMode: null,
+  // Ideia 3 do Gilvando (sincronização seletiva): ids de pasta de nível
+  // RAIZ que a pessoa escolheu não sincronizar — a pasta e tudo dentro
+  // dela (recursivamente) fica de fora, como se nem existisse na Nuvem.
+  excludedFolderIds: [],
 };
 
 // Impede duas cópias do programa rodando ao mesmo tempo — a segunda
@@ -122,6 +126,7 @@ async function init() {
       state.username = session.username;
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
       state.folderPath = config.folderPath;
+      state.excludedFolderIds = config.excludedFolderIds || [];
 
       // Confere de novo a pasta salva antes de sincronizar sozinho — só a
       // parte de "é uma pasta perigosa do sistema" (checkEmpty: false).
@@ -253,6 +258,7 @@ function getStatusSnapshot() {
     lastError: state.lastError,
     log: state.log,
     syncMode: state.syncMode,
+    excludedFolderIds: state.excludedFolderIds,
   };
 }
 
@@ -279,6 +285,7 @@ async function startSync() {
     token: apiClient.token,
     apiClient,
     contractName: state.contractName,
+    getExcludedFolderIds: () => new Set(state.excludedFolderIds),
     onLog: (message, kind) => {
       pushLog([{ id: `ph-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
       broadcastStatus();
@@ -551,6 +558,31 @@ ipcMain.handle("finish-setup", async (_event, contractSlug, folderPath) => {
 // --- IPC: tela de status/configurações ---
 
 ipcMain.handle("get-status", () => getStatusSnapshot());
+
+// Ideia 3 do Gilvando (sincronização seletiva): lista as pastas de nível
+// RAIZ da Nuvem, pra pessoa escolher quais sincronizar. Reaproveita
+// getFullTree (a mesma consulta que o modo placeholder já usa) em vez de
+// uma rota nova — filtra só o nível raiz aqui mesmo.
+ipcMain.handle("list-top-folders", async () => {
+  if (!apiClient) return { ok: false, error: "Não conectado." };
+  try {
+    const { folders } = await apiClient.getFullTree();
+    const topFolders = folders.filter((f) => !f.parentId).map((f) => ({ id: f.id, name: f.name }));
+    return { ok: true, data: topFolders };
+  } catch (error) {
+    return { ok: false, error: error?.message || "Falha ao listar pastas." };
+  }
+});
+
+ipcMain.handle("set-excluded-folders", async (_event, folderIds) => {
+  state.excludedFolderIds = Array.isArray(folderIds) ? folderIds : [];
+  const config = store.loadConfig() || {};
+  store.saveConfig({ ...config, excludedFolderIds: state.excludedFolderIds });
+  // A próxima verificação periódica (a cada 10s) já aplica sozinha —
+  // não existe hoje um jeito de forçar isso na hora sem reiniciar a
+  // sincronização inteira, então a pessoa só precisa esperar um pouco.
+  return { ok: true };
+});
 
 ipcMain.handle("sync-now", () => runSyncNow());
 

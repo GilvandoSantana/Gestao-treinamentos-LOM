@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("desktopSync", {
   openFolder: () => ipcRenderer.invoke("open-folder"),
   changeFolder: () => ipcRenderer.invoke("change-folder"),
   disconnect: () => ipcRenderer.invoke("disconnect"),
+  listTopFolders: () => ipcRenderer.invoke("list-top-folders"),
+  setExcludedFolders: (folderIds) => ipcRenderer.invoke("set-excluded-folders", folderIds),
   onStatusUpdate: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("status-update", listener);
