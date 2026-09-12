@@ -5,6 +5,7 @@ import { csrfProtection } from './_core/csrf';
 import { reserveStorageCapacity, releaseStorageReservation, canAccessFile, canAccessFolder, createFileRecord, getFileById, getStorageInfo, isLockActive, uploadNewVersion } from './db-cloud';
 import { abortMultipartUpload, completeMultipartUpload, createMultipartUpload, deleteFromR2, getObjectSize, isR2Configured, uploadPartToR2 } from './r2-storage';
 import { logActivity } from './db-activity';
+import { detectDangerousFileSignature } from './file-signature';
 
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 export function validateDeclaredSize(value: unknown): number {
@@ -94,6 +95,24 @@ export function registerCloudUploadRoutes(app: Express) {
         const partNumber = Number(req.query.partNumber);
         if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) throw new Error('Número de parte inválido.');
         if (!Buffer.isBuffer(req.body) || !req.body.length) throw new Error('Parte vazia.');
+        // Assinatura (primeiros bytes) só pode ser conferida na PRIMEIRA
+        // parte — é onde ela sempre está, não importa o tamanho total do
+        // arquivo. Rejeita o envio inteiro se bater com um formato
+        // executável/script conhecido, não importa o nome ou tipo
+        // declarado (achado de auditoria de segurança, 07/09). Limpa a
+        // reserva de espaço e a sessão do R2 na hora — sem isso, ficaria
+        // preso até a limpeza periódica (2h depois) resolver sozinha.
+        if (partNumber === 1) {
+          const dangerous = detectDangerousFileSignature(req.body);
+          if (dangerous) {
+            uploads.delete(uploadId);
+            await abortMultipartUpload(candidate.key, uploadId).catch(() => {});
+            await releaseStorageReservation(candidate.reservationId).catch(() => {});
+            throw new Error(
+              `Este arquivo parece ser um ${dangerous}, não o tipo de documento esperado — envio bloqueado por segurança.`
+            );
+          }
+        }
         const received = Array.from(candidate.parts.values()).reduce((sum, part) => sum + part.size, 0);
         if (received - (candidate.parts.get(partNumber)?.size ?? 0) + req.body.length > candidate.expectedSize) throw new Error('O envio excede o tamanho informado.');
         upload = candidate; upload.busy = true;
