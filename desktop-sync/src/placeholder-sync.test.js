@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateManifestEntries } from "./placeholder-sync.js";
+import { generateManifestEntries, findGenuinelyRemoteChanges } from "./placeholder-sync.js";
 
 /** ApiClient falso — só implementa getFullTree, que é tudo que
  * generateManifestEntries usa (desde a mudança pra buscar a árvore
@@ -101,5 +101,51 @@ describe("generateManifestEntries", () => {
     let backslashCount = 0;
     for (const ch of fileEntry.relativePath) if (ch === String.fromCharCode(92)) backslashCount++;
     expect(backslashCount).toBe(1);
+  });
+});
+
+describe("findGenuinelyRemoteChanges", () => {
+  it("aponta como novo um arquivo que não estava no mapa anterior", () => {
+    const previous = new Map();
+    const fresh = new Map([["novo.txt", { fileId: "f1", fileSize: 10, updatedAt: "2026-01-01T00:00:00.000Z" }]]);
+
+    const result = findGenuinelyRemoteChanges(previous, fresh);
+
+    expect(result.added).toEqual(["novo.txt"]);
+    expect(result.changed).toEqual([]);
+  });
+
+  it("aponta como mudado um arquivo cujo updatedAt é diferente do que já se sabia", () => {
+    const previous = new Map([["doc.txt", { fileId: "f1", fileSize: 10, updatedAt: "2026-01-01T00:00:00.000Z" }]]);
+    const fresh = new Map([["doc.txt", { fileId: "f1", fileSize: 20, updatedAt: "2026-01-02T00:00:00.000Z" }]]);
+
+    const result = findGenuinelyRemoteChanges(previous, fresh);
+
+    expect(result.added).toEqual([]);
+    expect(result.changed).toEqual(["doc.txt"]);
+  });
+
+  it("não aponta nada quando um upload local já atualizou o mapa anterior antes deste ciclo rodar", () => {
+    // Achado central desta funcionalidade: upload-watcher.js atualiza
+    // knownCloudFiles NA HORA que faz um upload — então, quando este
+    // ciclo periódico roda depois, o "antes" já reflete esse envio
+    // local, e não deveria ser tratado como "mudança externa".
+    const previous = new Map([["editado-aqui.txt", { fileId: "f1", fileSize: 99, updatedAt: "2026-01-05T00:00:00.000Z" }]]);
+    const fresh = new Map([["editado-aqui.txt", { fileId: "f1", fileSize: 99, updatedAt: "2026-01-05T00:00:00.000Z" }]]);
+
+    const result = findGenuinelyRemoteChanges(previous, fresh);
+
+    expect(result.added).toEqual([]);
+    expect(result.changed).toEqual([]);
+  });
+
+  it("não confunde arquivo removido (some do mapa fresco) com novo ou mudado", () => {
+    const previous = new Map([["vai-sumir.txt", { fileId: "f1", fileSize: 10, updatedAt: "2026-01-01T00:00:00.000Z" }]]);
+    const fresh = new Map();
+
+    const result = findGenuinelyRemoteChanges(previous, fresh);
+
+    expect(result.added).toEqual([]);
+    expect(result.changed).toEqual([]);
   });
 });

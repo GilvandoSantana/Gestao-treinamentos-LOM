@@ -16,6 +16,7 @@ const { spawn } = require("child_process");
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
+const { Notification } = require("electron");
 const { startUploadWatcher } = require("./upload-watcher");
 const { ApiError } = require("./api-client");
 
@@ -148,6 +149,60 @@ function buildKnownCloudFilesMap(entries) {
     }
   }
   return map;
+}
+
+/**
+ * Descobre quais arquivos são novos ou mudaram na Nuvem DE VERDADE (por
+ * outra pessoa, ou pelo mesmo Gilvando em outro computador) — comparando
+ * o mapa mais recente contra o que já se sabia antes de atualizar. Não
+ * conta um upload que a PRÓPRIA pessoa acabou de fazer aqui como
+ * "mudança externa": upload-watcher.js já atualiza knownCloudFiles na
+ * hora, então até este ciclo rodar de novo, o "antes" já reflete
+ * qualquer envio local recente — só sobra o que veio de fora mesmo.
+ * Função pura, sem Electron nem rede, fácil de testar.
+ */
+function findGenuinelyRemoteChanges(previousMap, freshMap) {
+  const added = [];
+  const changed = [];
+  for (const [key, fresh] of freshMap) {
+    const previous = previousMap.get(key);
+    if (!previous) {
+      added.push(key);
+    } else if (fresh.updatedAt && previous.updatedAt && fresh.updatedAt !== previous.updatedAt) {
+      changed.push(key);
+    }
+  }
+  return { added, changed };
+}
+
+/**
+ * Notificação nativa do Windows quando algo muda na Nuvem sem ter sido a
+ * própria pessoa, aqui, agora — sem isso, só aparecia discretamente no
+ * histórico da tela de configurações, fácil de não perceber. Some
+ * sozinha (comportamento padrão do Windows) e nunca trava a
+ * sincronização caso falhe (notificação é só um "extra").
+ */
+function notifyRemoteChanges(added, changed) {
+  const total = added.length + changed.length;
+  if (total === 0) return;
+  try {
+    if (total === 1) {
+      const [singlePath] = added.length ? added : changed;
+      const fileName = singlePath.split("/").pop();
+      new Notification({
+        title: added.length ? "Novo arquivo na Nuvem" : "Arquivo atualizado na Nuvem",
+        body: fileName,
+      }).show();
+    } else {
+      new Notification({
+        title: "Mudanças na Nuvem",
+        body: `${total} arquivo(s) novo(s) ou atualizado(s) — confira a tela do programa.`,
+      }).show();
+    }
+  } catch {
+    // Notificação desativada no Windows, ou qualquer outro motivo — não
+    // deveria derrubar a sincronização por causa disso.
+  }
 }
 
 /** Constrói o mapa relativePath -> folderId a partir das entradas de
@@ -317,6 +372,16 @@ async function startPlaceholderSync({ folderPath, serverUrl, token, apiClient, c
         }
       }
 
+      // Achado/aviso ativo (idem ao aviso de conflito acima): descobre o
+      // que é novo ou mudou na Nuvem por conta de outra pessoa (ou do
+      // mesmo Gilvando em outro computador) ANTES de atualizar o
+      // conhecimento — depois disso o "antes" e o "depois" ficam iguais e
+      // não dá mais pra saber o que era genuinamente externo.
+      const { added, changed } = findGenuinelyRemoteChanges(knownCloudFiles, freshMap);
+      notifyRemoteChanges(added, changed);
+      for (const key of added) onLog(`"${key}" apareceu na Nuvem (adicionado por outra pessoa ou computador).`, "download");
+      for (const key of changed) onLog(`"${key}" foi atualizado na Nuvem (por outra pessoa ou computador).`, "download");
+
       // Atualiza o conhecimento sobre a Nuvem sem apagar registros de
       // arquivo que acabaram de subir por upload e ainda não voltaram
       // nesta busca (evita uma corrida rara onde o upload-watcher "esquece"
@@ -470,4 +535,5 @@ module.exports = {
   isPlaceholderSyncRunning,
   resumeDeletions,
   findExistingExe,
+  findGenuinelyRemoteChanges,
 };
