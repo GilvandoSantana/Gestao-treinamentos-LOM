@@ -107,6 +107,14 @@ export const fdsRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Documento não encontrado." });
         }
         const url = await getSignedFdsUrl(sheet.fileUrl);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "fds.download",
+          targetType: "fds",
+          targetId: sheet.id,
+          targetName: sheet.name,
+        });
         return { url } as const;
       }),
 

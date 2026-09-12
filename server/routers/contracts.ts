@@ -53,7 +53,16 @@ export const contractsRouter = router({
       .mutation(async ({ input, ctx }) => {
         const contract = await requireContractAccess(ctx, input.slug);
         if (!contract.pgrFileUrl) throw new TRPCError({ code: "NOT_FOUND", message: "PGR não encontrado." });
-        return { url: await getSignedFdsUrl(contract.pgrFileUrl, 300) };
+        const url = await getSignedFdsUrl(contract.pgrFileUrl, 300);
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "contract.downloadPgr",
+          targetType: "contract",
+          targetId: contract.id,
+          targetName: contract.name,
+        });
+        return { url };
       }),
 
     create: organizationAdminProcedure

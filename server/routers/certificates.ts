@@ -135,6 +135,19 @@ export const certificatesRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Certificado não encontrado." });
         }
         const url = await getSignedCertificateUrl(certificate.fileUrl);
+        // Ideia 2 do Gilvando (registro de quem baixou documento
+        // sensível): certificado de treinamento é o tipo de documento
+        // que pode importar numa auditoria — quem confirma que baixou/
+        // conferiu. Aparece na tela "Rastros dos usuários" junto com o
+        // resto do histórico, sem precisar de tela nova.
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "certificate.download",
+          targetType: "certificate",
+          targetId: certificate.id,
+          targetName: certificate.fileName,
+        });
         return { url } as const;
       }),
 
