@@ -21,6 +21,8 @@ import {
 } from "../db-contracts";
 import { createCustomField, deleteCustomField, listCustomFields } from "../db-contract-fields";
 import { logActivity } from "../db-activity";
+import { getFolderTemplate, setFolderTemplate } from "../db-organizations";
+import { createFolder, getFolderByNameInParent } from "../db-cloud";
 
 export const contractsRouter = router({
     // Nome do gestor de um contrato - usado no cracha padrao, liberado pra
@@ -64,6 +66,10 @@ export const contractsRouter = router({
           managerName: z.string().trim().max(120).nullish(),
           companyName: z.string().trim().max(255).nullish(),
           gerencia: z.string().trim().max(150).nullish(),
+          // Ideia 5 do Gilvando (modelo de pasta padrão): se true, já
+          // cria na Nuvem do contrato novo as pastas do modelo salvo
+          // pra essa organização (ex: AET, CIPAMIN, DDS...).
+          useFolderTemplate: z.boolean().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -78,6 +84,27 @@ export const contractsRouter = router({
           companyName: input.companyName,
           gerencia: input.gerencia,
         });
+
+        let foldersCreated = 0;
+        if (input.useFolderTemplate) {
+          const template = await getFolderTemplate(ctx.siteOrganizationId);
+          for (const folderName of template) {
+            // Idempotente, mesma proteção do resto do sistema — não que
+            // devesse existir duplicata num contrato recém-criado, mas
+            // não custa nada garantir.
+            const existing = await getFolderByNameInParent(contract.slug, null, folderName);
+            if (existing) continue;
+            await createFolder({
+              id: uuidv4(),
+              contractSlug: contract.slug,
+              parentId: null,
+              name: folderName,
+              createdBy: ctx.siteAdminUsername,
+            });
+            foldersCreated++;
+          }
+        }
+
         void logActivity({
           username: ctx.siteAdminUsername,
           role: ctx.siteRole,
@@ -86,7 +113,23 @@ export const contractsRouter = router({
           targetId: contract.id,
           targetName: contract.name,
         });
-        return contract;
+        return { ...contract, foldersCreated };
+      }),
+
+    // Ideia 5 do Gilvando: modelo de pasta padrão sugerido ao criar
+    // contrato novo — uma lista simples de nomes, editável.
+    getFolderTemplate: organizationAdminProcedure.query(async ({ ctx }) => {
+      return getFolderTemplate(ctx.siteOrganizationId);
+    }),
+
+    setFolderTemplate: organizationAdminProcedure
+      .input(z.object({ folderNames: z.array(z.string().trim().min(1).max(120)).max(50) }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteOrganizationId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Sem organização associada à sessão." });
+        }
+        await setFolderTemplate(ctx.siteOrganizationId, input.folderNames);
+        return { success: true } as const;
       }),
 
     update: organizationAdminProcedure

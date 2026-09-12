@@ -99,6 +99,33 @@ export async function setOrganizationStripeInfo(
   await db.update(organizations).set(info).where(eq(organizations.id, organizationId));
 }
 
+/**
+ * Ideia 5 do Gilvando (modelo de pasta padrão): lista de nomes de pasta
+ * sugerida ao criar um contrato novo. Guardada como JSON — uma lista
+ * simples de string, sem necessidade de tabela própria.
+ */
+export async function getFolderTemplate(organizationId: string | null): Promise<string[]> {
+  if (!organizationId) return [];
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(organizations).where(eq(organizations.id, organizationId));
+  const raw = rows[0]?.folderTemplate;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setFolderTemplate(organizationId: string, folderNames: string[]): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const cleaned = folderNames.map((n) => n.trim()).filter(Boolean);
+  await db.update(organizations).set({ folderTemplate: JSON.stringify(cleaned) }).where(eq(organizations.id, organizationId));
+}
+
 /** Additive migration, safe to run on every startup and concurrent replicas. */
 export async function ensureIntegrityTables() {
   const db = await getDb();

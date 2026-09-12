@@ -115,4 +115,66 @@ describe('createOrganizationWithOwner', () => {
   });
 });
 
+describe('getFolderTemplate / setFolderTemplate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('devolve lista vazia quando organizationId é null (sem organização associada)', async () => {
+    const { getFolderTemplate } = await import('./db-organizations');
+    const result = await getFolderTemplate(null);
+    expect(result).toEqual([]);
+    expect(mockGetDb).not.toHaveBeenCalled(); // nem chega a consultar o banco
+  });
+
+  it('devolve lista vazia quando a organização ainda não tem modelo salvo', async () => {
+    mockGetDb.mockResolvedValue({
+      select: () => ({ from: () => ({ where: () => Promise.resolve([{ folderTemplate: null }]) }) }),
+    });
+
+    const { getFolderTemplate } = await import('./db-organizations');
+    const result = await getFolderTemplate('org-1');
+    expect(result).toEqual([]);
+  });
+
+  it('devolve a lista salva (JSON) corretamente', async () => {
+    mockGetDb.mockResolvedValue({
+      select: () => ({
+        from: () => ({ where: () => Promise.resolve([{ folderTemplate: JSON.stringify(['AET', 'CIPAMIN', 'DDS']) }]) }),
+      }),
+    });
+
+    const { getFolderTemplate } = await import('./db-organizations');
+    const result = await getFolderTemplate('org-1');
+    expect(result).toEqual(['AET', 'CIPAMIN', 'DDS']);
+  });
+
+  it('nunca quebra com um JSON corrompido salvo no banco — devolve vazio', async () => {
+    mockGetDb.mockResolvedValue({
+      select: () => ({ from: () => ({ where: () => Promise.resolve([{ folderTemplate: '{isso não é json válido' }]) }) }),
+    });
+
+    const { getFolderTemplate } = await import('./db-organizations');
+    const result = await getFolderTemplate('org-1');
+    expect(result).toEqual([]);
+  });
+
+  it('setFolderTemplate remove nomes vazios e espaço nas pontas antes de salvar', async () => {
+    let savedValue;
+    mockGetDb.mockResolvedValue({
+      update: () => ({
+        set: (values: { folderTemplate: string }) => {
+          savedValue = values.folderTemplate;
+          return { where: () => Promise.resolve() };
+        },
+      }),
+    });
+
+    const { setFolderTemplate } = await import('./db-organizations');
+    await setFolderTemplate('org-1', ['  AET  ', '', 'CIPAMIN', '   ']);
+
+    expect(JSON.parse(savedValue!)).toEqual(['AET', 'CIPAMIN']);
+  });
+});
+
 // Payment concurrency and rollback are covered against MySQL in integrity.mysql.test.ts.

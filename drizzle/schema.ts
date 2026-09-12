@@ -263,6 +263,12 @@ export const organizations = mysqlTable("organizations", {
   // etc — usa exatamente os mesmos nomes que o Stripe usa, sem traduzir,
   // pra nunca ficar em dúvida na hora de comparar com o painel do Stripe).
   subscriptionStatus: varchar("subscriptionStatus", { length: 50 }),
+  // Ideia 5 do Gilvando (modelo de pasta padrão): lista de nomes de
+  // pasta (JSON, ex: ["AET","CIPAMIN","DDS"]) que, se preenchida, é
+  // oferecida como sugestão pronta ao criar um contrato novo — cria
+  // essas pastas automaticamente na raiz da Nuvem do contrato, se a
+  // pessoa optar. Null/vazio = nenhum modelo definido ainda.
+  folderTemplate: text("folderTemplate"),
 });
 
 export type Organization = typeof organizations.$inferSelect;

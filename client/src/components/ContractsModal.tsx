@@ -58,6 +58,12 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [managerName, setManagerName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [contractGerencia, setContractGerencia] = useState('');
+  // Ideia 5 do Gilvando (modelo de pasta padrão): marcado por padrão, já
+  // que o objetivo é poupar trabalho de criar as mesmas pastas de sempre
+  // em cada contrato novo.
+  const [useFolderTemplate, setUseFolderTemplate] = useState(true);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [templateText, setTemplateText] = useState('');
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -82,6 +88,8 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   );
 
   const createMutation = trpc.contracts.create.useMutation();
+  const folderTemplateQuery = trpc.contracts.getFolderTemplate.useQuery(undefined, { enabled: isOpen });
+  const setFolderTemplateMutation = trpc.contracts.setFolderTemplate.useMutation();
   const updateMutation = trpc.contracts.update.useMutation();
   const deleteMutation = trpc.contracts.delete.useMutation();
   const restoreMutation = trpc.contracts.restore.useMutation();
@@ -221,8 +229,21 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
         await updateMutation.mutateAsync({ id: editingId, name, preposition, alertEmail, alertWhatsapp, managerName, companyName, gerencia: contractGerencia });
         toast.success('Contrato atualizado.');
       } else {
-        await createMutation.mutateAsync({ name, preposition, alertEmail, alertWhatsapp, managerName, companyName, gerencia: contractGerencia });
-        toast.success('Contrato cadastrado.');
+        const result = await createMutation.mutateAsync({
+          name,
+          preposition,
+          alertEmail,
+          alertWhatsapp,
+          managerName,
+          companyName,
+          gerencia: contractGerencia,
+          useFolderTemplate,
+        });
+        toast.success(
+          result.foldersCreated > 0
+            ? `Contrato cadastrado, com ${result.foldersCreated} pasta(s) padrão já criada(s) na Nuvem.`
+            : 'Contrato cadastrado.'
+        );
       }
       resetForm();
       await refreshAll();
@@ -645,6 +666,68 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       <p className="text-xs text-muted-foreground mt-1.5">
                         Aparecem no cadastro de colaborador só deste contrato. Máximo de 5 campos.
                       </p>
+                    </div>
+                  )}
+
+                  {!editingId && (
+                    <div className="border-t border-border pt-4">
+                      <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useFolderTemplate}
+                          onChange={(e) => setUseFolderTemplate(e.target.checked)}
+                          disabled={isSubmitting}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          Já criar as pastas padrão na Nuvem deste contrato
+                          {folderTemplateQuery.data && folderTemplateQuery.data.length > 0 && (
+                            <span className="text-muted-foreground"> ({folderTemplateQuery.data.join(', ')})</span>
+                          )}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTemplateText((folderTemplateQuery.data ?? []).join('\n'));
+                          setShowTemplateEditor((v) => !v);
+                        }}
+                        className="text-xs text-orange hover:underline mt-1.5"
+                      >
+                        {showTemplateEditor ? 'Fechar' : 'Editar lista de pastas padrão'}
+                      </button>
+                      {showTemplateEditor && (
+                        <div className="mt-2">
+                          <textarea
+                            value={templateText}
+                            onChange={(e) => setTemplateText(e.target.value)}
+                            placeholder={'Uma pasta por linha, ex:\nAET\nCIPAMIN\nDDS'}
+                            rows={5}
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-orange"
+                          />
+                          <button
+                            type="button"
+                            disabled={setFolderTemplateMutation.isPending}
+                            onClick={async () => {
+                              const names = templateText
+                                .split('\n')
+                                .map((n) => n.trim())
+                                .filter(Boolean);
+                              try {
+                                await setFolderTemplateMutation.mutateAsync({ folderNames: names });
+                                await folderTemplateQuery.refetch();
+                                toast.success('Lista de pastas padrão salva.');
+                                setShowTemplateEditor(false);
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : 'Erro ao salvar a lista.');
+                              }
+                            }}
+                            className="mt-1.5 text-xs font-semibold text-white bg-navy rounded-lg px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+                          >
+                            Salvar lista
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
