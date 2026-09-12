@@ -13,7 +13,14 @@ const { setupAutoUpdater } = require("./auto-updater");
 const store = require("./store");
 
 const DEFAULT_SERVER_URL = "https://gestao-treinamentos-lom.up.railway.app";
-const SYNC_INTERVAL_MS = 20_000;
+// Antes 20s — diminuído a pedido do Gilvando (11/09) pra sincronizar mais
+// rápido entre computador e Nuvem. Cada ciclo faz uma chamada ao servidor
+// por PASTA da árvore (não é uma consulta só), então isso aumenta a carga
+// no servidor proporcionalmente — combinado com a proteção existente
+// (tickRunning) que nunca deixa um ciclo novo começar em cima do anterior
+// ainda rodando, então nunca fica mais rápido que o tempo real de uma
+// sincronização completa, mesmo que esse número seja bem menor.
+const SYNC_INTERVAL_MS = 10_000;
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 horas
 const MAX_LOG_ENTRIES = 50;
 
@@ -364,7 +371,7 @@ async function runSyncNow() {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       // Token expirou ou foi revogado no meio do caminho — para de tentar
-      // e pede login de novo, em vez de martelar erro a cada 20 segundos.
+      // e pede login de novo, em vez de martelar erro a cada ciclo.
       stopSync();
       apiClient = null;
       store.clearToken();

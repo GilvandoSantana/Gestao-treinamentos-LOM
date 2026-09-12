@@ -3,7 +3,7 @@
 Programa separado, roda sozinho (sem navegador), que sincroniza uma pasta
 do computador com a Nuvem do sistema "Gestão de Controle dos Contratos".
 Fica com ícone na bandeja do sistema (perto do relógio) e sincroniza a
-cada 20 segundos, enquanto o computador estiver ligado.
+cada 10 segundos, enquanto o computador estiver ligado.
 
 ## Estrutura
 
