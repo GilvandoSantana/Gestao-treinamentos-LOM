@@ -694,9 +694,14 @@ try
                 }
                 Console.WriteLine("OK: conectado.");
 
-                // Controla o que já foi criado, pra nunca tentar de novo o
-                // que já existe quando checar a Nuvem de novo mais tarde
-                // (evita erro de "já existe" e trabalho repetido à toa).
+                // Só um registro informativo agora (achado real,
+                // Gilvando, 14/09: nunca é limpo, então usar isso como
+                // FILTRO pra pular a checagem de disco fazia um item
+                // apagado localmente — por exemplo, por engano — nunca
+                // mais ser recriado, mesmo voltando a aparecer no
+                // manifesto). A decisão de criar ou não agora é sempre
+                // baseada no disco de verdade (File.Exists/
+                // Directory.Exists logo abaixo), nunca neste cache.
                 var createdPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 void ApplyManifest(ManifestRoot manifestToApply)
@@ -716,8 +721,25 @@ try
                     // (não como placeholder), então tentar criar um
                     // placeholder em cima dele dá erro "já existe"
                     // (0x800700B7 / ERROR_ALREADY_EXISTS).
+                    //
+                    // Achado real (Gilvando, 14/09): antes, o filtro
+                    // "!createdPaths.Contains(...)" pulava esta checagem
+                    // inteira pra qualquer caminho já marcado como
+                    // "resolvido" alguma vez — mas createdPaths nunca é
+                    // limpo, nem quando o lado JavaScript apaga um
+                    // arquivo/pasta local (por exemplo, achando por
+                    // engano que sumiu da Nuvem). Resultado: se algo
+                    // fosse apagado localmente depois de já ter sido
+                    // marcado como criado, este processo NUNCA MAIS
+                    // recriava, mesmo com o manifesto voltando a mostrar
+                    // que devia existir — o item simplesmente sumia da
+                    // pasta sincronizada pra sempre, mesmo já estando de
+                    // volta na Nuvem. Corrigido confiando sempre na
+                    // checagem real do disco (File.Exists/Directory.Exists
+                    // abaixo), não mais num cache que pode ficar
+                    // desatualizado.
                     var fileEntries = manifestToApply.Entries!
-                        .Where(e => !e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .Where(e => !e.IsFolder)
                         .Where(e =>
                         {
                             if (File.Exists(Path.Combine(rootPath, e.RelativePath)))
@@ -733,7 +755,7 @@ try
                         })
                         .ToList();
                     var folderEntries = manifestToApply.Entries!
-                        .Where(e => e.IsFolder && !createdPaths.Contains(e.RelativePath))
+                        .Where(e => e.IsFolder)
                         .Where(e =>
                         {
                             if (Directory.Exists(Path.Combine(rootPath, e.RelativePath)))

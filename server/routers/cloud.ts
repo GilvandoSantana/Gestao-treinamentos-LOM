@@ -106,10 +106,11 @@ export const cloudRouter = router({
     }),
 
     // Ideia 6 do Gilvando (indicador de espaço por pasta): quais pastas
-    // de nível raiz estão ocupando mais espaço. Só administrador
-    // principal — soma o tamanho de TODO arquivo, mesmo dentro de área
-    // restrita que uma conta comum não teria acesso pra ver.
-    storageByFolder: masterAdminProcedure.query(async ({ ctx }) => {
+    // de nível raiz estão ocupando mais espaço. Administrador da
+    // organização (não conta comum) — soma o tamanho de TODO arquivo,
+    // mesmo dentro de área restrita que uma conta comum não teria acesso
+    // pra ver.
+    storageByFolder: organizationAdminProcedure.query(async ({ ctx }) => {
       if (!ctx.siteContract) return [];
       const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: true };
       return getStorageByTopFolder(ctx.siteContract, accessCtx);
@@ -820,12 +821,18 @@ export const cloudRouter = router({
     // TAMBÉM aparecem na lixeira como itens próprios) — excluir de novo
     // algo que já não existe simplesmente não faz nada, não dá erro.
     //
-    // SÓ o administrador principal (masterAdminProcedure, não
-    // manageCloud) — é uma ação destrutiva demais pra deixar qualquer
-    // conta com manageCloud apagar de vez a lixeira do contrato inteiro,
-    // incluindo item de área restrita que ela nem devia enxergar (achado
-    // de auditoria de segurança, 07/09).
-    emptyTrash: masterAdminProcedure.mutation(async ({ ctx }) => {
+    // SÓ administrador da ORGANIZAÇÃO (não conta comum com manageCloud)
+    // — é uma ação destrutiva demais pra deixar qualquer conta com
+    // manageCloud apagar de vez a lixeira do contrato inteiro, incluindo
+    // item de área restrita que ela nem devia enxergar (achado de
+    // auditoria de segurança, 07/09). Achado real (Gilvando, 14/09):
+    // antes disto, tinha ficado restrito demais — exigia
+    // masterAdminProcedure (só o login de recuperação da PLATAFORMA
+    // inteira, siteOrganizationId null), bloqueando até a própria conta
+    // administradora normal da organização. organizationAdminProcedure é
+    // o nível certo: exige "admin" (não conta comum), mas não exige ser
+    // o login de emergência da plataforma.
+    emptyTrash: organizationAdminProcedure.mutation(async ({ ctx }) => {
       if (!ctx.siteContract) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
       }
@@ -1152,15 +1159,22 @@ export const cloudRouter = router({
 
     // Limpeza de pastas duplicadas — ferramenta pontual pra corrigir
     // duplicata já existente (de antes de createFolder virar idempotente
-    // — achado reportado pelo Gilvando, 11/09). Só administrador
-    // principal: mexe em pastas de qualquer área do contrato, inclusive
-    // as que a conta comum não teria acesso pra ver.
-    findDuplicateFolders: masterAdminProcedure.query(async ({ ctx }) => {
+    // — achado reportado pelo Gilvando, 11/09). Administrador da
+    // organização (não conta comum): mexe em pastas de qualquer área do
+    // contrato, inclusive as que a conta comum não teria acesso pra ver.
+    // Achado real (Gilvando, 14/09): eu mesmo tinha colocado
+    // masterAdminProcedure aqui na hora de construir esta ferramenta,
+    // confundindo "administrador principal" (um PAPEL, que qualquer
+    // conta admin da organização já tem) com o procedimento
+    // masterAdminProcedure de verdade (que exige o login de recuperação
+    // da PLATAFORMA inteira, muito mais restrito) — corrigido pro nível
+    // que eu realmente pretendia.
+    findDuplicateFolders: organizationAdminProcedure.query(async ({ ctx }) => {
       if (!ctx.siteContract) return [];
       return findDuplicateFolderGroups(ctx.siteContract);
     }),
 
-    mergeDuplicateFolders: masterAdminProcedure
+    mergeDuplicateFolders: organizationAdminProcedure
       .input(z.object({ keepId: z.string().min(1), duplicateIds: z.array(z.string().min(1)).min(1) }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.siteContract) {
