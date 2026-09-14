@@ -23,6 +23,12 @@ const { ApiError } = require("./api-client");
 let child = null;
 let refreshTimer = null;
 let uploadWatcherHandle = null;
+// Quantos ciclos do relógio periódico já se passaram — usado só pra
+// rodar a varredura completa da pasta local (mais cara que o resto:
+// percorre o disco inteiro) a cada RESCAN_EVERY_N_CYCLES ciclos, não
+// todo ciclo.
+let refreshCycleCount = 0;
+const RESCAN_EVERY_N_CYCLES = 6; // ~60s com o intervalo atual de 10s por ciclo
 // Mapa relativePath -> {fileId, fileSize} do que já se sabe sobre a
 // Nuvem — atualizado a cada ciclo de atualização (30s) E logo depois de
 // qualquer envio bem-sucedido, e consultado pelo upload-watcher pra
@@ -391,6 +397,22 @@ async function startPlaceholderSync({
   // os placeholders que ainda não existem.
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(async () => {
+    // Rede de segurança periódica, separada da atualização da lista da
+    // Nuvem (própria tentativa/erro, pra uma falha aqui nunca se
+    // confundir com falha ao consultar a Nuvem) — roda bem menos vezes,
+    // já que percorre a pasta local inteira. Ver walkLocalTree pra mais
+    // contexto: cobre o caso de o vigia reativo (fs.watch) não ter
+    // percebido um arquivo dentro de uma pasta nova criada de uma vez só
+    // (achado real, Gilvando 14/09).
+    refreshCycleCount++;
+    if (refreshCycleCount % RESCAN_EVERY_N_CYCLES === 0 && uploadWatcherHandle) {
+      try {
+        await uploadWatcherHandle.rescanNow();
+      } catch (error) {
+        onLog(`Erro na varredura periódica da pasta local: ${error?.message || "erro desconhecido"}`, "error");
+      }
+    }
+
     try {
       const freshEntries = await generateManifestEntries(apiClient, getExcluded());
       await writeManifestAtomic(manifestPath, freshEntries);
@@ -596,6 +618,7 @@ function stopPlaceholderSync() {
   knownCloudFolders = new Map();
   missingFileStreak.clear();
   missingFolderStreak.clear();
+  refreshCycleCount = 0;
   if (child) {
     child.kill();
     child = null;

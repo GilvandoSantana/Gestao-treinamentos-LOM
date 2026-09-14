@@ -24,6 +24,14 @@ const os = require("os");
 // Windows (barra invertida), então força esse comportamento sempre, não
 // importa onde o código é executado.
 const path = require("path").win32;
+// Exceção: walkLocalTree (abaixo) faz LEITURA DE DISCO DE VERDADE —
+// pra isso funcionar certo também quando testado fora do Windows (este
+// projeto testa em Linux), a resolução do caminho real no disco usa o
+// path NATIVO da plataforma, não o win32 forçado acima. O valor
+// RELATIVO retornado continua sempre no formato win32 (backslash),
+// igual o resto do arquivo espera — só a parte que toca o disco de
+// verdade é diferente.
+const nativePath = require("path");
 const { isIgnoredFileName } = require("./sync-engine");
 
 const DEBOUNCE_MS = 2000;
@@ -122,6 +130,46 @@ function decideUploadAction(localSize, knownCloudEntry, baselineUpdatedAt) {
  * @param {{apiClient: import('./api-client').ApiClient, knownCloudFolders: Map<string, string>, inFlight: Map<string, Promise<string|null>>, onLog: (message: string, kind: string) => void}} deps
  * @returns {Promise<string|null>} o id da pasta na Nuvem (null = raiz)
  */
+/**
+ * Varre a pasta local inteira (recursivamente) e devolve o caminho
+ * relativo de cada arquivo e pasta encontrado — usada como rede de
+ * segurança periódica, chamada bem menos vezes que o vigia reativo
+ * (fs.watch), pra pegar qualquer mudança que ele tenha perdido. Achado
+ * real (Gilvando, 14/09): copiar uma pasta com arquivo dentro de uma vez
+ * só fez só a pasta aparecer na Nuvem, não o arquivo — o fs.watch com
+ * recursive:true é conhecido por, às vezes, não disparar evento pro
+ * conteúdo de uma pasta nova criada de uma vez só no Windows (limitação
+ * documentada do próprio Node, não bug deste programa). Ignora o mesmo
+ * tipo de arquivo/pasta que o vigia reativo já ignora.
+ */
+async function walkLocalTree(rootPath, currentRelative = "") {
+  const results = [];
+  // Resolve o caminho de disco de verdade com o path NATIVO da
+  // plataforma (ver comentário no topo do arquivo) — currentRelative
+  // pode ter backslash (formato win32, vindo de uma chamada recursiva),
+  // então separa em segmentos antes de juntar de novo, em vez de deixar
+  // o path nativo tentar interpretar a barra invertida sozinho (no
+  // Linux/Mac, isso é só um caractere comum, não um separador).
+  const segments = currentRelative ? currentRelative.split(path.sep) : [];
+  const fullPath = segments.length ? nativePath.join(rootPath, ...segments) : rootPath;
+  let entries;
+  try {
+    entries = await fsp.readdir(fullPath, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    if (isIgnoredFileName(entry.name)) continue;
+    const relPath = currentRelative ? path.join(currentRelative, entry.name) : entry.name;
+    results.push(relPath);
+    if (entry.isDirectory()) {
+      const nested = await walkLocalTree(rootPath, relPath);
+      for (const p of nested) results.push(p);
+    }
+  }
+  return results;
+}
+
 async function ensureCloudFolder(relativeFolderPath, deps) {
   const { apiClient, knownCloudFolders, inFlight, onLog } = deps;
 
@@ -404,7 +452,7 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     });
   } catch (error) {
     onLog(`Não foi possível vigiar a pasta por mudanças: ${error?.message || "erro desconhecido"}`, "error");
-    return { stop: () => {}, resumeDeletions: () => {} };
+    return { stop: () => {}, resumeDeletions: () => {}, rescanNow: async () => {} };
   }
 
   return {
@@ -414,6 +462,21 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
       watcher.close();
     },
     resumeDeletions,
+    // Rede de segurança periódica — varre a pasta local inteira e
+    // processa qualquer caminho que o vigia reativo (fs.watch) talvez
+    // tenha perdido (ver comentário de walkLocalTree). Reaproveita o
+    // MESMO handleChange que cada evento normal já usa — sem duplicar
+    // nenhuma lógica de decisão (skip/new/update/conflict).
+    rescanNow: async () => {
+      const allPaths = await walkLocalTree(folderPath);
+      for (const relPath of allPaths) {
+        try {
+          await handleChange(relPath);
+        } catch (error) {
+          onLog(`Erro ao verificar "${relPath}" na varredura periódica: ${error?.message || "erro desconhecido"}`, "error");
+        }
+      }
+    },
   };
 }
 
@@ -424,4 +487,5 @@ module.exports = {
   checkDeletionBurst,
   startUploadWatcher,
   buildConflictFileName,
+  walkLocalTree,
 };
