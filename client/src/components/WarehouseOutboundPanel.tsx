@@ -18,10 +18,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ArrowUpCircle, Loader, QrCode, Clock, Plus, Trash2, UserCheck, Search, Wrench } from 'lucide-react';
+import { ArrowUpCircle, Loader, QrCode, Clock, Plus, Trash2, UserCheck, Search, Wrench, ScanFace } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import QrCodeReader from '@/components/QrCodeReader';
+import FaceScanModal from '@/components/FaceScanModal';
 import WarehouseItemCombobox from '@/components/WarehouseItemCombobox';
 import { findWarehouseItemByQrCode } from '@/lib/warehouse-qr';
 import { printReceipt } from '@/lib/warehouse-print';
@@ -58,6 +59,7 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [areaUso, setAreaUso] = useState('');
   const [qrReaderFor, setQrReaderFor] = useState<QrTarget | null>(null);
+  const [faceScanOpen, setFaceScanOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanPrompt, setScanPrompt] = useState<{ itemName: string } | null>(null);
 
@@ -377,6 +379,14 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
             >
               <QrCode size={16} />
             </button>
+            <button
+              type="button"
+              onClick={() => setFaceScanOpen(true)}
+              title="Reconhecer colaborador pela câmera"
+              className="shrink-0 px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+            >
+              <ScanFace size={16} />
+            </button>
           </div>
           {employeeSearch && !selectedEmployeeId && (
             <div className="mt-1.5 max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border">
@@ -495,6 +505,14 @@ export default function WarehouseOutboundPanel({ canManage }: WarehouseOutboundP
       })()}
 
       {qrReaderFor && <QrCodeReader onScan={handleQrScan} onClose={() => setQrReaderFor(null)} />}
+
+      {faceScanOpen && (
+        <FaceScanModal
+          employees={employees}
+          onMatch={(id, name) => selectEmployee(id, name)}
+          onClose={() => setFaceScanOpen(false)}
+        />
+      )}
 
       {scanPrompt && (
         <div className="fixed inset-0 z-[71] flex items-center justify-center bg-black/70 p-4">
