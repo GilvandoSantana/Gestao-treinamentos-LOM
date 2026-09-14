@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateManifestEntries, findGenuinelyRemoteChanges } from "./placeholder-sync.js";
+import { generateManifestEntries, findGenuinelyRemoteChanges, updateMissingStreaks } from "./placeholder-sync.js";
 
 /** ApiClient falso — só implementa getFullTree, que é tudo que
  * generateManifestEntries usa (desde a mudança pra buscar a árvore
@@ -186,5 +186,48 @@ describe("findGenuinelyRemoteChanges", () => {
 
     expect(result.added).toEqual([]);
     expect(result.changed).toEqual([]);
+  });
+});
+
+describe("updateMissingStreaks", () => {
+  it("NÃO marca pra apagar quando sumiu só uma vez (abaixo do limite)", () => {
+    // Achado real (Gilvando, 14/09): arquivo recém-enviado foi apagado
+    // localmente por causa de UMA leitura ruim da Nuvem. Este é o teste
+    // que garante que isso não se repete — sumir uma vez só não é mais
+    // suficiente.
+    const streak = new Map();
+    const result = updateMissingStreaks(["arquivo.txt"], [], streak, 3);
+
+    expect(result).toEqual([]);
+    expect(streak.get("arquivo.txt")).toBe(1);
+  });
+
+  it("marca pra apagar só depois de sumir o número de vezes SEGUIDAS exigido", () => {
+    const streak = new Map();
+    updateMissingStreaks(["arquivo.txt"], [], streak, 3); // 1ª vez
+    updateMissingStreaks(["arquivo.txt"], [], streak, 3); // 2ª vez
+    const result = updateMissingStreaks(["arquivo.txt"], [], streak, 3); // 3ª vez
+
+    expect(result).toEqual(["arquivo.txt"]);
+  });
+
+  it("zera a contagem assim que o item volta a aparecer — não soma direto pro limite depois", () => {
+    const streak = new Map();
+    updateMissingStreaks(["arquivo.txt"], [], streak, 3); // sumiu 1x
+    updateMissingStreaks([], ["arquivo.txt"], streak, 3); // voltou a aparecer — zera
+    const result = updateMissingStreaks(["arquivo.txt"], [], streak, 3); // sumiu de novo, mas é a 1ª vez desta vez
+
+    expect(result).toEqual([]);
+    expect(streak.get("arquivo.txt")).toBe(1);
+  });
+
+  it("trata cada chave de forma independente — uma sumir não afeta a contagem da outra", () => {
+    const streak = new Map();
+    updateMissingStreaks(["a.txt", "b.txt"], [], streak, 3);
+    updateMissingStreaks(["a.txt"], ["b.txt"], streak, 3); // só "a" sumiu de novo, "b" voltou
+    const result = updateMissingStreaks(["a.txt"], ["b.txt"], streak, 3);
+
+    expect(result).toEqual(["a.txt"]);
+    expect(streak.has("b.txt")).toBe(false);
   });
 });

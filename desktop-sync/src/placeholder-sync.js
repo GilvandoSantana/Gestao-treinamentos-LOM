@@ -30,6 +30,18 @@ let uploadWatcherHandle = null;
 // mecanismo de placeholder mexendo.
 let knownCloudFiles = new Map();
 let knownCloudFolders = new Map();
+// Achado real (Gilvando, 14/09): um arquivo que tinha acabado de subir
+// com sucesso foi apagado localmente minutos depois, porque um ciclo de
+// atualização não trouxe ele na lista — mesmo com a Nuvem tendo o
+// arquivo de verdade. Provavelmente uma instabilidade passageira (o
+// próprio log mostrava "fetch failed" por perto), não uma remoção de
+// verdade. Pra nunca mais apagar algo local por engano baseado numa
+// LEITURA só, exige o mesmo item sumir em vários ciclos SEGUIDOS antes
+// de mexer em qualquer coisa local — qualquer aparição do item de volta
+// zera a contagem.
+const missingFileStreak = new Map();
+const missingFolderStreak = new Map();
+const CONSECUTIVE_MISSES_BEFORE_DELETE = 3; // ~30s com o intervalo de 10s por ciclo
 // Antes 30s — diminuído a pedido do Gilvando (11/09), junto com o
 // intervalo equivalente do lado nativo (Program.cs). Mais barato que o
 // modo antigo (sync-engine.js): busca a árvore inteira numa chamada só
@@ -163,6 +175,23 @@ async function generateManifestEntries(apiClient, excludedFolderIds = new Set())
  * entradas do manifesto (só os arquivos, pastas não têm fileId) — usado
  * pelo upload-watcher pra saber se um arquivo que mudou é edição de
  * verdade ou só o próprio mecanismo de placeholder mexendo. */
+/**
+ * Decide quais chaves (arquivo ou pasta) já sumiram da Nuvem vezes
+ * suficientes SEGUIDAS pra virar candidata de verdade a apagar
+ * localmente — e atualiza o mapa de contagem por fora (efeito colateral
+ * de propósito, pra não duplicar o Map a cada chamada). Zera a conta de
+ * quem voltou a aparecer, soma 1 de quem sumiu de novo neste ciclo.
+ * Achado real (Gilvando, 14/09): um arquivo recém-enviado foi apagado
+ * localmente por causa de UMA leitura ruim da Nuvem (provável
+ * instabilidade de rede, "fetch failed" no log por perto) — exigir
+ * confirmação em vários ciclos seguidos evita repetir isso.
+ */
+function updateMissingStreaks(removedKeys, presentKeys, streakMap, threshold) {
+  for (const key of presentKeys) streakMap.delete(key);
+  for (const key of removedKeys) streakMap.set(key, (streakMap.get(key) ?? 0) + 1);
+  return removedKeys.filter((k) => (streakMap.get(k) ?? 0) >= threshold);
+}
+
 function buildKnownCloudFilesMap(entries) {
   const map = new Map();
   for (const entry of entries) {
@@ -378,19 +407,32 @@ async function startPlaceholderSync({
       // ciclo, se for só uma falha passageira).
       const removedFiles = Array.from(knownCloudFiles.keys()).filter((k) => !freshMap.has(k));
       const removedFolders = Array.from(knownCloudFolders.keys()).filter((k) => !freshFolderMap.has(k));
-      const totalRemoved = removedFiles.length + removedFolders.length;
+
+      const filesToDelete = updateMissingStreaks(
+        removedFiles,
+        Array.from(freshMap.keys()),
+        missingFileStreak,
+        CONSECUTIVE_MISSES_BEFORE_DELETE
+      );
+      const foldersToDelete = updateMissingStreaks(
+        removedFolders,
+        Array.from(freshFolderMap.keys()),
+        missingFolderStreak,
+        CONSECUTIVE_MISSES_BEFORE_DELETE
+      );
+      const totalRemoved = filesToDelete.length + foldersToDelete.length;
       const totalBefore = knownCloudFiles.size + knownCloudFolders.size;
 
       if (totalRemoved > 0) {
         const suspicious = totalBefore > 0 && totalRemoved > Math.max(10, totalBefore * 0.5);
         if (suspicious) {
           onLog(
-            `A Nuvem mostrou ${totalRemoved} item(ns) a menos de uma vez só — pode ser instabilidade ` +
+            `A Nuvem mostrou ${totalRemoved} item(ns) a menos por ${CONSECUTIVE_MISSES_BEFORE_DELETE} ciclos seguidos — pode ser instabilidade ` +
               "temporária, não apaguei nada localmente por segurança.",
             "error"
           );
         } else {
-          for (const key of removedFiles) {
+          for (const key of filesToDelete) {
             try {
               await fs.unlink(path.join(folderPath, key.split("/").join(path.sep)));
               onLog(`"${key}" apagado localmente (removido da Nuvem).`, "download");
@@ -399,8 +441,9 @@ async function startPlaceholderSync({
               // tenha apagado aqui) — tudo bem.
             }
             knownCloudFiles.delete(key);
+            missingFileStreak.delete(key);
           }
-          for (const key of removedFolders) {
+          for (const key of foldersToDelete) {
             try {
               await fs.rm(path.join(folderPath, key.split("/").join(path.sep)), { recursive: true, force: true });
               onLog(`Pasta "${key}" apagada localmente (removida da Nuvem).`, "download");
@@ -408,6 +451,7 @@ async function startPlaceholderSync({
               // Idem.
             }
             knownCloudFolders.delete(key);
+            missingFolderStreak.delete(key);
           }
         }
       }
@@ -550,6 +594,8 @@ function stopPlaceholderSync() {
   }
   knownCloudFiles = new Map();
   knownCloudFolders = new Map();
+  missingFileStreak.clear();
+  missingFolderStreak.clear();
   if (child) {
     child.kill();
     child = null;
@@ -576,4 +622,5 @@ module.exports = {
   resumeDeletions,
   findExistingExe,
   findGenuinelyRemoteChanges,
+  updateMissingStreaks,
 };
