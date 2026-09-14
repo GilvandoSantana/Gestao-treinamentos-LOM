@@ -7,7 +7,7 @@
 import { SimpleWorkbook, readSheetAsJson } from './xlsx-compat';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { WarehouseItemInfo, WarehouseMovementInfo } from '@shared/warehouse';
+import type { WarehouseItemInfo, WarehouseMovementInfo, ToolDeliveryInfo } from '@shared/warehouse';
 
 const COLS = [{ wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
 
@@ -340,4 +340,51 @@ export function generateMonthlyReportPDF(
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     .replace(' de ', '_');
   doc.save(`relatorio_mensal_${mesAno}.pdf`);
+}
+
+/**
+ * Relatório de saída de um dia específico — materiais (warehouseMovements
+ * do tipo 'saida') + ferramentas entregues nesse dia (toolDeliveries),
+ * juntos numa planilha só, já que pra quem recebe o material os dois são
+ * "coisa que saiu do almoxarifado hoje".
+ */
+export function exportDailyOutboundReport(
+  dateIso: string,
+  movements: WarehouseMovementInfo[],
+  deliveries: ToolDeliveryInfo[]
+): void {
+  const dayMaterialOut = movements.filter((m) => m.movementType === 'saida' && m.date.slice(0, 10) === dateIso);
+  const dayToolOut = deliveries.filter((d) => d.deliveredAt.slice(0, 10) === dateIso);
+
+  const rows = [
+    ...dayMaterialOut.map((m) => ({
+      Hora: new Date(m.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      Tipo: 'Material',
+      Item: m.itemName,
+      Quantidade: m.quantity,
+      'Destino / Colaborador': m.destination ?? '',
+      'Área de uso': m.notes ?? '',
+    })),
+    ...dayToolOut.map((d) => ({
+      Hora: new Date(d.deliveredAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      Tipo: 'Ferramenta',
+      Item: `${d.itemName} (Patrimônio: ${d.itemCode})`,
+      Quantidade: d.quantity,
+      'Destino / Colaborador': d.employeeName,
+      'Área de uso': d.obs ?? '',
+    })),
+  ].sort((a, b) => a.Hora.localeCompare(b.Hora));
+
+  const worksheet = new SimpleWorkbook();
+  worksheet.addJsonSheet('Saídas do dia', rows, [
+    { wch: 8 },
+    { wch: 12 },
+    { wch: 34 },
+    { wch: 12 },
+    { wch: 24 },
+    { wch: 24 },
+  ]);
+
+  const [year, month, day] = dateIso.split('-');
+  void worksheet.download(`saidas_${day}-${month}-${year}.xlsx`);
 }
