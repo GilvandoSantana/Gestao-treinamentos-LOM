@@ -19,6 +19,9 @@ export interface TrainingAlert {
   employeeId: string;
   /** Contrato do colaborador — usado para separar os e-mails por contrato. */
   contract: string;
+  /** Ideia 3 do Gilvando (lembrete pro próprio colaborador) — null se o
+   * colaborador não tem celular cadastrado. */
+  employeePhone: string | null;
 }
 
 /**
@@ -117,6 +120,7 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
         name: trainings.name,
         expirationDate: trainings.expirationDate,
         employeeName: employees.name,
+        employeePhone: employees.phone,
         contract: employees.contract,
       })
       .from(trainings)
@@ -144,6 +148,7 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
             trainingId: training.id,
             employeeId: training.employeeId,
             contract: training.contract || DEFAULT_CONTRACT_SLUG,
+            employeePhone: training.employeePhone || null,
           });
         }
       }
@@ -154,6 +159,23 @@ export async function getTrainingAlertsToSend(): Promise<TrainingAlert[]> {
     console.error("[Email Service] Error fetching training alerts:", error);
     return [];
   }
+}
+
+/**
+ * Ideia 3 do Gilvando (lembrete pro próprio colaborador) — monta a
+ * mensagem de WhatsApp com os treinamentos de UM colaborador específico
+ * (diferente do resumo pro admin, que soma o contrato inteiro). Função
+ * pura, sem WhatsApp nem banco — fácil de testar.
+ */
+export function buildEmployeeReminderMessage(employeeName: string, alerts: TrainingAlert[]): string {
+  const lines = [`Olá, ${employeeName}! Seus treinamentos:`, ""];
+  for (const a of alerts) {
+    const emoji = a.status === "expired" ? "⚠️" : "⏰";
+    const situacao = a.status === "expired" ? `venceu em ${a.expirationDate}` : `vence em ${a.expirationDate}`;
+    lines.push(`${emoji} ${a.trainingName} — ${situacao}`);
+  }
+  lines.push("", "Fale com seu supervisor pra regularizar.");
+  return lines.join("\n");
 }
 
 /**
@@ -276,6 +298,33 @@ export async function sendTrainingAlerts(): Promise<boolean> {
             `[WhatsApp] Falha ao enviar alerta do contrato "${slug}":`,
             waResult.message
           );
+        }
+      }
+
+      // Ideia 3 do Gilvando (lembrete pro próprio colaborador, não só
+      // pro admin) — mesmo WhatsApp já configurado (Z-API), best-effort
+      // igual ao de cima: se falhar por causa de um colaborador, não
+      // impede o dos outros nem o do admin acima. Só manda se o CONTRATO
+      // já tiver WhatsApp de alerta configurado — evita ativar esse
+      // canal pra colaborador sem o Gilvando ter escolhido isso pra
+      // aquele contrato especificamente.
+      if (contract?.alertWhatsapp) {
+        const alertsByEmployee = new Map<string, TrainingAlert[]>();
+        for (const alert of contractAlerts) {
+          const list = alertsByEmployee.get(alert.employeeId);
+          if (list) list.push(alert);
+          else alertsByEmployee.set(alert.employeeId, [alert]);
+        }
+        for (const [, employeeAlerts] of Array.from(alertsByEmployee.entries())) {
+          const phone = employeeAlerts[0].employeePhone;
+          if (!phone) continue;
+          const employeeName = employeeAlerts[0].employeeName;
+          const message = buildEmployeeReminderMessage(employeeName, employeeAlerts);
+
+          const employeeResult = await sendWhatsAppMessage(phone, message);
+          if (!employeeResult.ok) {
+            console.warn(`[WhatsApp] Falha ao enviar lembrete pro colaborador "${employeeName}":`, employeeResult.message);
+          }
         }
       }
     }

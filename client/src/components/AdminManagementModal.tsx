@@ -587,7 +587,9 @@ export default function AdminManagementModal({
           </p>
           <p className="text-xs text-muted-foreground mt-1 mb-2.5">
             Envia uma mensagem de teste para o número informado, para conferir a configuração da
-            Z-API.
+            Z-API. Com essa configuração ativa, o sistema também manda um lembrete individual pro
+            próprio colaborador (se ele tiver celular cadastrado), além do resumo que já ia pro
+            número do contrato.
           </p>
           <input
             type="tel"
