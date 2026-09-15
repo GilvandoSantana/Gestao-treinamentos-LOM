@@ -147,7 +147,13 @@ export const contractsRouter = router({
     applyFolderTemplate: organizationAdminProcedure
       .input(z.object({ id: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {
-        const contract = await getContractById(input.id);
+        // Achado de auditoria de segurança (15/09): faltava o filtro por
+        // organização — sem ele, um admin de uma organização conseguia
+        // passar o id do contrato de OUTRA organização e criar pastas
+        // dentro da Nuvem dela (mesmo padrão já corrigido em invoices.ts,
+        // certificates.ts e cloud.ts em 07/09, mas que passou batido
+        // aqui).
+        const contract = await getContractById(input.id, ctx.siteOrganizationId);
         if (!contract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
         }

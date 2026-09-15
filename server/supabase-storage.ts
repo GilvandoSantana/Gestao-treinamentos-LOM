@@ -275,7 +275,7 @@ export async function getAllPhotoUrls(): Promise<Map<string, string>> {
           .from(PHOTOS_BUCKET)
           .createSignedUrls(Array.from(employeeIdByFileName.keys()), 3600);
         for (const item of signed ?? []) {
-          if (item.error || !item.path) continue;
+          if (item.error || !item.path || !item.signedUrl) continue;
           const employeeId = employeeIdByFileName.get(item.path);
           if (employeeId) urls.set(employeeId, item.signedUrl);
         }

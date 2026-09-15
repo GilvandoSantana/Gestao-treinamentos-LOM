@@ -8,6 +8,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { timingSafeEqual } from "crypto";
 import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
 import { runDatabaseBackup } from "../db-backup";
@@ -35,6 +36,21 @@ import {
 } from "../db-cloud";
 import { slugifyContract } from "@shared/contracts";
 import { logActivity } from "../db-activity";
+
+// Comparação em tempo constante pro CRON_SECRET — mesmo cuidado já usado
+// pra APP_PASSWORD em site-auth.ts (achado de auditoria de segurança,
+// 15/09). Timing attack contra um endpoint de cron é um risco baixo na
+// prática, mas o custo de corrigir é minimo e mantém o mesmo padrão em
+// todo o servidor.
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    timingSafeEqual(bufB, bufB);
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
 import { getStripe, getStripeWebhookSecret } from "../stripe-client";
 import { finalizePaidSignup, ensureIntegrityTables } from "../db-organizations";
 import { v4 as uuidv4 } from "uuid";
@@ -169,7 +185,7 @@ async function startServer() {
     if (!secret) {
       return res.status(500).json({ error: "CRON_SECRET não configurado no servidor." });
     }
-    if (provided !== secret) {
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
@@ -192,7 +208,7 @@ async function startServer() {
     if (!secret) {
       return res.status(500).json({ error: "CRON_SECRET não configurado no servidor." });
     }
-    if (provided !== secret) {
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
