@@ -8,10 +8,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Upload, Trash2, Download, Loader, Pencil, X } from 'lucide-react';
+import { Upload, Trash2, Download, Loader, Pencil, X, FileText, Plus, Sparkles } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import DateInputBR from '@/components/DateInputBR';
+import { suggestItemsFromInvoicePdf, type ExtractedInvoiceItem } from '@/lib/invoice-pdf-extract';
 import {
   INVOICE_DOC_TYPES,
   INVOICE_DOC_TYPE_LABELS,
@@ -22,6 +23,7 @@ import {
   type InvoiceDocType,
   type InvoiceStatus,
   type InvoicePaymentMethod,
+  type InvoiceProduct,
 } from '@shared/invoices';
 
 interface InvoicePanelProps {
@@ -45,6 +47,7 @@ const emptyForm = {
   paymentMethod: '' as InvoicePaymentMethod | '',
   description: '',
   status: 'processado' as InvoiceStatus,
+  products: [] as InvoiceProduct[],
 };
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -59,8 +62,11 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [file, setFile] = useState<File | null>(null);
+  const [file2, setFile2] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [suggestedItems, setSuggestedItems] = useState<ExtractedInvoiceItem[]>([]);
 
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.invoices.changeContract.useMutation();
@@ -84,6 +90,8 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
   const resetForm = () => {
     setForm(emptyForm);
     setFile(null);
+    setFile2(null);
+    setSuggestedItems([]);
     setShowForm(false);
   };
 
@@ -102,9 +110,30 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
       paymentMethod: row.paymentMethod ?? '',
       description: row.description ?? '',
       status: row.status,
+      products: row.products ?? [],
     });
     setFile(null);
+    setFile2(null);
+    setSuggestedItems([]);
     setShowForm(true);
+  };
+
+  /** Roda a extração de itens num PDF selecionado e junta com o que já tinha sido sugerido (sem duplicar). */
+  const extractAndMerge = async (selected: File) => {
+    if (selected.type !== 'application/pdf') return;
+    setIsExtracting(true);
+    try {
+      const found = await suggestItemsFromInvoicePdf(selected);
+      if (found.length === 0) return;
+      setSuggestedItems((prev) => {
+        const existingNames = new Set(prev.map((p) => p.name.toLowerCase()));
+        const newOnes = found.filter((f) => !existingNames.has(f.name.toLowerCase()));
+        return [...prev, ...newOnes];
+      });
+      toast.success(`${found.length} item(ns) identificado(s) no PDF — revise antes de adicionar.`);
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,7 +149,65 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
       return;
     }
     setFile(selected);
+    void extractAndMerge(selected);
   };
+
+  const handleFile2Select = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowed.includes(selected.type)) {
+      toast.error('Anexe um PDF, JPG ou PNG.');
+      return;
+    }
+    if (selected.size > MAX_MB * 1024 * 1024) {
+      toast.error(`O arquivo excede o limite de ${MAX_MB}MB.`);
+      return;
+    }
+    setFile2(selected);
+    void extractAndMerge(selected);
+  };
+
+  const acceptSuggestedItem = (item: ExtractedInvoiceItem) => {
+    setForm((f) => ({ ...f, products: [...f.products, { name: item.name, qty: item.qty, unit_price: item.unit_price, total: item.total }] }));
+    setSuggestedItems((prev) => prev.filter((i) => i !== item));
+  };
+
+  const acceptAllSuggested = (confidence?: 'alta' | 'baixa') => {
+    const toAccept = confidence ? suggestedItems.filter((i) => i.confidence === confidence) : suggestedItems;
+    setForm((f) => ({
+      ...f,
+      products: [...f.products, ...toAccept.map((i) => ({ name: i.name, qty: i.qty, unit_price: i.unit_price, total: i.total }))],
+    }));
+    setSuggestedItems((prev) => prev.filter((i) => !toAccept.includes(i)));
+  };
+
+  const dismissSuggestedItem = (item: ExtractedInvoiceItem) => {
+    setSuggestedItems((prev) => prev.filter((i) => i !== item));
+  };
+
+  const addEmptyProduct = () => {
+    setForm((f) => ({ ...f, products: [...f.products, { name: '', qty: 1, unit_price: 0, total: 0 }] }));
+  };
+
+  const updateProduct = (index: number, patch: Partial<InvoiceProduct>) => {
+    setForm((f) => {
+      const products = [...f.products];
+      const updated = { ...products[index], ...patch };
+      // Recalcula o total automaticamente quando qtd ou valor unitário mudam.
+      if (patch.qty !== undefined || patch.unit_price !== undefined) {
+        updated.total = Number((updated.qty * updated.unit_price).toFixed(2));
+      }
+      products[index] = updated;
+      return { ...f, products };
+    });
+  };
+
+  const removeProduct = (index: number) => {
+    setForm((f) => ({ ...f, products: f.products.filter((_, i) => i !== index) }));
+  };
+
+  const productsTotal = form.products.reduce((sum, p) => sum + p.total, 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,6 +235,18 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
         fileName = file.name;
       }
 
+      let fileData2: string | undefined;
+      let fileName2: string | undefined;
+      if (file2) {
+        fileData2 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',')[1]);
+          reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+          reader.readAsDataURL(file2);
+        });
+        fileName2 = file2.name;
+      }
+
       await upsertMutation.mutateAsync({
         id: form.id,
         docType: form.docType,
@@ -157,13 +256,15 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
         issueDate: form.issueDate,
         value: valueNum,
         taxes: form.taxes ? Number(form.taxes.replace(',', '.')) : 0,
-        products: [],
+        products: form.products,
         category: form.category.trim() || undefined,
         costCenter: form.costCenter.trim() || undefined,
         paymentMethod: form.paymentMethod || undefined,
         description: form.description.trim() || undefined,
         fileName,
         fileData,
+        fileName2,
+        fileData2,
         status: form.status,
       });
 
@@ -270,16 +371,32 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
                   <button
                     onClick={async () => {
                       try {
-                        const { url } = await utils.client.invoices.getDownloadUrl.query({ id: row.id });
+                        const { url } = await utils.client.invoices.getDownloadUrl.query({ id: row.id, which: '1' });
                         window.open(url, '_blank', 'noreferrer');
                       } catch {
                         toast.error('Erro ao abrir o arquivo.');
                       }
                     }}
                     className="shrink-0 p-2 text-muted-foreground hover:text-orange transition-colors"
-                    title="Baixar arquivo"
+                    title="Baixar nota fiscal"
                   >
                     <Download size={17} />
+                  </button>
+                )}
+                {row.fileUrl2 && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { url } = await utils.client.invoices.getDownloadUrl.query({ id: row.id, which: '2' });
+                        window.open(url, '_blank', 'noreferrer');
+                      } catch {
+                        toast.error('Erro ao abrir o arquivo.');
+                      }
+                    }}
+                    className="shrink-0 p-2 text-muted-foreground hover:text-teal transition-colors"
+                    title="Baixar pedido de compras / ordem de serviço"
+                  >
+                    <FileText size={17} />
                   </button>
                 )}
 
@@ -511,7 +628,7 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
           </div>
 
           <div>
-            <label className={labelClass}>Arquivo (PDF, JPG ou PNG)</label>
+            <label className={labelClass}>Nota Fiscal (PDF, JPG ou PNG)</label>
             <input
               type="file"
               accept="application/pdf,image/jpeg,image/png"
@@ -524,6 +641,148 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
                 {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB
               </p>
             )}
+          </div>
+
+          <div>
+            <label className={labelClass}>Pedido de Compras / Ordem de Serviço (opcional)</label>
+            <input
+              type="file"
+              accept="application/pdf,image/jpeg,image/png"
+              onChange={handleFile2Select}
+              disabled={isSaving}
+              className="block w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-border"
+            />
+            {file2 && (
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                {file2.name} · {(file2.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            )}
+          </div>
+
+          {isExtracting && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader size={12} className="animate-spin" />
+              Lendo o PDF em busca dos itens...
+            </p>
+          )}
+
+          {suggestedItems.length > 0 && (
+            <div className="border border-orange/30 bg-orange/5 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-orange" />
+                  {suggestedItems.length} item(ns) encontrado(s) no PDF — revise antes de adicionar
+                </p>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => acceptAllSuggested()}
+                    className="text-[11px] font-semibold text-orange hover:opacity-70"
+                  >
+                    Aceitar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSuggestedItems([])}
+                    className="text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                  >
+                    Descartar todos
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {suggestedItems.map((item, i) => (
+                  <div
+                    key={`${item.name}-${i}`}
+                    className="flex items-center gap-2 bg-card border border-border rounded-lg px-2.5 py-1.5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-foreground truncate">{item.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {item.qty} × {currencyFormatter.format(item.unit_price)} = {currencyFormatter.format(item.total)}
+                        {item.confidence === 'baixa' && <span className="text-orange"> · confira, confiança baixa</span>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => acceptSuggestedItem(item)}
+                      title="Adicionar à lista de itens"
+                      className="shrink-0 text-teal hover:opacity-70"
+                    >
+                      <Plus size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dismissSuggestedItem(item)}
+                      title="Descartar"
+                      className="shrink-0 text-muted-foreground hover:text-danger"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={labelClass + ' mb-0'}>Itens ({form.products.length})</label>
+              {productsTotal > 0 && (
+                <span className="text-[11px] text-muted-foreground">Soma: {currencyFormatter.format(productsTotal)}</span>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {form.products.map((p, i) => (
+                <div key={i} className="flex gap-1.5 items-center">
+                  <input
+                    value={p.name}
+                    onChange={(e) => updateProduct(i, { name: e.target.value })}
+                    placeholder="Nome do item"
+                    disabled={isSaving}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 text-xs border border-border rounded-lg bg-background text-foreground"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={p.qty}
+                    onChange={(e) => updateProduct(i, { qty: Number(e.target.value) || 0 })}
+                    placeholder="Qtd."
+                    disabled={isSaving}
+                    className="w-16 shrink-0 px-2 py-1.5 text-xs border border-border rounded-lg bg-background text-foreground"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={p.unit_price}
+                    onChange={(e) => updateProduct(i, { unit_price: Number(e.target.value) || 0 })}
+                    placeholder="Vlr. unit."
+                    disabled={isSaving}
+                    className="w-20 shrink-0 px-2 py-1.5 text-xs border border-border rounded-lg bg-background text-foreground"
+                  />
+                  <span className="w-20 shrink-0 text-xs text-muted-foreground text-right">
+                    {currencyFormatter.format(p.total)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeProduct(i)}
+                    disabled={isSaving}
+                    className="shrink-0 text-muted-foreground hover:text-danger"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addEmptyProduct}
+              disabled={isSaving}
+              className="w-full mt-1.5 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border border-dashed border-border text-muted-foreground hover:text-orange hover:border-orange transition"
+            >
+              <Plus size={13} />
+              Adicionar item manualmente
+            </button>
           </div>
 
           <button
