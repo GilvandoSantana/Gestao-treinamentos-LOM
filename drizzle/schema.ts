@@ -565,6 +565,11 @@ export const invoices = mysqlTable("invoices", {
   fileName: varchar("fileName", { length: 255 }),
   fileUrl: text("fileUrl"),
   fileSize: int("fileSize"),
+  // Segundo anexo opcional: PDF do pedido de compras / ordem de serviço do
+  // fornecedor, separado do PDF da nota fiscal em si.
+  fileName2: varchar("fileName2", { length: 255 }),
+  fileUrl2: text("fileUrl2"),
+  fileSize2: int("fileSize2"),
   status: mysqlEnum("status", ["pendente", "processado", "confirmado"]).default("processado").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

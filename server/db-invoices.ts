@@ -33,6 +33,9 @@ export type PublicInvoice = {
   fileName: string | null;
   fileUrl: string | null;
   fileSize: number | null;
+  fileName2: string | null;
+  fileUrl2: string | null;
+  fileSize2: number | null;
   status: InvoiceStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -66,6 +69,9 @@ function toPublic(row: Invoice): PublicInvoice {
     fileName: row.fileName ?? null,
     fileUrl: row.fileUrl ?? null,
     fileSize: row.fileSize ?? null,
+    fileName2: row.fileName2 ?? null,
+    fileUrl2: row.fileUrl2 ?? null,
+    fileSize2: row.fileSize2 ?? null,
     status: isInvoiceStatus(row.status) ? row.status : "processado",
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -111,6 +117,9 @@ export async function createInvoice(input: {
   fileName?: string;
   fileUrl?: string;
   fileSize?: number;
+  fileName2?: string;
+  fileUrl2?: string;
+  fileSize2?: number;
   status?: InvoiceStatus;
 }): Promise<PublicInvoice> {
   const db = await getDb();
@@ -134,6 +143,9 @@ export async function createInvoice(input: {
     fileName: input.fileName,
     fileUrl: input.fileUrl,
     fileSize: input.fileSize,
+    fileName2: input.fileName2,
+    fileUrl2: input.fileUrl2,
+    fileSize2: input.fileSize2,
     status: input.status ?? "processado",
   });
 
@@ -160,6 +172,9 @@ export async function updateInvoice(
     fileName: string;
     fileUrl: string;
     fileSize: number;
+    fileName2: string;
+    fileUrl2: string;
+    fileSize2: number;
     status: InvoiceStatus;
   }>
 ): Promise<void> {

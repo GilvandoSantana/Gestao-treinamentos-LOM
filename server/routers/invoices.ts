@@ -76,6 +76,8 @@ export const invoicesRouter = router({
           description: z.string().trim().optional(),
           fileName: z.string().optional(),
           fileData: z.string().optional(),
+          fileName2: z.string().optional(),
+          fileData2: z.string().optional(),
           status: z.enum(INVOICE_STATUSES).default("processado"),
         })
       )
@@ -87,35 +89,33 @@ export const invoicesRouter = router({
           });
         }
 
-        let fileUrl: string | undefined;
-        let fileSize: number | undefined;
-        let fileName: string | undefined;
+        const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
 
-        if (input.fileData && input.fileName) {
-          const fileBuffer = Buffer.from(input.fileData, "base64");
-
-          const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
+        async function uploadIfPresent(
+          fileData: string | undefined,
+          fileName: string | undefined
+        ): Promise<{ fileUrl?: string; fileSize?: number; fileName?: string }> {
+          if (!fileData || !fileName) return {};
+          const fileBuffer = Buffer.from(fileData, "base64");
           if (fileBuffer.length > MAX_INVOICE_BYTES) {
-            throw new TRPCError({
-              code: "PAYLOAD_TOO_LARGE",
-              message: "O arquivo excede o limite de 10MB.",
-            });
+            throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "O arquivo excede o limite de 10MB." });
           }
-
-          const ext = input.fileName.split(".").pop()?.toLowerCase();
-          const mimeType =
-            ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : "image/jpeg";
-
+          const ext = fileName.split(".").pop()?.toLowerCase();
+          const mimeType = ext === "pdf" ? "application/pdf" : ext === "png" ? "image/png" : "image/jpeg";
           const upload = await uploadInvoiceFileToSupabase(
             fileBuffer,
-            input.fileName,
+            fileName,
             mimeType,
             ctx.siteContract ?? DEFAULT_CONTRACT_SLUG
           );
-          fileUrl = upload.url;
-          fileSize = fileBuffer.length;
-          fileName = input.fileName;
+          return { fileUrl: upload.url, fileSize: fileBuffer.length, fileName };
         }
+
+        const file1 = await uploadIfPresent(input.fileData, input.fileName);
+        const file2 = await uploadIfPresent(input.fileData2, input.fileName2);
+        const fileUrl = file1.fileUrl;
+        const fileSize = file1.fileSize;
+        const fileName = file1.fileName;
 
         const contract = ctx.siteContract ?? DEFAULT_CONTRACT_SLUG;
 
@@ -147,6 +147,7 @@ export const invoicesRouter = router({
             description: input.description,
             status: input.status,
             ...(fileUrl ? { fileUrl, fileSize, fileName } : {}),
+            ...(file2.fileUrl ? { fileUrl2: file2.fileUrl, fileSize2: file2.fileSize, fileName2: file2.fileName } : {}),
           });
 
           void logActivity({
@@ -179,6 +180,9 @@ export const invoicesRouter = router({
           fileName,
           fileUrl,
           fileSize,
+          fileName2: file2.fileName,
+          fileUrl2: file2.fileUrl,
+          fileSize2: file2.fileSize,
           status: input.status,
         });
 
@@ -197,13 +201,14 @@ export const invoicesRouter = router({
     // URL assinada de curta duração — mesmo motivo de
     // certificates.getDownloadUrl (achado de auditoria de segurança, 07/09).
     getDownloadUrl: requirePermission('viewInvoices')
-      .input(z.object({ id: z.string() }))
+      .input(z.object({ id: z.string(), which: z.enum(["1", "2"]).default("1") }))
       .query(async ({ input, ctx }) => {
         const invoice = await getInvoiceById(input.id);
-        if (!invoice || !invoice.fileUrl || (ctx.siteContract !== null && invoice.contract !== ctx.siteContract)) {
+        const targetUrl = input.which === "2" ? invoice?.fileUrl2 : invoice?.fileUrl;
+        if (!invoice || !targetUrl || (ctx.siteContract !== null && invoice.contract !== ctx.siteContract)) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
         }
-        const url = await getSignedInvoiceUrl(invoice.fileUrl);
+        const url = await getSignedInvoiceUrl(targetUrl);
         return { url } as const;
       }),
 
@@ -219,6 +224,9 @@ export const invoicesRouter = router({
 
         if (existing.fileUrl) {
           await deleteInvoiceFileFromSupabase(existing.fileUrl);
+        }
+        if (existing.fileUrl2) {
+          await deleteInvoiceFileFromSupabase(existing.fileUrl2);
         }
         await deleteInvoice(input.id);
 
