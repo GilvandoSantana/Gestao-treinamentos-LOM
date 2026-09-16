@@ -4,6 +4,9 @@
  * aqui só ficam os metadados.
  */
 
+import { assertSafeCloudName } from "../shared/cloud-path";
+import { createHash, randomUUID } from "node:crypto";
+import { TRPCError } from "@trpc/server";
 import { eq, and, inArray, isNull, isNotNull, desc, sql } from "drizzle-orm";
 import {
   cloudFolders,
@@ -46,6 +49,7 @@ export interface CloudFileInfo {
   uploadedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  revisionToken?: string;
   deletedAt: string | null;
   lockedBy: string | null;
   lockedAt: string | null;
@@ -119,6 +123,7 @@ function toFileInfo(row: typeof cloudFiles.$inferSelect): CloudFileInfo {
     uploadedBy: row.uploadedBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    revisionToken: createHash("sha256").update(JSON.stringify([row.r2Key, row.fileUrl, row.fileSize, row.updatedAt])).digest("hex"),
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     lockedBy: row.lockedBy,
     lockedAt: row.lockedAt ? row.lockedAt.toISOString() : null,
@@ -211,6 +216,8 @@ function toShareInfo(row: typeof cloudShares.$inferSelect, groupName: string | n
 export interface CloudAccessContext {
   username: string;
   isMasterAdmin: boolean;
+  permission?: "view" | "download" | "edit";
+  includeTrash?: boolean;
 }
 
 /** Verifica, pra quem está pedindo, se dá pra ENTRAR nesta pasta. Não
@@ -220,20 +227,24 @@ export async function canAccessFolder(
   folderId: string,
   ctx: CloudAccessContext
 ): Promise<boolean> {
-  if (ctx.isMasterAdmin) return true;
   const db = await getDb();
   if (!db) return false;
 
   const rows = await db.select().from(cloudFolders).where(eq(cloudFolders.id, folderId));
   const folder = rows[0];
-  if (!folder || !folder.restrictedToGroupId) return true;
+  if (!folder || folder.contractSlug !== contractSlug || (folder.deletedAt && !ctx.includeTrash)) return false;
+  if (ctx.isMasterAdmin || !folder.restrictedToGroupId) return true;
 
   const members = await listEffectiveGroupMembers(folder.restrictedToGroupId, contractSlug);
   if (members.some((m) => m.username === ctx.username)) return true;
 
   // Exceção: compartilhamento individual/de grupo continua valendo mesmo
   // sem ser membro do grupo dono da pasta.
-  const shareRows = await db.select().from(cloudShares).where(eq(cloudShares.folderId, folderId));
+  const candidates = await db.select().from(cloudShares).where(eq(cloudShares.folderId, folderId));
+  const shareRows = candidates.filter(s => s.contractSlug === contractSlug &&
+    (!s.expiresAt || s.expiresAt.getTime() > Date.now()) &&
+    (ctx.permission !== 'edit' || s.permission === 'edit') &&
+    (ctx.permission !== 'download' || s.permission === 'download' || s.permission === 'edit'));
   if (shareRows.some((s) => s.sharedWith === ctx.username)) return true;
   if (shareRows.some((s) => s.sharedWithGroupId)) {
     const myGroupIds = await getGroupIdsForUsername(contractSlug, ctx.username);
@@ -250,9 +261,8 @@ export async function canAccessFile(
   fileId: string,
   ctx: CloudAccessContext
 ): Promise<boolean> {
-  if (ctx.isMasterAdmin) return true;
   const file = await getFileById(fileId);
-  if (!file) return false;
+  if (!file || file.contractSlug !== contractSlug || (file.deletedAt && !ctx.includeTrash)) return false;
   if (!file.folderId) return true;
   return canAccessFolder(contractSlug, file.folderId, ctx);
 }
@@ -525,34 +535,28 @@ export async function createFolder(input: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  let restrictedToGroupId = input.restrictedToGroupId;
-  if (restrictedToGroupId === undefined) {
-    restrictedToGroupId = null;
+  assertSafeCloudName(input.name);
+  // The capacity row is a contract-scoped cross-replica mutex, including root folders.
+  return withStorageCapacity(input.contractSlug, 0, async tx => {
+    let inherited: string | null = null;
     if (input.parentId) {
-      const parent = await getFolderById(input.parentId);
-      restrictedToGroupId = parent?.restrictedToGroupId ?? null;
+      const [parent] = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.id, input.parentId), eq(cloudFolders.contractSlug, input.contractSlug))).for('update');
+      if (!parent || parent.deletedAt) throw new Error('Pasta pai não encontrada.');
+      inherited = parent.restrictedToGroupId;
     }
-  }
-
-  await db.insert(cloudFolders).values({ ...input, restrictedToGroupId });
-
-  let restrictedToGroupName: string | null = null;
-  if (restrictedToGroupId) {
-    const group = await getGroupById(restrictedToGroupId);
-    restrictedToGroupName = group?.name ?? null;
-  }
-
-  return {
-    ...input,
-    restrictedToGroupId,
-    restrictedToGroupName,
-    hasAccess: true,
-    createdAt: new Date().toISOString(),
-    deletedAt: null,
-  };
+    const siblings = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.contractSlug, input.contractSlug),
+      input.parentId ? eq(cloudFolders.parentId, input.parentId) : isNull(cloudFolders.parentId), isNull(cloudFolders.deletedAt)));
+    const existing = siblings.find(f => f.name.trim().toLowerCase() === input.name.trim().toLowerCase());
+    if (existing) return toFolderInfo(existing);
+    const restrictedToGroupId = input.restrictedToGroupId === undefined ? inherited : input.restrictedToGroupId;
+    await tx.insert(cloudFolders).values({ ...input, restrictedToGroupId });
+    const [created] = await tx.select().from(cloudFolders).where(eq(cloudFolders.id, input.id));
+    return toFolderInfo(created);
+  });
 }
 
 export async function renameFolder(id: string, contractSlug: string, name: string): Promise<void> {
+  assertSafeCloudName(name);
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db
@@ -575,7 +579,12 @@ export async function createFileRecord(input: {
 }): Promise<CloudFileInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  assertSafeCloudName(input.name);
   return withStorageCapacity(input.contractSlug, input.fileSize, async tx => {
+  if (input.folderId) {
+    const [parent] = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.id, input.folderId), eq(cloudFolders.contractSlug, input.contractSlug))).for('update');
+    if (!parent || parent.deletedAt) throw new Error('Pasta de destino não encontrada.');
+  }
   await tx.insert(cloudFiles).values({
     id: input.id,
     contractSlug: input.contractSlug,
@@ -595,6 +604,7 @@ export async function createFileRecord(input: {
 }
 
 export async function renameFile(id: string, contractSlug: string, name: string): Promise<void> {
+  assertSafeCloudName(name);
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db
@@ -632,7 +642,7 @@ export async function uploadNewVersion(
   versionId: string,
   fileId: string,
   contractSlug: string,
-  input: { r2Key?: string | null; fileUrl?: string | null; fileSize: number; reservationId?: string; mimeType: string; uploadedBy: string | null }
+  input: { expectedRevision?: string; r2Key?: string | null; fileUrl?: string | null; fileSize: number; reservationId?: string; mimeType: string; uploadedBy: string | null }
 ): Promise<CloudFileInfo> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -644,6 +654,9 @@ export async function uploadNewVersion(
   if (current?.lockedBy && current.lockedBy !== input.uploadedBy && isLockActive(current.lockedBy, current.lockedAt)) throw new Error("Arquivo em edição por outra pessoa.");
   if (!current || current.contractSlug !== contractSlug) throw new Error("Arquivo não encontrado.");
 
+  if (input.expectedRevision && input.expectedRevision !== current.revisionToken) {
+    throw new TRPCError({ code: 'CONFLICT', message: 'O arquivo mudou na Nuvem. Sua versão local foi preservada; atualize antes de reenviar.' });
+  }
   // Guarda o estado atual como uma versão antiga antes de sobrescrever.
   await tx.insert(cloudFileVersions).values({
     id: versionId,
@@ -806,7 +819,7 @@ export async function softDeleteFile(id: string, contractSlug: string, username:
   if (!db) throw new Error("Database not available");
   await db
     .update(cloudFiles)
-    .set({ deletedAt: new Date(), deletedBy: username })
+    .set({ deletedAt: new Date(), deletedBy: username, trashBatchId: null })
     .where(and(eq(cloudFiles.id, id), eq(cloudFiles.contractSlug, contractSlug)));
 }
 
@@ -815,7 +828,7 @@ export async function restoreFile(id: string, contractSlug: string): Promise<voi
   if (!db) throw new Error("Database not available");
   await db
     .update(cloudFiles)
-    .set({ deletedAt: null, deletedBy: null })
+    .set({ deletedAt: null, deletedBy: null, trashBatchId: null })
     .where(and(eq(cloudFiles.id, id), eq(cloudFiles.contractSlug, contractSlug)));
 }
 
@@ -841,17 +854,30 @@ export async function softDeleteFolder(id: string, contractSlug: string, usernam
   if (!db) throw new Error("Database not available");
   await db
     .update(cloudFolders)
-    .set({ deletedAt: new Date(), deletedBy: username })
+    .set({ deletedAt: new Date(), deletedBy: username, trashBatchId: null })
     .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
 }
 
 export async function restoreFolder(id: string, contractSlug: string): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(cloudFolders)
-    .set({ deletedAt: null, deletedBy: null })
-    .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
+  await withStorageCapacity(contractSlug, 0, async tx => {
+    const [root] = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug))).for('update');
+    if (!root || !root.deletedAt) return;
+    if (root.parentId) {
+      const [parent] = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.id, root.parentId), eq(cloudFolders.contractSlug, contractSlug)));
+      if (!parent || parent.deletedAt) throw new Error('Restaure a pasta pai primeiro.');
+    }
+    if (root.trashBatchId) {
+      await tx.update(cloudFiles).set({ deletedAt: null, deletedBy: null, trashBatchId: null })
+        .where(and(eq(cloudFiles.contractSlug, contractSlug), eq(cloudFiles.trashBatchId, root.trashBatchId)));
+      await tx.update(cloudFolders).set({ deletedAt: null, deletedBy: null, trashBatchId: null })
+        .where(and(eq(cloudFolders.contractSlug, contractSlug), eq(cloudFolders.trashBatchId, root.trashBatchId)));
+    } else {
+      await tx.update(cloudFolders).set({ deletedAt: null, deletedBy: null })
+        .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
+    }
+  });
 }
 
 /** Tudo que está na lixeira do contrato (pastas e arquivos), mais recente primeiro. */
@@ -891,6 +917,29 @@ export async function deleteFolderRecursive(
 ): Promise<{ r2Keys: string[]; fileUrls: string[] }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  if (!permanent) {
+    return withStorageCapacity(contractSlug, 0, async tx => {
+      const folders = await tx.select().from(cloudFolders).where(eq(cloudFolders.contractSlug, contractSlug)).for('update');
+      const root = folders.find(f => f.id === id);
+      if (!root || root.deletedAt) return { r2Keys: [], fileUrls: [] };
+      const included = new Set([id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const folder of folders) {
+          if (!folder.deletedAt && folder.parentId && included.has(folder.parentId) && !included.has(folder.id)) {
+            included.add(folder.id); grew = true;
+          }
+        }
+      }
+      const batch = randomUUID();
+      const change = { deletedAt: new Date(), deletedBy: username, trashBatchId: batch };
+      await tx.update(cloudFiles).set(change).where(and(eq(cloudFiles.contractSlug, contractSlug), inArray(cloudFiles.folderId, Array.from(included)), isNull(cloudFiles.deletedAt)));
+      await tx.update(cloudFolders).set(change).where(and(eq(cloudFolders.contractSlug, contractSlug), inArray(cloudFolders.id, Array.from(included)), isNull(cloudFolders.deletedAt)));
+      return { r2Keys: [], fileUrls: [] };
+    });
+  }
 
   const removed = { r2Keys: [] as string[], fileUrls: [] as string[] };
 

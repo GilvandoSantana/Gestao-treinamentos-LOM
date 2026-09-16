@@ -26,7 +26,7 @@ const crypto = require("crypto");
 // "desktop.ini" pra Nuvem sem ninguém pedir isso.
 const IGNORED_FILE_NAMES = new Set(["desktop.ini", "thumbs.db", ".ds_store"]);
 function isIgnoredFileName(name) {
-  if (IGNORED_FILE_NAMES.has(name.toLowerCase())) return true;
+  if (name.toLowerCase() === ".gescon-recovery" || IGNORED_FILE_NAMES.has(name.toLowerCase())) return true;
   if (name.startsWith("~$")) return true; // arquivo temporário do Office
   if (name.endsWith(".tmp") || name.endsWith(".temp")) return true;
   return false;
@@ -196,7 +196,7 @@ async function syncFilesInFolder(
       }
       try {
         const buffer = await fs.readFile(filePath);
-        const result = await callbacks.uploadNewVersion(cloudFile.id, buffer);
+        const result = await callbacks.uploadNewVersion(cloudFile.id, buffer, name, known.cloudUpdatedAt);
         knownFiles.set(key, {
           cloudFileId: cloudFile.id,
           cloudUpdatedAt: result.updatedAt,
@@ -236,7 +236,7 @@ async function syncFilesInFolder(
 
     try {
       const buffer = await fs.readFile(filePath);
-      const result = await callbacks.uploadNewVersion(cloudFile.id, buffer);
+      const result = await callbacks.uploadNewVersion(cloudFile.id, buffer, name, known.cloudUpdatedAt);
       knownFiles.set(key, {
         cloudFileId: cloudFile.id,
         cloudUpdatedAt: result.updatedAt,

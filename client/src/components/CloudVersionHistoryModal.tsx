@@ -90,7 +90,7 @@ export default function CloudVersionHistoryModal({
     try {
       await uploadFileInChunks(
         file,
-        { fileId, fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size },
+        { fileId, expectedRevision: fileInfoQuery.data?.revisionToken, fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size },
         {
           start: '/api/cloud-version-upload/start',
           part: '/api/cloud-version-upload/part',

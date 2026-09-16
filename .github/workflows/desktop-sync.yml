@@ -1,0 +1,47 @@
+name: Windows sync tests and installer
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop-sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop-sync/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm audit --omit=dev
+      - name: Compile the Windows Cloud Files host
+        run: dotnet publish native/CloudFilterHost/CloudFilterHost.csproj -c Release --nologo
+      - name: Native deletion and restart regressions
+        run: ./native/CloudFilterHost/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/CloudFilterHost.exe sync-self-test
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
+      - name: Build NSIS installer
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Store versioned installer and update metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: GesCon-Nuvem-Windows
+          path: |
+            desktop-sync/dist-installer/*.exe
+            desktop-sync/dist-installer/*.blockmap
+            desktop-sync/dist-installer/latest.yml
+          if-no-files-found: error
+          retention-days: 30

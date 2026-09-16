@@ -16,8 +16,22 @@ const { spawn } = require("child_process");
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
-const { Notification } = require("electron");
+
 const { startUploadWatcher } = require("./upload-watcher");
+const { safeLocalPath, safeRelative, validateComponent, RECOVERY_DIRECTORY } = require("./sync-safety");
+const crypto = require("crypto");
+let generation = 0;
+const managedPaths = new Map();
+let excludedPaths = [];
+function suppress(key) { managedPaths.set(key.toLowerCase(), Date.now() + 30000); }
+function isManaged(key) {
+  key = key.toLowerCase();
+  for (const [p, expiry] of managedPaths) {
+    if (expiry < Date.now()) { managedPaths.delete(p); continue; }
+    if (key === p || key.startsWith(p + '/')) return true;
+  }
+  return excludedPaths.some(p => key === p || key.startsWith(p + '/'));
+}
 const { ApiError } = require("./api-client");
 
 let child = null;
@@ -61,7 +75,7 @@ const MANIFEST_REFRESH_INTERVAL_MS = 10_000;
  * mesmo arquivo periodicamente, e sem isso poderia pegar um conteúdo
  * incompleto bem na hora de uma reescrita. */
 async function writeManifestAtomic(manifestPath, entries) {
-  const tempPath = `${manifestPath}.tmp`;
+  const tempPath = `${manifestPath}.${crypto.randomUUID()}.tmp`;
   await fs.writeFile(tempPath, JSON.stringify({ entries }), "utf-8");
   await fs.rename(tempPath, manifestPath);
 }
@@ -130,6 +144,7 @@ async function generateManifestEntries(apiClient, excludedFolderIds = new Set())
 
   const folderById = new Map(folders.map((f) => [f.id, f]));
   const pathCache = new Map();
+  const visiting = new Set();
   const excludedCache = new Map();
 
   function isExcluded(folderId) {
@@ -151,9 +166,13 @@ async function generateManifestEntries(apiClient, excludedFolderIds = new Set())
   function pathFor(folderId) {
     if (pathCache.has(folderId)) return pathCache.get(folderId);
     const folder = folderById.get(folderId);
-    if (!folder) return "";
+    if (!folder) throw new Error("Pasta pai ausente na árvore da Nuvem.");
+    if (visiting.has(folderId)) throw new Error("Ciclo na árvore de pastas.");
+    visiting.add(folderId);
+    validateComponent(folder.name);
     const parentPath = folder.parentId ? pathFor(folder.parentId) : "";
     const fullPath = parentPath ? `${parentPath}\\${folder.name}` : folder.name;
+    visiting.delete(folderId);
     pathCache.set(folderId, fullPath);
     return fullPath;
   }
@@ -171,9 +190,17 @@ async function generateManifestEntries(apiClient, excludedFolderIds = new Set())
   for (const file of files) {
     if (isExcluded(file.folderId)) continue;
     const relativePath = file.folderId ? `${pathFor(file.folderId)}\\${file.name}` : file.name;
-    entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0, updatedAt: file.updatedAt });
+    validateComponent(file.name);
+    entries.push({ relativePath, fileId: file.id, fileSize: file.fileSize || 0, updatedAt: file.updatedAt, revisionToken: file.revisionToken });
   }
 
+  const seen = new Set();
+  for (const entry of entries) {
+    const key = safeRelative(entry.relativePath).toLowerCase();
+    if (seen.has(key)) throw new Error(`Nomes duplicados para o Windows: ${entry.relativePath}`);
+    seen.add(key);
+  }
+  Object.defineProperty(entries, 'excludedPaths', { value: folders.filter(f => isExcluded(f.id)).map(f => safeRelative(pathFor(f.id)).toLowerCase()) });
   return entries;
 }
 
@@ -206,6 +233,7 @@ function buildKnownCloudFilesMap(entries) {
         fileId: entry.fileId,
         fileSize: entry.fileSize,
         updatedAt: entry.updatedAt,
+        revisionToken: entry.revisionToken,
       });
     }
   }
@@ -229,7 +257,7 @@ function findGenuinelyRemoteChanges(previousMap, freshMap) {
     const previous = previousMap.get(key);
     if (!previous) {
       added.push(key);
-    } else if (fresh.updatedAt && previous.updatedAt && fresh.updatedAt !== previous.updatedAt) {
+    } else if ((fresh.revisionToken || fresh.updatedAt) !== (previous.revisionToken || previous.updatedAt)) {
       changed.push(key);
     }
   }
@@ -247,6 +275,7 @@ function notifyRemoteChanges(added, changed) {
   const total = added.length + changed.length;
   if (total === 0) return;
   try {
+    const { Notification } = require("electron");
     if (total === 1) {
       const [singlePath] = added.length ? added : changed;
       const fileName = singlePath.split("/").pop();
@@ -336,10 +365,13 @@ async function startPlaceholderSync({
   token,
   apiClient,
   contractName,
+  username,
   onLog,
   onAuthError,
   getExcludedFolderIds,
 }) {
+  const sessionGeneration = ++generation;
+  let refreshing = false;
   // Sempre manda pro terminal (visível rodando "npm start") E pro log da
   // tela — dobrado de propósito, porque descobrir "por que o modo novo
   // não ativou" só pelo log da tela às vezes corta informação.
@@ -382,11 +414,17 @@ async function startPlaceholderSync({
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
   const entries = await generateManifestEntries(apiClient, getExcluded());
+  excludedPaths = entries.excludedPaths;
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
   knownCloudFiles = buildKnownCloudFilesMap(entries);
   knownCloudFolders = buildKnownCloudFoldersMap(entries);
 
-  const manifestPath = path.join(os.tmpdir(), `gestao-nuvem-manifest-${Date.now()}.json`);
+  const { app } = require("electron");
+  const scope = crypto.createHash('sha256').update(JSON.stringify([folderPath.toLowerCase(), serverUrl, apiClient.activeContract, username])).digest('hex');
+  const stateDirectory = path.join(app.getPath('userData'), 'sync-state', scope);
+  await fs.mkdir(stateDirectory, { recursive: true });
+  const manifestPath = path.join(stateDirectory, 'manifest.json');
+  const materializedPath = manifestPath + '.materialized.json';
   await writeManifestAtomic(manifestPath, entries);
 
   // O CloudFilterHost.exe só consulta a Nuvem uma vez, no momento em que
@@ -397,6 +435,9 @@ async function startPlaceholderSync({
   // os placeholders que ainda não existem.
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(async () => {
+    if (refreshing || sessionGeneration !== generation) return;
+    refreshing = true;
+    try {
     // Rede de segurança periódica, separada da atualização da lista da
     // Nuvem (própria tentativa/erro, pra uma falha aqui nunca se
     // confundir com falha ao consultar a Nuvem) — roda bem menos vezes,
@@ -415,7 +456,10 @@ async function startPlaceholderSync({
 
     try {
       const freshEntries = await generateManifestEntries(apiClient, getExcluded());
+      excludedPaths = freshEntries.excludedPaths;
+      if (sessionGeneration !== generation) return;
       await writeManifestAtomic(manifestPath, freshEntries);
+      if (sessionGeneration !== generation) return;
 
       const freshMap = buildKnownCloudFilesMap(freshEntries);
       const freshFolderMap = buildKnownCloudFoldersMap(freshEntries);
@@ -456,9 +500,14 @@ async function startPlaceholderSync({
         } else {
           for (const key of filesToDelete) {
             try {
-              await fs.unlink(path.join(folderPath, key.split("/").join(path.sep)));
-              onLog(`"${key}" apagado localmente (removido da Nuvem).`, "download");
-            } catch {
+              suppress(key);
+              const source = safeLocalPath(folderPath, key);
+              const destination = safeLocalPath(folderPath, `${RECOVERY_DIRECTORY}/${crypto.randomUUID()}/${key}`);
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.rename(source, destination);
+              onLog(`"${key}" preservado em .gescon-recovery (ausente da lista sincronizada).`, "download");
+            } catch (error) {
+              if (error.code !== "ENOENT") { onLog(`Não foi possível preservar "${key}": ${error.message}`, "error"); continue; }
               // Já não existia local (talvez a própria pessoa também
               // tenha apagado aqui) — tudo bem.
             }
@@ -467,9 +516,14 @@ async function startPlaceholderSync({
           }
           for (const key of foldersToDelete) {
             try {
-              await fs.rm(path.join(folderPath, key.split("/").join(path.sep)), { recursive: true, force: true });
-              onLog(`Pasta "${key}" apagada localmente (removida da Nuvem).`, "download");
-            } catch {
+              suppress(key);
+              const source = safeLocalPath(folderPath, key);
+              const destination = safeLocalPath(folderPath, `${RECOVERY_DIRECTORY}/${crypto.randomUUID()}/${key}`);
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.rename(source, destination);
+              onLog(`Pasta "${key}" preservada em .gescon-recovery (ausente da lista sincronizada).`, "download");
+            } catch (error) {
+              if (error.code !== "ENOENT") { onLog(`Não foi possível preservar "${key}": ${error.message}`, "error"); continue; }
               // Idem.
             }
             knownCloudFolders.delete(key);
@@ -484,6 +538,36 @@ async function startPlaceholderSync({
       // conhecimento — depois disso o "antes" e o "depois" ficam iguais e
       // não dá mais pra saber o que era genuinamente externo.
       const { added, changed } = findGenuinelyRemoteChanges(knownCloudFiles, freshMap);
+      for (const key of freshMap.keys()) { if (uploadWatcherHandle?.needsRemoteRefresh(key) && !changed.includes(key)) changed.push(key); }
+      for (const key of changed) {
+        if (sessionGeneration !== generation) return;
+        if (uploadWatcherHandle?.hasPendingDeletion(key) || uploadWatcherHandle?.isUploading(key)) continue;
+        const source = safeLocalPath(folderPath, key);
+        try {
+          await fs.lstat(source); // Missing locally is a deletion, never a download request.
+          suppress(key);
+          const fresh = freshMap.get(key);
+          const buffer = await apiClient.downloadCloudFile(fresh.fileId);
+          const verified = await apiClient.getFileInfo(fresh.fileId);
+          if (sessionGeneration !== generation || verified.revisionToken !== fresh.revisionToken) continue;
+          const saved = safeLocalPath(folderPath, `${RECOVERY_DIRECTORY}/${crypto.randomUUID()}/${key}`);
+          await fs.mkdir(path.dirname(saved), { recursive: true });
+          const temp = source + '.' + crypto.randomUUID() + '.tmp';
+          await fs.writeFile(temp, buffer, { flag: 'wx' });
+          // Preserve the complete old local file, including edits not uploaded yet.
+          await fs.rename(source, saved);
+          try { await fs.rename(temp, source); }
+          catch (error) { await fs.rename(saved, source); throw error; }
+          const timestamp = new Date(fresh.updatedAt);
+          await fs.utimes(source, timestamp, timestamp);
+          uploadWatcherHandle?.markSynced(key, fresh, await fs.stat(source));
+          onLog(`"${key}" atualizado; a cópia local anterior está em .gescon-recovery.`, 'download');
+        } catch (error) {
+          if (error.code !== 'ENOENT') onLog(`Atualização pendente de "${key}": ${error.message}`, 'error');
+          // Do not advance baseline on failure: retry on the next manifest.
+          freshMap.set(key, knownCloudFiles.get(key));
+        }
+      }
       notifyRemoteChanges(added, changed);
       for (const key of added) onLog(`"${key}" apareceu na Nuvem (adicionado por outra pessoa ou computador).`, "download");
       for (const key of changed) onLog(`"${key}" foi atualizado na Nuvem (por outra pessoa ou computador).`, "download");
@@ -506,6 +590,7 @@ async function startPlaceholderSync({
       }
       onLog(`Falha ao atualizar a lista da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
     }
+    } finally { refreshing = false; }
   }, MANIFEST_REFRESH_INTERVAL_MS);
 
   uploadWatcherHandle = startUploadWatcher({
@@ -513,6 +598,9 @@ async function startPlaceholderSync({
     apiClient,
     getKnownCloudFiles: () => knownCloudFiles,
     getKnownCloudFolders: () => knownCloudFolders,
+    journalPath: path.join(stateDirectory, 'deletions.json'),
+    materializedPath,
+    isSuppressed: isManaged,
     onUploaded: () => {},
     onLog,
   });
@@ -573,6 +661,7 @@ async function startPlaceholderSync({
     });
 
     child.on("exit", (code, signal) => {
+      if (sessionGeneration !== generation) return;
       diagLog(`Processo encerrou (código ${code}, sinal ${signal}).`);
       if (code !== 0 && code !== null) {
         onLog(`Programa auxiliar encerrou de forma inesperada (código ${code}).`, "error");
@@ -606,6 +695,9 @@ async function startPlaceholderSync({
 }
 
 function stopPlaceholderSync() {
+  generation++;
+  managedPaths.clear();
+  excludedPaths = [];
   if (refreshTimer) {
     clearInterval(refreshTimer);
     refreshTimer = null;

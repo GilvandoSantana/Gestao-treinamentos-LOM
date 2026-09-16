@@ -1,34 +1,40 @@
 {
   "name": "gestao-nuvem-sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sincronizador de pasta local com a Nuvem do sistema de Gestão de Controle dos Contratos",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win",
-    "test": "vitest run",
+    "test": "vitest run --configLoader native",
     "postinstall": "node scripts/postinstall.js",
     "publish-cloudfilterhost": "node scripts/postinstall.js"
   },
   "author": "Support Mining",
   "license": "UNLICENSED",
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "vitest": "^2.1.9"
+    "electron": "44.4.1",
+    "electron-builder": "26.15.3",
+    "vitest": "4.1.11"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "6.8.9"
   },
   "build": {
     "appId": "com.supportmining.gestao-nuvem-sync",
     "productName": "Sincronização com a Nuvem",
-    "files": ["src/**/*", "!src/**/*.test.js"],
+    "files": [
+      "src/**/*",
+      "!src/**/*.test.js"
+    ],
     "extraResources": [
       {
         "from": "native/CloudFilterHost/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish",
         "to": "CloudFilterHost",
-        "filter": ["CloudFilterHost.exe", "icon.ico"]
+        "filter": [
+          "CloudFilterHost.exe",
+          "icon.ico"
+        ]
       }
     ],
     "publish": {
@@ -40,7 +46,14 @@
       "output": "dist-installer"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico"
     },
     "artifactName": "GesCon-Nuvem-Setup.${ext}",

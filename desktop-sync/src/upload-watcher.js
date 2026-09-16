@@ -1,20 +1,3 @@
-/**
- * Fica de olho em mudanças na pasta sincronizada (usando o aviso nativo do
- * Windows de "algo mudou aqui", não checagem periódica de data) e sobe
- * pra Nuvem o que a PESSOA criou ou editou de verdade — sem confundir com
- * o que o próprio mecanismo de placeholder acabou de criar/baixar
- * sozinho, que não deveria "subir de volta".
- *
- * A parte mais delicada: como saber se um arquivo que acabou de mudar foi
- * a pessoa editando, ou só o processo de hidratação (o CloudFilterHost.exe
- * preenchendo o conteúdo de um placeholder que acabou de ser aberto)?
- * Comparação de TAMANHO resolve isso sem precisar de nenhuma comunicação
- * complicada entre os dois programas: se o tamanho do arquivo local bate
- * exatamente com o que já se sabe que está na Nuvem, é hidratação (ou a
- * própria criação do placeholder) — não uma edição de verdade. Só sobe
- * quando o tamanho é diferente do que a Nuvem já tinha.
- */
-
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
@@ -34,6 +17,8 @@ const path = require("path").win32;
 const nativePath = require("path");
 const { isIgnoredFileName } = require("./sync-engine");
 
+const { safeLocalPath, safeRelative, isWithin, readJson, writeJsonAtomic } = require("./sync-safety");
+const { createDeletionQueue } = require("./deletion-queue");
 const DEBOUNCE_MS = 2000;
 
 // "Freio de emergência" contra exclusão em massa — se muita coisa for
@@ -84,9 +69,9 @@ function buildConflictFileName(name) {
   const base = name.slice(0, name.length - ext.length);
   const stamp = new Date()
     .toISOString()
-    .slice(0, 16)
+    .slice(0, 23)
     .replace("T", " ")
-    .replace(":", "");
+    .replace(/[:.]/g, "") + "-" + require("crypto").randomUUID().slice(0,8);
   return `${base} (conflito - ${os.hostname()} - ${stamp})${ext}`;
 }
 
@@ -97,11 +82,11 @@ function buildConflictFileName(name) {
  *   viu da ÚLTIMA vez que sincronizou este arquivo (upload, ou só uma
  *   observação sem mudança) — usado só pra detectar conflito.
  */
-function decideUploadAction(localSize, knownCloudEntry, baselineUpdatedAt) {
+function decideUploadAction(localSize, knownCloudEntry, baselineUpdatedAt, contentChanged = false) {
   if (!knownCloudEntry) {
     return { action: "new" };
   }
-  if (localSize === knownCloudEntry.fileSize) {
+  if (localSize === knownCloudEntry.fileSize && !contentChanged) {
     // Mesmo tamanho que a Nuvem já tinha — quase certamente foi o próprio
     // mecanismo de placeholder que acabou de criar ou hidratar esse
     // arquivo, não uma edição de verdade da pessoa.
@@ -159,7 +144,7 @@ async function walkLocalTree(rootPath, currentRelative = "") {
     return results;
   }
   for (const entry of entries) {
-    if (isIgnoredFileName(entry.name)) continue;
+    if (isIgnoredFileName(entry.name) || entry.isSymbolicLink()) continue;
     const relPath = currentRelative ? path.join(currentRelative, entry.name) : entry.name;
     results.push(relPath);
     if (entry.isDirectory()) {
@@ -219,13 +204,17 @@ async function ensureCloudFolder(relativeFolderPath, deps) {
  * @param {import('./api-client').ApiClient} apiClient
  * @returns {Promise<{fileId: string}>}
  */
-async function performUpload(action, { name, buffer, folderId, fileId }, apiClient) {
+async function performUpload(action, { name, buffer, localPath, folderId, fileId, expectedRevision }, apiClient) {
+  if (localPath && apiClient.uploadLocalFile) {
+    const result = await apiClient.uploadLocalFile(localPath, { fileId: action === 'new' ? undefined : fileId, folderId, name, expectedRevision });
+    return { fileId: result.id || fileId, updatedAt: result.updatedAt, revisionToken: result.revisionToken };
+  }
   if (action === "new") {
     const result = await apiClient.uploadNewFile(folderId ?? null, name, buffer);
-    return { fileId: result.id, updatedAt: result.updatedAt };
+    return { fileId: result.id, updatedAt: result.updatedAt, revisionToken: result.revisionToken };
   }
-  const result = await apiClient.uploadNewVersion(fileId, buffer, name);
-  return { fileId, updatedAt: result.updatedAt };
+  const result = await apiClient.uploadNewVersion(fileId, buffer, name, undefined, expectedRevision);
+  return { fileId, updatedAt: result.updatedAt, revisionToken: result.revisionToken };
 }
 
 /**
@@ -238,101 +227,76 @@ async function performUpload(action, { name, buffer, folderId, fileId }, apiClie
  * @param {(message: string, kind: string) => void} opts.onLog
  * @returns {() => void} função pra parar de vigiar
  */
-function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnownCloudFolders, onUploaded, onLog }) {
+function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnownCloudFolders, onUploaded, onLog, journalPath, materializedPath, isSuppressed = () => false }) {
   const timers = new Map();
   const uploading = new Set();
   const folderCreationInFlight = new Map();
   // "updatedAt" da Nuvem que a gente viu da última vez que olhou pra
   // cada arquivo (upload feito pela gente, ou só uma observação sem
   // mudança) — usado só pra detectar conflito (ver decideUploadAction).
-  const lastKnownUpdatedAt = new Map();
-  let recentDeletionTimestamps = [];
-  let deletionsPaused = false;
-
-  function canProcessDeletion() {
-    if (deletionsPaused) return false;
-    const { allowed, updatedTimestamps } = checkDeletionBurst(recentDeletionTimestamps, Date.now());
-    recentDeletionTimestamps = updatedTimestamps;
-    if (!allowed) {
-      deletionsPaused = true;
-      onLog(
-        `Muitas exclusões de uma vez (mais de ${DELETE_BURST_LIMIT} em ${DELETE_BURST_WINDOW_MS / 1000}s) — ` +
-          'parei de apagar da Nuvem automaticamente, por segurança. Clique em "Sincronizar agora" ' +
-          "pra confirmar e continuar apagando o restante.",
-        "error"
-      );
-      return false;
-    }
-    return true;
+  const baselinePath = journalPath ? journalPath + '.baseline.json' : null;
+  const baseline = baselinePath ? readJson(baselinePath, {}) : {};
+  const conflictPending = new Set(Object.entries(baseline).filter(([,v]) => v.conflict).map(([k]) => k));
+  const lastKnownUpdatedAt = new Map(Object.entries(baseline).map(([k,v]) => [k,v.updatedAt]));
+  function markSynced(key, entry, stat) {
+    conflictPending.delete(key);
+    baseline[key] = { ...entry, mtimeMs: stat.mtimeMs, size: stat.size };
+    if (entry.updatedAt) lastKnownUpdatedAt.set(key, entry.updatedAt);
+    if (baselinePath) writeJsonAtomic(baselinePath, baseline);
   }
-
-  function resumeDeletions() {
-    if (deletionsPaused) {
-      deletionsPaused = false;
-      recentDeletionTimestamps = [];
-      onLog("Exclusões automáticas retomadas.", "info");
-    }
-  }
-
-  async function handleDeletion(relativePath) {
-    const key = relativePath.split(path.sep).join("/");
-
-    const knownFile = getKnownCloudFiles().get(key);
-    if (knownFile) {
-      if (!canProcessDeletion()) return;
-      try {
-        await apiClient.deleteFile(knownFile.fileId);
-        getKnownCloudFiles().delete(key);
-        onLog(`"${key}" apagado — movido pra lixeira da Nuvem (dá pra recuperar pelo site).`, "upload");
-      } catch (error) {
-        onLog(`Erro ao apagar "${key}" da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+  let stopped = false;
+  const queue = createDeletionQueue({ journalPath, apiClient, onLog,
+    onDeleted: ({ key, id, isFolder }) => {
+      const currentId = isFolder ? getKnownCloudFolders().get(key) : getKnownCloudFiles().get(key)?.fileId;
+      if (currentId && currentId !== id) return;
+      for (const map of [getKnownCloudFiles(), getKnownCloudFolders()]) {
+        for (const candidate of map.keys()) {
+          if (candidate === key || (isFolder && isWithin(candidate, key))) map.delete(candidate);
+        }
       }
-      return;
-    }
-
-    const knownFolderId = getKnownCloudFolders().get(key);
-    if (knownFolderId) {
-      if (!canProcessDeletion()) return;
-      try {
-        await apiClient.deleteFolder(knownFolderId);
-        getKnownCloudFolders().delete(key);
-        // Remove também qualquer arquivo/pasta que a gente sabia que
-        // vivia dentro dela — o servidor já apaga tudo em cascata, isso
-        // aqui é só pra não achar que ainda existem localmente.
-        for (const filePath of Array.from(getKnownCloudFiles().keys())) {
-          if (filePath.startsWith(`${key}/`)) getKnownCloudFiles().delete(filePath);
-        }
-        for (const folderPath of Array.from(getKnownCloudFolders().keys())) {
-          if (folderPath.startsWith(`${key}/`)) getKnownCloudFolders().delete(folderPath);
-        }
-        onLog(`Pasta "${key}" apagada — movida pra lixeira da Nuvem (dá pra recuperar pelo site).`, "upload");
-      } catch (error) {
-        onLog(`Erro ao apagar a pasta "${key}" da Nuvem: ${error?.message || "erro desconhecido"}`, "error");
+    },
+  });
+  function handleDeletion(relativePath) {
+    const key = safeRelative(relativePath);
+    if (stopped || isSuppressed(key)) return;
+    if (!fs.lstatSync(folderPath).isDirectory()) throw new Error('Pasta sincronizada indisponível; exclusões suspensas.');
+    // One folder operation includes its children, including Windows bursts.
+    const missing = [...getKnownCloudFolders().keys()].filter(parent => isWithin(key, parent));
+    for (const parent of missing.sort((a, b) => a.length - b.length)) {
+      try { fs.lstatSync(safeLocalPath(folderPath, parent)); }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        queue.enqueue(parent, getKnownCloudFolders().get(parent), true);
+        return;
       }
     }
-    // Se não é nenhum dos dois (não era um arquivo/pasta que a gente
-    // conhecia — por exemplo, algo criado e apagado rápido demais pro
-    // upload nem ter acontecido ainda), não tem nada a fazer.
+    const file = getKnownCloudFiles().get(key);
+    if (file) queue.enqueue(key, file.fileId, false);
+    else if (getKnownCloudFolders().has(key)) queue.enqueue(key, getKnownCloudFolders().get(key), true);
   }
+  const resumeDeletions = () => queue.retry();
+  const retryTimer = setInterval(() => queue.drain().catch(e => onLog(e.message, 'error')), 5000);
 
   async function handleChange(relativePath) {
+    if (stopped) return;
+    const key = safeRelative(relativePath);
+    if (conflictPending.has(key) || isSuppressed(key) || queue.contains(key) || key.split('/').some(isIgnoredFileName)) return;
     const name = path.basename(relativePath);
     if (isIgnoredFileName(name)) return;
     if (uploading.has(relativePath)) return; // já está subindo esse mesmo arquivo
 
-    const fullPath = path.join(folderPath, relativePath);
+    const fullPath = safeLocalPath(folderPath, relativePath);
     let stat;
     try {
-      stat = await fsp.stat(fullPath);
-    } catch {
+      stat = await fsp.lstat(fullPath);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
       // Não existe mais no disco — a pessoa apagou (ou moveu) de
       // verdade. Reflete isso na Nuvem também (protegido pelo freio de
       // exclusão em massa acima).
       await handleDeletion(relativePath);
       return;
     }
-
-    const key = relativePath.split(path.sep).join("/");
 
     if (stat.isDirectory()) {
       // Pasta nova criada direto no computador — garante que ela (e
@@ -356,13 +320,16 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     if (!stat.isFile()) return;
 
     const known = getKnownCloudFiles().get(key);
-    const decision = decideUploadAction(stat.size, known, lastKnownUpdatedAt.get(key));
+    const previous = baseline[key];
+    const expectedMtime = previous?.mtimeMs ?? (known?.updatedAt ? new Date(known.updatedAt).getTime() : stat.mtimeMs);
+    const changed = Math.abs(stat.mtimeMs - expectedMtime) > 2;
+    const decision = decideUploadAction(stat.size, known, previous?.updatedAt, changed);
 
     if (decision.action === "skip") {
       // Mantém a linha de base em dia mesmo sem upload — é o que permite
       // detectar conflito na PRÓXIMA edição, mesmo que esta seja a
       // primeira vez que a gente olha pra esse arquivo.
-      if (known?.updatedAt) lastKnownUpdatedAt.set(key, known.updatedAt);
+      if (known && !previous) markSynced(key, known, stat);
       return;
     }
 
@@ -380,17 +347,19 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
           inFlight: folderCreationInFlight,
           onLog,
         });
-        const buffer = await fsp.readFile(fullPath);
-        const { fileId, updatedAt } = await performUpload("new", { name, buffer, folderId }, apiClient);
-        getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length, updatedAt });
+        const buffer = apiClient.uploadLocalFile ? { length: stat.size } : await fsp.readFile(fullPath);
+        const { fileId, updatedAt, revisionToken } = await performUpload("new", { name, buffer, localPath: fullPath, folderId }, apiClient);
+        getKnownCloudFiles().set(key, { fileId, fileSize: buffer.length, updatedAt, revisionToken });
         if (updatedAt) lastKnownUpdatedAt.set(key, updatedAt);
+        markSynced(key, getKnownCloudFiles().get(key), stat);
         onUploaded(key, fileId, buffer.length);
         onLog(`Enviado "${key}" (novo no computador).`, "upload");
       } else if (decision.action === "update") {
-        const buffer = await fsp.readFile(fullPath);
-        const { updatedAt } = await performUpload("update", { name, buffer, fileId: decision.fileId }, apiClient);
-        getKnownCloudFiles().set(key, { fileId: decision.fileId, fileSize: buffer.length, updatedAt });
+        const buffer = apiClient.uploadLocalFile ? { length: stat.size } : await fsp.readFile(fullPath);
+        const { updatedAt, revisionToken } = await performUpload("update", { name, buffer, localPath: fullPath, fileId: decision.fileId, expectedRevision: previous?.revisionToken ?? known?.revisionToken }, apiClient);
+        getKnownCloudFiles().set(key, { fileId: decision.fileId, fileSize: buffer.length, updatedAt, revisionToken });
         if (updatedAt) lastKnownUpdatedAt.set(key, updatedAt);
+        markSynced(key, getKnownCloudFiles().get(key), stat);
         onUploaded(key, decision.fileId, buffer.length);
         onLog(`Enviada nova versão de "${key}" (editado no computador).`, "upload");
       } else if (decision.action === "conflict") {
@@ -404,7 +373,7 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
         // arquivo novo vindo de lá).
         const conflictName = buildConflictFileName(name);
         const conflictPath = path.join(path.dirname(fullPath), conflictName);
-        await fsp.rename(fullPath, conflictPath);
+        await fsp.copyFile(fullPath, conflictPath, fs.constants.COPYFILE_EXCL);
 
         const parentPath = path.dirname(relativePath).split(path.sep).join("/");
         const folderId = await ensureCloudFolder(parentPath, {
@@ -413,12 +382,15 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
           inFlight: folderCreationInFlight,
           onLog,
         });
-        const buffer = await fsp.readFile(conflictPath);
-        const { fileId, updatedAt } = await performUpload("new", { name: conflictName, buffer, folderId }, apiClient);
+        const buffer = apiClient.uploadLocalFile ? { length: stat.size } : await fsp.readFile(conflictPath);
+        const { fileId, updatedAt, revisionToken } = await performUpload("new", { name: conflictName, buffer, localPath: conflictPath, folderId }, apiClient);
         const conflictKey = parentPath ? `${parentPath}/${conflictName}` : conflictName;
-        getKnownCloudFiles().set(conflictKey, { fileId, fileSize: buffer.length, updatedAt });
+        getKnownCloudFiles().set(conflictKey, { fileId, fileSize: buffer.length, updatedAt, revisionToken });
         if (updatedAt) lastKnownUpdatedAt.set(conflictKey, updatedAt);
         onUploaded(conflictKey, fileId, buffer.length);
+        baseline[key] = { ...known, mtimeMs: stat.mtimeMs, size: stat.size, conflict: true };
+        conflictPending.add(key);
+        if (baselinePath) writeJsonAtomic(baselinePath, baseline);
         onLog(
           `Conflito em "${key}": alguém mudou esse arquivo na Nuvem ao mesmo tempo que você editava aqui. ` +
             `Sua versão foi salva como "${conflictName}" — a versão da Nuvem volta a aparecer com o nome original.`,
@@ -435,7 +407,14 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
   let watcher;
   try {
     watcher = fs.watch(folderPath, { recursive: true }, (_eventType, filename) => {
-      if (!filename) return;
+      if (!filename || stopped) return;
+      try {
+        const key = safeRelative(String(filename));
+        if (isSuppressed(key) || key.split('/').some(isIgnoredFileName)) return;
+        // Observe absence NOW. A later disk check loses short-lived delete events.
+        try { fs.lstatSync(safeLocalPath(folderPath, key)); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; handleDeletion(key); }
+      } catch (error) { onLog(error.message, 'error'); return; }
       // Debounce por caminho — o Windows costuma disparar vários avisos
       // pra uma única gravação de arquivo; espera as coisas assentarem
       // antes de agir.
@@ -452,22 +431,40 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     });
   } catch (error) {
     onLog(`Não foi possível vigiar a pasta por mudanças: ${error?.message || "erro desconhecido"}`, "error");
+    clearInterval(retryTimer);
+    queue.stop();
     return { stop: () => {}, resumeDeletions: () => {}, rescanNow: async () => {} };
   }
 
   return {
     stop: () => {
+      stopped = true;
+      clearInterval(retryTimer);
+      queue.stop();
+      apiClient.cancelTransfers?.();
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
       watcher.close();
     },
     resumeDeletions,
+    hasPendingDeletion: key => queue.contains(key),
+    markSynced,
+    needsRemoteRefresh: key => conflictPending.has(key),
+    isUploading: key => uploading.has(key.split("/").join(path.sep)),
     // Rede de segurança periódica — varre a pasta local inteira e
     // processa qualquer caminho que o vigia reativo (fs.watch) talvez
     // tenha perdido (ver comentário de walkLocalTree). Reaproveita o
     // MESMO handleChange que cada evento normal já usa — sem duplicar
     // nenhuma lógica de decisão (skip/new/update/conflict).
     rescanNow: async () => {
+      if (stopped) return;
+      // Only materialized paths can imply deletion; not-yet-created placeholders cannot.
+      const materialized = materializedPath ? readJson(materializedPath, {}) : {};
+      for (const key of Object.keys(materialized)) {
+        try { fs.lstatSync(safeLocalPath(folderPath, key)); }
+        catch (error) { if (error.code === 'ENOENT') handleDeletion(key); else onLog(error.message, 'error'); }
+      }
+      await queue.drain();
       const allPaths = await walkLocalTree(folderPath);
       for (const relPath of allPaths) {
         try {

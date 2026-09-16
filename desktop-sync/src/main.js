@@ -112,6 +112,11 @@ async function init() {
   updater.checkNow();
   setInterval(() => updater.checkNow(), UPDATE_CHECK_INTERVAL_MS);
 
+  await restoreSavedSession();
+}
+
+let reconnectTimer = null;
+async function restoreSavedSession() {
   const config = store.loadConfig();
   const token = store.loadToken();
 
@@ -122,7 +127,7 @@ async function init() {
 
     try {
       const session = await apiClient.getSession();
-      if (!session.isSiteAdmin) throw new Error("sessão inválida");
+      if (!session.isSiteAdmin) throw new ApiError("Sessão inválida", 401);
       state.username = session.username;
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
       state.folderPath = config.folderPath;
@@ -146,10 +151,15 @@ async function init() {
         await startSync();
       }
     } catch (error) {
-      // Token expirado (passou dos 30 dias) ou revogado — volta pra tela
-      // de login em vez de ficar tentando sincronizar sem sucesso.
-      store.clearToken();
-      openLoginWindow();
+      if (error instanceof ApiError && error.status === 401) {
+        store.clearToken();
+        openLoginWindow();
+      } else {
+        state.lastError = `Conexão pendente: ${error.message}. Tentarei novamente em 30 segundos.`;
+        broadcastStatus();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(() => restoreSavedSession(), 30000);
+      }
     }
   } else {
     openLoginWindow();
@@ -252,6 +262,7 @@ function getStatusSnapshot() {
   return {
     username: state.username,
     contractName: state.contractName,
+    username: state.username,
     folderPath: state.folderPath,
     isSyncing: state.isSyncing,
     lastSyncAt: state.lastSyncAt,
@@ -285,6 +296,7 @@ async function startSync() {
     token: apiClient.token,
     apiClient,
     contractName: state.contractName,
+    username: state.username,
     getExcludedFolderIds: () => new Set(state.excludedFolderIds),
     onLog: (message, kind) => {
       pushLog([{ id: `ph-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
@@ -299,15 +311,10 @@ async function startSync() {
       openLoginWindow();
     },
   }).catch((error) => {
-    pushLog([
-      {
-        id: `ph-err-${Date.now()}`,
-        time: new Date(),
-        message: `Falha ao iniciar sincronização por placeholder: ${error?.message || "erro desconhecido"}`,
-        kind: "error",
-      },
-    ]);
-    return false;
+    stopPlaceholderSync();
+    state.lastError = `Sincronização interrompida: ${error.message}`;
+    broadcastStatus();
+    throw error;
   });
 
   if (usedPlaceholder) {
@@ -326,6 +333,8 @@ async function startSync() {
 }
 
 function stopSync() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
   stopPlaceholderSync();
   stopSyncLoop();
   state.syncMode = null;
@@ -366,7 +375,7 @@ async function runSyncNow() {
         listFolder: (folderId) => apiClient.listFolder(folderId),
         downloadCloudFile: (fileId) => apiClient.downloadCloudFile(fileId),
         uploadNewFile: (folderId, name, buffer) => apiClient.uploadNewFile(folderId, name, buffer),
-        uploadNewVersion: (fileId, buffer) => apiClient.uploadNewVersion(fileId, buffer),
+        uploadNewVersion: (fileId, buffer, name, expectedUpdatedAt) => apiClient.uploadNewVersion(fileId, buffer, name, undefined, expectedUpdatedAt),
         createRemoteFolder: (parentId, name) => apiClient.createRemoteFolder(parentId, name),
       },
       state.username
@@ -644,4 +653,5 @@ ipcMain.handle("disconnect", () => {
   updateTrayMenu();
   openLoginWindow();
 });
+
 
