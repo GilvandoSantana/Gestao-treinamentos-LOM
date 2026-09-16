@@ -11,6 +11,7 @@ const {
 } = require("./placeholder-sync");
 const { setupAutoUpdater } = require("./auto-updater");
 const store = require("./store");
+const { createStartupRunner } = require("./startup-runner");
 
 const DEFAULT_SERVER_URL = "https://gestao-treinamentos-lom.up.railway.app";
 // Antes 20s — diminuído a pedido do Gilvando (11/09) pra sincronizar mais
@@ -290,10 +291,32 @@ function getStatusSnapshot() {
  * arquivo direto na pasta ainda NÃO sobe sozinho pra Nuvem nesta versão
  * (fica pra próxima etapa).
  */
-async function startSync() {
+const startupRunner = createStartupRunner({
+  start: startSyncAttempt,
+  shouldRetry: error => Boolean(apiClient && state.folderPath) &&
+    (!(error instanceof ApiError) || error.status >= 500 || error.status === 408 || error.status === 429),
+  onError: (error, retry) => {
+    state.isSyncing = false;
+    state.lastError = `Sincronização interrompida: ${error.message}` +
+      (retry ? ' Nova tentativa automática em 30 segundos.' : '');
+    pushLog([{ id: `startup-${Date.now()}`, time: new Date(), message: state.lastError, kind: 'error' }]);
+    if (error instanceof ApiError && error.status === 401) {
+      apiClient = null;
+      store.clearToken();
+      openLoginWindow();
+    }
+    broadcastStatus();
+  },
+});
+function startSync() { return startupRunner.run(); }
+
+async function startSyncAttempt() {
   if (!apiClient || !state.folderPath) return;
 
   const requestedFolder = state.folderPath, requestedClient = apiClient;
+  state.isSyncing = true;
+  state.lastError = null;
+  broadcastStatus();
   console.log(`[main] Iniciando sincronização da pasta "${state.folderPath}" — tentando o modo placeholder primeiro.`);
   const usedPlaceholder = await startPlaceholderSync({
     folderPath: state.folderPath,
@@ -316,13 +339,13 @@ async function startSync() {
       openLoginWindow();
     },
   }).catch((error) => {
+    if (state.folderPath !== requestedFolder || apiClient !== requestedClient) return false;
     stopPlaceholderSync();
-    state.lastError = `Sincronização interrompida: ${error.message}`;
-    broadcastStatus();
     throw error;
   });
 
   if (state.folderPath !== requestedFolder || apiClient !== requestedClient) return;
+  state.isSyncing = false;
   if (usedPlaceholder) {
     console.log("[main] Modo placeholder ativado com sucesso.");
     state.syncMode = "placeholder";
@@ -334,10 +357,13 @@ async function startSync() {
 
   state.syncMode = null;
   state.lastError = 'Não foi possível iniciar o componente de sincronização Windows. Reinstale a versão atual e tente novamente.';
+  pushLog([{ id: `startup-${Date.now()}`, time: new Date(), message: state.lastError, kind: 'error' }]);
   broadcastStatus();
 }
 
 function stopSync() {
+  startupRunner.cancel();
+  state.isSyncing = false;
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = null;
   stopPlaceholderSync();

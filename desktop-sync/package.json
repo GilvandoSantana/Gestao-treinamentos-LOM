@@ -1,6 +1,6 @@
 {
   "name": "gestao-nuvem-sync",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Sincronizador de pasta local com a Nuvem do sistema de Gestão de Controle dos Contratos",
   "main": "src/main.js",
   "scripts": {

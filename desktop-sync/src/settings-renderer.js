@@ -26,6 +26,11 @@ function render(status) {
   folderValue.title = status.folderPath || "";
   lastSyncValue.textContent = formatTime(status.lastSyncAt);
   currentExcludedFolderIds = status.excludedFolderIds || [];
+  const errorPanel = document.getElementById('sync-error');
+  errorPanel.textContent = status.lastError || '';
+  errorPanel.hidden = !status.lastError;
+  document.getElementById('sync-scope').textContent = currentExcludedFolderIds.length
+    ? `${currentExcludedFolderIds.length} pasta(s) excluída(s)` : 'Todas as pastas (automático)';
 
   const modeRow = document.getElementById("mode-row");
   const modeWarning = document.getElementById("mode-warning");
