@@ -416,6 +416,7 @@ export const cloudFolders = mysqlTable("cloudFolders", {
   // até ser excluída definitivamente.
   deletedAt: timestamp("deletedAt"),
   deletedBy: varchar("deletedBy", { length: 100 }),
+  trashBatchId: varchar("trashBatchId", { length: 64 }),
   // Quando preenchido, só quem for membro deste grupo (ou o administrador
   // principal) consegue ENTRAR na pasta — mas o nome dela continua
   // aparecendo pra todo mundo na listagem de cima. Subpastas/arquivos
@@ -443,6 +444,7 @@ export const cloudFiles = mysqlTable("cloudFiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   deletedAt: timestamp("deletedAt"),
   deletedBy: varchar("deletedBy", { length: 100 }),
+  trashBatchId: varchar("trashBatchId", { length: 64 }),
   // Trava de edicao: enquanto preenchido, so quem travou (ou um admin) pode
   // enviar uma nova versao. Expira sozinha depois de um tempo (ver
   // isLockActive em db-cloud.ts) caso a pessoa esqueca de liberar.
@@ -827,6 +829,7 @@ export const desktopInstaller = mysqlTable("desktopInstaller", {
   id: int("id").autoincrement().primaryKey(),
   r2Key: varchar("r2Key", { length: 255 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
+  sha512: varchar("sha512", { length: 88 }),
   version: varchar("version", { length: 50 }).notNull(),
   fileSize: bigint("fileSize", { mode: "number" }).notNull(),
   uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
@@ -862,3 +865,4 @@ export const employeePortalInvitations = mysqlTable("employeePortalInvitations",
   tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
   expiresAt: timestamp("expiresAt").notNull(),
 });
+

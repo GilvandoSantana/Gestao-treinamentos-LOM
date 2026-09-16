@@ -9,6 +9,12 @@
  */
 
 const os = require("os");
+const fsp = require("fs/promises");
+async function fetchWithDeadline(url, options = {}) {
+  const timeout = AbortSignal.timeout(120000);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  return fetch(url, { ...options, signal });
+}
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -96,7 +102,7 @@ class ApiClient {
     } catch {
       deviceName = undefined;
     }
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: this.serverUrl },
       body: JSON.stringify({ "0": { json: { username: username || undefined, password, deviceName, twoFactorCode: twoFactorCode || undefined } } }),
@@ -109,7 +115,7 @@ class ApiClient {
   /** Confirma se o token guardado ainda é válido e devolve os dados da sessão. */
   async getSession() {
     const url = buildQueryUrl(this.serverUrl, "auth.siteSession");
-    const res = await fetch(url, { headers: this._authHeaders() });
+    const res = await fetchWithDeadline(url, { headers: this._authHeaders() });
     return parseTrpcResponse(res);
   }
 
@@ -118,14 +124,14 @@ class ApiClient {
    * contrato sincronizar. */
   async listContracts() {
     const url = buildQueryUrl(this.serverUrl, "contracts.list");
-    const res = await fetch(url, { headers: this._authHeaders() });
+    const res = await fetchWithDeadline(url, { headers: this._authHeaders() });
     return parseTrpcResponse(res);
   }
 
   /** Lista pastas e arquivos de uma pasta da Nuvem (null = raiz do contrato). */
   async listFolder(folderId) {
     const url = buildQueryUrl(this.serverUrl, "cloud.list", { folderId: folderId ?? null });
-    const res = await fetch(url, { headers: this._authHeaders() });
+    const res = await fetchWithDeadline(url, { headers: this._authHeaders() });
     return parseTrpcResponse(res);
   }
 
@@ -134,19 +140,19 @@ class ApiClient {
    * montar o manifesto inteiro (ver generateManifestEntries). */
   async getFullTree() {
     const url = buildQueryUrl(this.serverUrl, "cloud.getFullTree");
-    const res = await fetch(url, { headers: this._authHeaders() });
+    const res = await fetchWithDeadline(url, { headers: this._authHeaders() });
     return parseTrpcResponse(res);
   }
 
   /** Baixa o conteúdo de um arquivo da Nuvem como Buffer. */
   async downloadCloudFile(fileId) {
-    const urlRes = await fetch(new URL("/api/trpc/cloud.getDownloadUrl?batch=1", this.serverUrl).toString(), {
+    const urlRes = await fetchWithDeadline(new URL("/api/trpc/cloud.getDownloadUrl?batch=1", this.serverUrl).toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({ "0": { json: { id: fileId } } }),
     });
     const { url } = await parseTrpcResponse(urlRes);
-    const fileRes = await fetch(url);
+    const fileRes = await fetchWithDeadline(url);
     if (!fileRes.ok) throw new ApiError("Falha ao baixar o conteúdo do arquivo.", fileRes.status);
     const arrayBuffer = await fileRes.arrayBuffer();
     return Buffer.from(arrayBuffer);
@@ -158,7 +164,7 @@ class ApiClient {
    * log de erro pelo motor de sincronização, sem derrubar o programa. */
   async createRemoteFolder(parentId, name) {
     const url = new URL("/api/trpc/cloud.createFolder?batch=1", this.serverUrl).toString();
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({ "0": { json: { parentId: parentId ?? null, name } } }),
@@ -171,7 +177,7 @@ class ApiClient {
    * recuperar depois pela tela do site). */
   async deleteFile(fileId) {
     const url = new URL("/api/trpc/cloud.deleteFile?batch=1", this.serverUrl).toString();
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({ "0": { json: { id: fileId } } }),
@@ -183,7 +189,7 @@ class ApiClient {
    * garantia de recuperação do deleteFile. */
   async deleteFolder(folderId) {
     const url = new URL("/api/trpc/cloud.deleteFolder?batch=1", this.serverUrl).toString();
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({ "0": { json: { id: folderId } } }),
@@ -191,10 +197,74 @@ class ApiClient {
     await parseTrpcResponse(res);
   }
 
+  async getFileInfo(fileId) {
+    return parseTrpcResponse(await fetchWithDeadline(buildQueryUrl(this.serverUrl, 'cloud.getFileInfo', { fileId }), { headers: this._authHeaders() }));
+  }
+
+  cancelTransfers() { this.transferController?.abort(); this.transferController = null; }
+
+  async uploadLocalFile(localPath, { fileId, folderId, name, expectedRevision, onProgress = () => {} }) {
+    const handle = await fsp.open(localPath, 'r');
+    const controller = this.transferController ??= new AbortController();
+    const signal = controller.signal;
+    const base = fileId ? '/api/cloud-version-upload' : '/api/cloud-upload';
+    let uploadId;
+    const json = async (endpoint, body) => {
+      const res = await fetchWithDeadline(new URL(base + endpoint, this.serverUrl), {
+        method: 'POST', headers: { ...this._authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new ApiError(data.error || 'Falha no envio.', res.status);
+      return data;
+    };
+    try {
+      const before = await handle.stat();
+      if (before.size === 0) return fileId
+        ? { id: fileId, ...await this.uploadNewVersion(fileId, Buffer.alloc(0), name, undefined, expectedRevision) }
+        : this.uploadNewFile(folderId, name, Buffer.alloc(0));
+      const started = await json('/start', { fileId, folderId: folderId ?? null, name, fileName: name, fileSize: before.size, mimeType: 'application/octet-stream', expectedRevision });
+      uploadId = started.uploadId;
+      const chunk = Buffer.alloc(8 * 1024 * 1024);
+      let offset = 0, partNumber = 0;
+      while (offset < before.size) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, before.size - offset), offset);
+        if (!bytesRead) throw new Error('O arquivo mudou durante o envio. Será verificado novamente.');
+        partNumber++;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const url = new URL(base + '/part', this.serverUrl);
+            url.searchParams.set('uploadId', uploadId); url.searchParams.set('partNumber', String(partNumber));
+            const res = await fetchWithDeadline(url, { method: 'POST', headers: { ...this._authHeaders(), 'Content-Type': 'application/octet-stream' }, body: chunk.subarray(0, bytesRead), signal });
+            const data = await res.json();
+            if (!res.ok) throw new ApiError(data.error || 'Falha no envio da parte.', res.status);
+            break;
+          } catch (error) {
+            if (signal.aborted || attempt >= 2 || (error.status && error.status < 500)) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+          }
+        }
+        offset += bytesRead; onProgress(Math.round(100 * offset / before.size));
+      }
+      const after = await handle.stat();
+      if (before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error('O arquivo mudou durante o envio. Sua cópia local foi preservada.');
+      const completed = await json('/complete', { uploadId });
+      if (!completed.success || !completed.file || completed.file.fileSize !== before.size) throw new Error('Servidor não confirmou o arquivo completo.');
+      return completed.file;
+    } catch (error) {
+      if (uploadId) {
+        await fetchWithDeadline(new URL(base + '/abort', this.serverUrl), {
+          method: 'POST', headers: { ...this._authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadId }),
+        }).catch(() => {});
+      }
+      throw error;
+    } finally { await handle.close(); }
+  }
+
   /** Envia um arquivo novo (que só existe localmente) pra Nuvem. */
   async uploadNewFile(folderId, name, buffer, mimeType) {
     const url = new URL("/api/trpc/cloud.upload?batch=1", this.serverUrl).toString();
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({
@@ -210,19 +280,20 @@ class ApiClient {
       }),
     });
     const data = await parseTrpcResponse(res);
-    return { id: data.id, updatedAt: data.updatedAt };
+    return { id: data.id, updatedAt: data.updatedAt, revisionToken: data.revisionToken };
   }
 
   /** Envia uma nova versão de um arquivo que já existe na Nuvem. */
-  async uploadNewVersion(fileId, buffer, name, mimeType) {
+  async uploadNewVersion(fileId, buffer, name, mimeType, expectedRevision) {
     const url = new URL("/api/trpc/cloud.uploadNewVersion?batch=1", this.serverUrl).toString();
-    const res = await fetch(url, {
+    const res = await fetchWithDeadline(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this._authHeaders() },
       body: JSON.stringify({
         "0": {
           json: {
             fileId,
+            expectedRevision,
             fileName: name,
             fileData: buffer.toString("base64"),
             mimeType: mimeType || "application/octet-stream",
@@ -231,7 +302,7 @@ class ApiClient {
       }),
     });
     const data = await parseTrpcResponse(res);
-    return { updatedAt: data.updatedAt };
+    return { updatedAt: data.updatedAt, revisionToken: data.revisionToken };
   }
 }
 

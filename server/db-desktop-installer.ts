@@ -15,6 +15,7 @@ export async function getCurrentInstaller(): Promise<DesktopInstallerRow | null>
 }
 
 export async function setCurrentInstaller(input: {
+  sha512?: string;
   r2Key: string;
   fileName: string;
   version: string;
@@ -31,6 +32,8 @@ export async function setCurrentInstaller(input: {
   // meio dos dois passos é insignificante, já que isso só acontece
   // quando um administrador envia uma versão nova manualmente, uma vez
   // a cada muito tempo.
-  await db.delete(desktopInstaller);
-  await db.insert(desktopInstaller).values(input);
+  await db.transaction(async tx => {
+    await tx.delete(desktopInstaller);
+    await tx.insert(desktopInstaller).values(input);
+  });
 }

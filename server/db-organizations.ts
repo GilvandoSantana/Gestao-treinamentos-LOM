@@ -130,6 +130,16 @@ export async function setFolderTemplate(organizationId: string, folderNames: str
 export async function ensureIntegrityTables() {
   const db = await getDb();
   if (!db) return;
+  try { await db.execute(sql`ALTER TABLE desktopInstaller ADD COLUMN sha512 VARCHAR(88) NULL`); }
+  catch (error: any) {
+    if (error?.code !== 'ER_DUP_FIELDNAME' && error?.cause?.code !== 'ER_DUP_FIELDNAME') throw error;
+  }
+  for (const table of ['cloudFolders', 'cloudFiles']) {
+    try { await db.execute(sql.raw(`ALTER TABLE ${table} ADD COLUMN trashBatchId VARCHAR(64) NULL`)); }
+    catch (error: any) {
+      if (error?.code !== 'ER_DUP_FIELDNAME' && error?.cause?.code !== 'ER_DUP_FIELDNAME') throw error;
+    }
+  }
   await db.execute(sql`CREATE TABLE IF NOT EXISTS employeePortalInvitations (
     employeeId VARCHAR(64) PRIMARY KEY,
     tokenHash VARCHAR(64) NOT NULL,
@@ -204,3 +214,4 @@ export async function finalizePaidSignup(
     return { organization, admin: toPublic(admin) };
   }, { isolationLevel: 'read committed' });
 }
+

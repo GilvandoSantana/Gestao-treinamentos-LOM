@@ -1,3 +1,4 @@
+import { createFolder, getFolderById, deleteFolderRecursive, restoreFolder, softDeleteFile, getFileById, canAccessFolder, canAccessFile } from "./db-cloud";
 import { withEmployeeTransaction, upsertEmployee, upsertTraining, deleteTrainingsExcept, getEmployeeById, getTrainingsByEmployeeId, setEmployeeDismissed } from './db-employees';
 import { issueEmployeePortalInvitation, activateEmployeePortal, clearEmployeePortalPin } from './db-employee-portal';
 import { employeePortalInvitations } from '../drizzle/schema';
@@ -183,4 +184,37 @@ describe.runIf(process.env.RUN_DB_INTEGRATION === '1')('MySQL integrity and back
       expect((rows as any[])[0].value).toBe("Synthetic 'quoted' café");
     } finally { await restore.end(); await source.end(); }
   }, 30000);
+  it('serializes same-name folder creation across concurrent requests', async () => {
+    const contractSlug = randomUUID();
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => createFolder({ id: randomUUID(), contractSlug, parentId: null, name: i % 2 ? 'Documents' : 'documents', createdBy: 'test' })));
+    expect(new Set(results.map(r => r.id)).size).toBe(1);
+    await expect(createFolder({ id: randomUUID(), contractSlug: 'foreign', parentId: results[0].id, name: 'Child', createdBy: 'test' })).rejects.toThrow();
+  });
+  it('restores exactly the subtree removed in one operation, preserving previously trashed files', async () => {
+    const contractSlug = randomUUID();
+    const root = await createFolder({ id: randomUUID(), contractSlug, parentId: null, name: 'Root', createdBy: 'test' });
+    const child = await createFolder({ id: randomUUID(), contractSlug, parentId: root.id, name: 'Child', createdBy: 'test' });
+    const input = { contractSlug, folderId: child.id, fileSize: 1, mimeType: 'text/plain', uploadedBy: 'test' };
+    const active = await createFileRecord({ ...input, id: randomUUID(), name: 'active.txt' });
+    const trashed = await createFileRecord({ ...input, id: randomUUID(), name: 'trashed.txt' });
+    await softDeleteFile(trashed.id, contractSlug, 'test');
+    await deleteFolderRecursive(root.id, contractSlug, 'test', false);
+    await restoreFolder(root.id, contractSlug);
+    expect((await getFolderById(child.id))?.deletedAt).toBeNull();
+    expect((await getFileById(active.id))?.deletedAt).toBeNull();
+    expect((await getFileById(trashed.id))?.deletedAt).not.toBeNull();
+    const admin = { username: 'test', isMasterAdmin: true };
+    expect(await canAccessFolder('foreign', root.id, admin)).toBe(false);
+    expect(await canAccessFile('foreign', active.id, admin)).toBe(false);
+    expect(await canAccessFile(contractSlug, trashed.id, admin)).toBe(false);
+    expect(await canAccessFile(contractSlug, trashed.id, { ...admin, includeTrash: true })).toBe(true);
+  });
+  it('rejects stale concurrent revisions, even inside the same timestamp second', async () => {
+    const contractSlug = randomUUID();
+    const file = await createFileRecord({ id: randomUUID(), contractSlug, folderId: null, name: 'revision.txt', fileSize: 1, r2Key: randomUUID(), mimeType: 'text/plain', uploadedBy: 'test' });
+    const writes = await Promise.allSettled([1,2].map(() => uploadNewVersion(randomUUID(), file.id, contractSlug, { expectedRevision: file.revisionToken, r2Key: randomUUID(), fileSize: 1, mimeType: 'text/plain', uploadedBy: 'test' })));
+    expect(writes.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(writes.filter(r => r.status === 'rejected')).toHaveLength(1);
+  });
+
 });

@@ -51,6 +51,9 @@ try
 {
     switch (command)
     {
+        case "sync-self-test":
+            return SyncPathSafety.RunSelfTest();
+
         case "check":
         {
             bool supported = StorageProviderSyncRootManager.IsSupported();
@@ -702,10 +705,40 @@ try
                 // manifesto). A decisão de criar ou não agora é sempre
                 // baseada no disco de verdade (File.Exists/
                 // Directory.Exists logo abaixo), nunca neste cache.
-                var createdPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var statePath = manifestPath + ".materialized.json";
+                var materialized = File.Exists(statePath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(statePath)) ?? new()
+                    : new Dictionary<string, string>();
+                var createdPaths = new HashSet<string>(materialized.Keys, StringComparer.OrdinalIgnoreCase);
+                string Identity(ManifestEntryItem e) => e.IsFolder ? e.FolderId : e.FileId;
+                void SaveMaterialized()
+                {
+                    var temp = statePath + ".tmp";
+                    File.WriteAllText(temp, JsonSerializer.Serialize(materialized));
+                    File.Move(temp, statePath, true);
+                }
+                bool IsSafe(string relative)
+                {
+                    try { SyncPathSafety.Resolve(rootPath, relative); return true; }
+                    catch (Exception error) { Console.WriteLine($"ERRO caminho recusado: {error.Message}"); return false; }
+                }
+                bool WasRemoved(ManifestEntryItem entry)
+                {
+                    // A missing item that was already materialized is a local deletion,
+                    // even when the cloud manifest still includes it. Never recreate it.
+                    return SyncPathSafety.WasRemoved(rootPath, entry.RelativePath, createdPaths);
+                }
 
                 void ApplyManifest(ManifestRoot manifestToApply)
                 {
+                    var validEntries = manifestToApply.Entries!.Where(e => IsSafe(e.RelativePath)).ToList();
+                    var currentPaths = validEntries.ToDictionary(e => e.RelativePath, Identity, StringComparer.OrdinalIgnoreCase);
+                    foreach (var old in materialized.Keys.ToArray())
+                    {
+                        if (!currentPaths.TryGetValue(old, out var id) || id != materialized[old])
+                        { materialized.Remove(old); createdPaths.Remove(old); }
+                    }
+                    SaveMaterialized();
                     // Agrupa os arquivos do manifesto por pasta
                     // (CfCreatePlaceholders exige uma chamada por pasta,
                     // não uma chamada só pra árvore inteira) — só os que
@@ -738,7 +771,8 @@ try
                     // checagem real do disco (File.Exists/Directory.Exists
                     // abaixo), não mais num cache que pode ficar
                     // desatualizado.
-                    var fileEntries = manifestToApply.Entries!
+                    var fileEntries = validEntries
+                        .Where(e => !WasRemoved(e))
                         .Where(e => !e.IsFolder)
                         .Where(e =>
                         {
@@ -749,12 +783,14 @@ try
                                 // sozinho. Marca como "resolvido" pra não
                                 // ficar checando de novo a cada ciclo.
                                 createdPaths.Add(e.RelativePath);
+                                materialized[e.RelativePath] = Identity(e);
                                 return false;
                             }
                             return true;
                         })
                         .ToList();
-                    var folderEntries = manifestToApply.Entries!
+                    var folderEntries = validEntries
+                        .Where(e => !WasRemoved(e))
                         .Where(e => e.IsFolder)
                         .Where(e =>
                         {
@@ -771,6 +807,7 @@ try
                                 // desde a criação) — marca como
                                 // "resolvida" sem tentar recriar.
                                 createdPaths.Add(e.RelativePath);
+                                materialized[e.RelativePath] = Identity(e);
                                 return false;
                             }
                             return true;
@@ -786,6 +823,8 @@ try
                     {
                         Directory.CreateDirectory(Path.Combine(rootPath, folderEntry.RelativePath));
                         createdPaths.Add(folderEntry.RelativePath);
+                        materialized[folderEntry.RelativePath] = Identity(folderEntry);
+                        SaveMaterialized();
                     }
 
                     var byFolder = new Dictionary<string, List<ManifestEntryItem>>();
@@ -842,7 +881,7 @@ try
                                         {
                                             CreationTime = now,
                                             LastAccessTime = now,
-                                            LastWriteTime = now,
+                                            LastWriteTime = DateTime.TryParse(files[i].UpdatedAt, out var updatedAt) ? ToFileTime(updatedAt.ToUniversalTime().ToFileTimeUtc()) : now,
                                             ChangeTime = now,
                                             FileAttributes = FileFlagsAndAttributes.FILE_ATTRIBUTE_NORMAL,
                                         },
@@ -867,7 +906,9 @@ try
                                 continue;
                             }
                             totalCreatedNow += (int)processed;
-                            foreach (var f in files) createdPaths.Add(f.RelativePath);
+                            foreach (var f in files.Where(f => File.Exists(SyncPathSafety.Resolve(rootPath, f.RelativePath))))
+                            { createdPaths.Add(f.RelativePath); materialized[f.RelativePath] = Identity(f); }
+                            SaveMaterialized();
                         }
                         finally
                         {
@@ -875,7 +916,8 @@ try
                         }
                     }
 
-                    if (totalCreatedNow > 0 || totalErrorsNow > 0)
+                    SaveMaterialized();
+                    if (totalCreatedNow >= 0 || totalErrorsNow > 0)
                     {
                         Console.WriteLine($"OK: {totalCreatedNow} placeholder(s) novo(s) criado(s) ({totalErrorsNow} pasta(s) com erro).");
                     }
@@ -976,6 +1018,8 @@ class ManifestEntryItem
 {
     public string RelativePath { get; set; } = "";
     public string FileId { get; set; } = "";
+    public string FolderId { get; set; } = "";
+    public string? UpdatedAt { get; set; }
     public long FileSize { get; set; }
     // Pasta sem nenhum arquivo direto dentro dela (mas que existe na
     // Nuvem, e pode ter subpastas por dentro) — sem marcar isso

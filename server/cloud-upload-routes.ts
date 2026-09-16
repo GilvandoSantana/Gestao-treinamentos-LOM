@@ -1,3 +1,4 @@
+import { assertSafeCloudName } from "../shared/cloud-path";
 import express, { type Express, type Request } from 'express';
 import { v4 as uuid } from 'uuid';
 import { createContext } from './_core/context';
@@ -28,6 +29,7 @@ type Upload = {
   reservationId: string;
   kind: 'cloud' | 'cloudVersion'; contract: string; owner: string; key: string;
   fileId: string; folderId: string | null; name: string; mimeType: string;
+  expectedRevision?: string;
   expectedSize: number; startedAt: number; busy: boolean; parts: Map<number, Part>;
 };
 
@@ -62,12 +64,12 @@ export function registerCloudUploadRoutes(app: Express) {
         if (!isR2Configured) throw new Error('Armazenamento não configurado.');
         const fileName = typeof req.body?.fileName === 'string' ? req.body.fileName.trim() : '';
         const name = typeof req.body?.name === 'string' ? req.body.name.trim() : fileName;
-        if (!fileName || !name) throw new Error('Informe o nome do arquivo.');
+        assertSafeCloudName(fileName); assertSafeCloudName(name);
         if (Array.from(uploads.values()).filter(u => u.owner === ctx.siteAdminUsername).length >= 20) throw new Error('Há muitos envios pendentes. Aguarde a conclusão.');
         const fileId = kind === 'cloud' ? uuid() : String(req.body?.fileId ?? '');
         const existing = kind === 'cloudVersion' ? await getFileById(fileId) : undefined;
         const folderId = kind === 'cloudVersion' ? existing?.folderId ?? null : (typeof req.body?.folderId === 'string' ? req.body.folderId : null);
-        const scope = { username: ctx.siteAdminUsername!, isMasterAdmin: ctx.siteRole === 'admin' };
+        const scope = { permission: 'edit' as const, username: ctx.siteAdminUsername!, isMasterAdmin: ctx.siteRole === 'admin' };
         if (kind === 'cloudVersion') {
           if (!existing || existing.deletedAt || existing.contractSlug !== ctx.siteContract || !await canAccessFile(ctx.siteContract!, fileId, scope)) throw new Error('Arquivo não encontrado ou sem acesso.');
           if (existing.lockedBy && existing.lockedBy !== ctx.siteAdminUsername && isLockActive(existing.lockedBy, existing.lockedAt)) throw new Error('Arquivo em edição por outra pessoa.');
@@ -79,7 +81,7 @@ export function registerCloudUploadRoutes(app: Express) {
         reservationId = uuid();
         await reserveStorageCapacity(ctx.siteContract!, expectedSize, reservationId);
         const uploadId = await createMultipartUpload(key, mimeType);
-        uploads.set(uploadId, { reservationId, kind, contract: ctx.siteContract!, owner: ctx.siteAdminUsername!, key, fileId, folderId, name, mimeType, expectedSize, startedAt: Date.now(), busy: false, parts: new Map() });
+        uploads.set(uploadId, { expectedRevision: typeof req.body?.expectedRevision === 'string' ? req.body.expectedRevision : existing?.revisionToken, reservationId, kind, contract: ctx.siteContract!, owner: ctx.siteAdminUsername!, key, fileId, folderId, name, mimeType, expectedSize, startedAt: Date.now(), busy: false, parts: new Map() });
         res.json({ uploadId, r2Key: key });
       } catch (error) { if (reservationId) await releaseStorageReservation(reservationId).catch(console.error); res.status(400).json({ error: error instanceof Error ? error.message : 'Falha ao iniciar envio.' }); }
     });
@@ -123,6 +125,21 @@ export function registerCloudUploadRoutes(app: Express) {
       finally { if (upload) upload.busy = false; }
     });
 
+    app.post(`${base}/abort`, csrfProtection, async (req, res) => {
+      try {
+        const ctx = await access(req, res);
+        const uploadId = String(req.body?.uploadId ?? '');
+        const upload = uploads.get(uploadId);
+        if (!upload) { res.json({ success: true }); return; }
+        if (upload.contract !== ctx.siteContract || upload.owner !== ctx.siteAdminUsername || upload.kind !== kind) throw new Error('Envio não encontrado.');
+        if (upload.busy) throw new Error('Envio ocupado. Tente novamente.');
+        uploads.delete(uploadId);
+        await abortMultipartUpload(upload.key, uploadId);
+        await releaseStorageReservation(upload.reservationId);
+        res.json({ success: true });
+      } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Falha ao cancelar envio.' }); }
+    });
+
     app.post(`${base}/complete`, csrfProtection, async (req, res) => {
       let upload: Upload | undefined;
       let committed = false;
@@ -133,7 +150,7 @@ export function registerCloudUploadRoutes(app: Express) {
         if (!candidate || candidate.kind !== kind || candidate.contract !== ctx.siteContract || candidate.owner !== ctx.siteAdminUsername) throw new Error('Envio não encontrado.');
         if (candidate.busy) throw new Error('Envio ocupado. Tente novamente.');
         upload = candidate; upload.busy = true;
-        const scope = { username: ctx.siteAdminUsername!, isMasterAdmin: ctx.siteRole === 'admin' };
+        const scope = { permission: 'edit' as const, username: ctx.siteAdminUsername!, isMasterAdmin: ctx.siteRole === 'admin' };
         if (kind === 'cloudVersion' && !await canAccessFile(upload.contract, upload.fileId, scope)) throw new Error('Acesso ao arquivo removido.');
         if (kind === 'cloud' && upload.folderId && !await canAccessFolder(upload.contract, upload.folderId, scope)) throw new Error('Acesso à pasta removido.');
         const measured = measuredParts(upload.parts, upload.expectedSize);
@@ -143,7 +160,7 @@ export function registerCloudUploadRoutes(app: Express) {
         if (fileSize !== measured.size) throw new Error('Tamanho do objeto armazenado divergente.');
         const file = kind === 'cloud'
           ? await createFileRecord({ id: upload.fileId, contractSlug: upload.contract, folderId: upload.folderId, name: upload.name, r2Key: upload.key, reservationId: upload.reservationId, fileSize, mimeType: upload.mimeType, uploadedBy: upload.owner })
-          : await uploadNewVersion(uuid(), upload.fileId, upload.contract, { r2Key: upload.key, reservationId: upload.reservationId, fileSize, mimeType: upload.mimeType, uploadedBy: upload.owner });
+          : await uploadNewVersion(uuid(), upload.fileId, upload.contract, { expectedRevision: upload.expectedRevision, r2Key: upload.key, reservationId: upload.reservationId, fileSize, mimeType: upload.mimeType, uploadedBy: upload.owner });
         committed = true;
         uploads.delete(uploadId);
         void logActivity({ username: upload.owner, role: ctx.siteRole, action: kind === 'cloud' ? 'cloud.fileUpload' : 'cloud.fileNewVersion', targetType: 'cloudFile', targetId: file.id, targetName: file.name });
@@ -160,4 +177,5 @@ export function registerCloudUploadRoutes(app: Express) {
     });
   }
 }
+
 
