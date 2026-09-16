@@ -8,11 +8,12 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Upload, Trash2, Download, Loader, Pencil, X, FileText, Plus, Sparkles } from 'lucide-react';
+import { Upload, Trash2, Download, Loader, Pencil, X, FileText, Plus, Sparkles, PackageSearch } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import DateInputBR from '@/components/DateInputBR';
 import { suggestItemsFromInvoicePdf, type ExtractedInvoiceItem } from '@/lib/invoice-pdf-extract';
+import InvoiceWarehouseReconcilePanel from '@/components/InvoiceWarehouseReconcilePanel';
 import {
   INVOICE_DOC_TYPES,
   INVOICE_DOC_TYPE_LABELS,
@@ -32,6 +33,11 @@ interface InvoicePanelProps {
 }
 
 const MAX_MB = 10;
+
+// Categorias cujos itens fazem sentido conferir com o estoque do
+// Almoxarifado (as outras — Locações, Combustível, Serviços, etc. — não
+// são material físico que entra em estoque).
+const WAREHOUSE_RECONCILABLE_CATEGORIES = ['Material consumo e EPI', 'Ferramentas'];
 
 const emptyForm = {
   id: undefined as string | undefined,
@@ -67,6 +73,12 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [isExtracting, setIsExtracting] = useState(false);
   const [suggestedItems, setSuggestedItems] = useState<ExtractedInvoiceItem[]>([]);
+  const [reconcileFor, setReconcileFor] = useState<{
+    invoiceNumber: string | null;
+    supplier: string | null;
+    category: string | null;
+    products: InvoiceProduct[];
+  } | null>(null);
 
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
   const changeContractMutation = trpc.invoices.changeContract.useMutation();
@@ -269,6 +281,19 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
       });
 
       toast.success(form.id ? 'Nota fiscal atualizada!' : 'Nota fiscal cadastrada!');
+
+      // Nota de material/EPI/ferramenta com itens preenchidos: oferece
+      // conferir com o estoque do Almoxarifado na hora, sem precisar voltar
+      // depois pra fazer isso manualmente.
+      if (WAREHOUSE_RECONCILABLE_CATEGORIES.includes(form.category) && form.products.length > 0) {
+        setReconcileFor({
+          invoiceNumber: form.number.trim() || null,
+          supplier: form.supplier.trim() || null,
+          category: form.category,
+          products: form.products,
+        });
+      }
+
       resetForm();
       await utils.invoices.list.invalidate();
     } catch (error) {
@@ -418,6 +443,22 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
 
                 {canManage && (
                   <>
+                    {WAREHOUSE_RECONCILABLE_CATEGORIES.includes(row.category ?? '') && (row.products?.length ?? 0) > 0 && (
+                      <button
+                        onClick={() =>
+                          setReconcileFor({
+                            invoiceNumber: row.number,
+                            supplier: row.supplier,
+                            category: row.category,
+                            products: row.products ?? [],
+                          })
+                        }
+                        className="shrink-0 p-2 text-muted-foreground hover:text-teal transition-colors"
+                        title="Conferir itens com o Almoxarifado"
+                      >
+                        <PackageSearch size={17} />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(row)}
                       className="shrink-0 p-2 text-muted-foreground hover:text-orange transition-colors"
@@ -793,6 +834,16 @@ export default function InvoicePanel({ canManage, isMasterAdmin = false }: Invoi
             {isSaving ? 'Salvando...' : form.id ? 'Salvar alterações' : 'Cadastrar'}
           </button>
         </form>
+      )}
+
+      {reconcileFor && (
+        <InvoiceWarehouseReconcilePanel
+          invoiceNumber={reconcileFor.invoiceNumber}
+          supplier={reconcileFor.supplier}
+          category={reconcileFor.category}
+          products={reconcileFor.products}
+          onClose={() => setReconcileFor(null)}
+        />
       )}
     </>
   );
