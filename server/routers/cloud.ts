@@ -502,7 +502,7 @@ export const cloudRouter = router({
         if (!file || file.contractSlug !== ctx.siteContract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo nao encontrado." });
         }
-        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        const accessCtx = { permission: 'download' as const, username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
         if (!(await canAccessFile(ctx.siteContract!, input.fileId, accessCtx))) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Voce nao tem acesso a este arquivo." });
         }
@@ -636,7 +636,7 @@ export const cloudRouter = router({
         if (!file || file.contractSlug !== ctx.siteContract) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Arquivo não encontrado." });
         }
-        const accessCtx = { username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
+        const accessCtx = { permission: 'download' as const, username: ctx.siteAdminUsername ?? '', isMasterAdmin: ctx.siteRole === 'admin' };
         if (!(await canAccessFile(ctx.siteContract!, file.id, accessCtx))) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a este arquivo." });
         }

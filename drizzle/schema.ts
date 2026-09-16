@@ -829,6 +829,7 @@ export const desktopInstaller = mysqlTable("desktopInstaller", {
   id: int("id").autoincrement().primaryKey(),
   r2Key: varchar("r2Key", { length: 255 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
+  sha512: varchar("sha512", { length: 88 }),
   version: varchar("version", { length: 50 }).notNull(),
   fileSize: bigint("fileSize", { mode: "number" }).notNull(),
   uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),

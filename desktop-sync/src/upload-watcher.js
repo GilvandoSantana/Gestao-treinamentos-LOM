@@ -404,6 +404,20 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
     }
   }
 
+  // Migration baseline: do not upload every pre-existing hydrated file merely
+  // because the previous client used creation-time rather than cloud-time metadata.
+  // Contents remain untouched; future edits are compared with this persisted stat.
+  for (const [key, known] of getKnownCloudFiles()) {
+    if (baseline[key]) continue;
+    try {
+      const stat = fs.lstatSync(safeLocalPath(folderPath, key));
+      if (stat.isFile() && stat.size === known.fileSize) {
+        baseline[key] = { ...known, mtimeMs: stat.mtimeMs, size: stat.size };
+      }
+    } catch (error) { if (error.code !== 'ENOENT') onLog(`Não foi possível catalogar "${key}": ${error.message}`, 'error'); }
+  }
+  if (baselinePath) writeJsonAtomic(baselinePath, baseline);
+
   let watcher;
   try {
     watcher = fs.watch(folderPath, { recursive: true }, (_eventType, filename) => {

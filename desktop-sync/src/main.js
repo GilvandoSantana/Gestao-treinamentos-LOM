@@ -92,6 +92,7 @@ async function init() {
   createTray();
 
   const updater = setupAutoUpdater({
+    getApiClient: () => apiClient,
     onLog: (message, kind) => {
       pushLog([{ id: `upd-${Date.now()}-${Math.random()}`, time: new Date(), message, kind }]);
       broadcastStatus();
@@ -113,6 +114,7 @@ async function init() {
   setInterval(() => updater.checkNow(), UPDATE_CHECK_INTERVAL_MS);
 
   await restoreSavedSession();
+  updater.checkNow();
 }
 
 let reconnectTimer = null;
@@ -126,7 +128,9 @@ async function restoreSavedSession() {
     if (config.activeContract) apiClient.setActiveContract(config.activeContract);
 
     try {
-      const session = await apiClient.getSession();
+      const restoringClient = apiClient;
+      const session = await restoringClient.getSession();
+      if (apiClient !== restoringClient) return;
       if (!session.isSiteAdmin) throw new ApiError("Sessão inválida", 401);
       state.username = session.username;
       state.contractName = config.contractName || (session.contract ? session.contract : "Todos / conta comum");
@@ -289,6 +293,7 @@ function getStatusSnapshot() {
 async function startSync() {
   if (!apiClient || !state.folderPath) return;
 
+  const requestedFolder = state.folderPath, requestedClient = apiClient;
   console.log(`[main] Iniciando sincronização da pasta "${state.folderPath}" — tentando o modo placeholder primeiro.`);
   const usedPlaceholder = await startPlaceholderSync({
     folderPath: state.folderPath,
@@ -317,6 +322,7 @@ async function startSync() {
     throw error;
   });
 
+  if (state.folderPath !== requestedFolder || apiClient !== requestedClient) return;
   if (usedPlaceholder) {
     console.log("[main] Modo placeholder ativado com sucesso.");
     state.syncMode = "placeholder";
@@ -326,10 +332,9 @@ async function startSync() {
     return;
   }
 
-  // Reserva: mecanismo antigo, baixa tudo de uma vez.
-  console.log("[main] Modo placeholder NÃO ativou — caindo pro modo antigo (baixa tudo de uma vez).");
-  state.syncMode = "download";
-  startSyncLoop();
+  state.syncMode = null;
+  state.lastError = 'Não foi possível iniciar o componente de sincronização Windows. Reinstale a versão atual e tente novamente.';
+  broadcastStatus();
 }
 
 function stopSync() {
@@ -353,6 +358,7 @@ function stopSyncLoop() {
 
 let tickRunning = false;
 async function runSyncNow() {
+  if (!state.syncMode) { await startSync(); return; }
   // No modo placeholder, o programa auxiliar já fica rodando sozinho —
   // rodar o mecanismo antigo por cima da mesma pasta criaria conflito
   // (um mexendo no que o outro está gerenciando). Ainda assim, o clique

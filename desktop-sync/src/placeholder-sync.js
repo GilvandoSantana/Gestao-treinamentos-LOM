@@ -414,10 +414,11 @@ async function startPlaceholderSync({
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
   const entries = await generateManifestEntries(apiClient, getExcluded());
+  if (sessionGeneration !== generation) return false;
   excludedPaths = entries.excludedPaths;
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
-  knownCloudFiles = buildKnownCloudFilesMap(entries);
-  knownCloudFolders = buildKnownCloudFoldersMap(entries);
+  let knownCloudFiles = buildKnownCloudFilesMap(entries);
+  let knownCloudFolders = buildKnownCloudFoldersMap(entries);
 
   const { app } = require("electron");
   const scope = crypto.createHash('sha256').update(JSON.stringify([folderPath.toLowerCase(), serverUrl, apiClient.activeContract, username])).digest('hex');
@@ -499,6 +500,7 @@ async function startPlaceholderSync({
           );
         } else {
           for (const key of filesToDelete) {
+            if (sessionGeneration !== generation) return;
             try {
               suppress(key);
               const source = safeLocalPath(folderPath, key);
@@ -515,6 +517,7 @@ async function startPlaceholderSync({
             missingFileStreak.delete(key);
           }
           for (const key of foldersToDelete) {
+            if (sessionGeneration !== generation) return;
             try {
               suppress(key);
               const source = safeLocalPath(folderPath, key);

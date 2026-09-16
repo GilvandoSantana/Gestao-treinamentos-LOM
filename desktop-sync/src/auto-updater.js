@@ -22,7 +22,7 @@
  * "npm start" em desenvolvimento, a checagem é pulada de propósito.
  */
 
-function setupAutoUpdater({ onLog, onUpdateReadyToInstall }) {
+function setupAutoUpdater({ onLog, onUpdateReadyToInstall, getApiClient }) {
   const { app } = require("electron");
   if (!app.isPackaged) {
     return { checkNow: () => {} };
@@ -32,7 +32,8 @@ function setupAutoUpdater({ onLog, onUpdateReadyToInstall }) {
   // nenhum em desenvolvimento, onde essa checagem nunca roda mesmo.
   const { autoUpdater } = require("electron-updater");
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.disableDifferentialDownload = true;
 
   autoUpdater.on("checking-for-update", () => {
     onLog("Procurando atualização do programa...", "info");
@@ -71,6 +72,10 @@ function setupAutoUpdater({ onLog, onUpdateReadyToInstall }) {
 
   return {
     checkNow: () => {
+      const client = getApiClient?.();
+      if (!client?.token) return;
+      autoUpdater.setFeedURL({ provider: 'generic', url: client.serverUrl + '/api/desktop-update/' });
+      autoUpdater.requestHeaders = client._authHeaders();
       autoUpdater.checkForUpdates().catch((error) => {
         onLog(`Falha ao verificar atualização do programa: ${error?.message || "erro desconhecido"}`, "error");
       });

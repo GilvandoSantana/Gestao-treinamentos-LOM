@@ -1,3 +1,4 @@
+import { registerDesktopUpdateRoutes } from "../desktop-update-routes";
 import { registerCloudUploadRoutes } from "../cloud-upload-routes";
 import "dotenv/config";
 import express from "express";
@@ -8,13 +9,14 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqual, createHash } from "crypto";
 import { serveStatic, setupVite } from "./vite";
 import { sendTrainingAlerts } from "../email-service";
 import { runDatabaseBackup } from "../db-backup";
 import { nanoid } from "nanoid";
 import { csrfProtection } from "./csrf";
 import {
+  getR2DownloadUrl,
   deleteFromR2,
   isR2Configured,
   createMultipartUpload,
@@ -267,7 +269,7 @@ async function startServer() {
 
     const version = typeof req.body?.version === "string" ? req.body.version.trim() : "";
     const fileName = typeof req.body?.fileName === "string" ? req.body.fileName.trim() : "";
-    if (!version || !fileName) {
+    if (!/^\d+\.\d+\.\d+$/.test(version) || !fileName.toLowerCase().endsWith(".exe") || /[/\\]/.test(fileName)) {
       return res.status(400).json({ error: "Informe a versão e o nome do arquivo." });
     }
     if (!isR2Configured) {
@@ -302,7 +304,7 @@ async function startServer() {
       const uploadId = typeof req.query.uploadId === "string" ? req.query.uploadId : "";
       const partNumber = Number(req.query.partNumber);
       const info = activeMultipartUploads.get(uploadId);
-      if (!info) {
+      if (!info || info.startedBy !== session.username) {
         return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
       }
       if (!Number.isInteger(partNumber) || partNumber < 1) {
@@ -329,7 +331,7 @@ async function startServer() {
     const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId : "";
     const parts = Array.isArray(req.body?.parts) ? req.body.parts : null;
     const info = activeMultipartUploads.get(uploadId);
-    if (!info) {
+    if (!info || info.startedBy !== session.username) {
       return res.status(400).json({ error: "Envio não encontrado (pode ter expirado) — comece de novo." });
     }
     if (!parts || parts.length === 0) {
@@ -339,8 +341,15 @@ async function startServer() {
     try {
       const previous = await getCurrentInstaller();
       await completeMultipartUpload(info.r2Key, uploadId, parts);
-      const fileSize = req.body?.fileSize && Number.isFinite(req.body.fileSize) ? req.body.fileSize : 0;
+      const response = await fetch(await getR2DownloadUrl(info.r2Key, info.fileName), { signal: AbortSignal.timeout(240000) });
+      if (!response.ok || !response.body) throw new Error('Não foi possível verificar o instalador.');
+      const digest = createHash('sha512');
+      let fileSize = 0;
+      for await (const chunk of response.body as any) { digest.update(chunk); fileSize += chunk.length; }
+      if (!fileSize) throw new Error('Instalador vazio.');
+      const sha512 = digest.digest('base64');
       await setCurrentInstaller({
+        sha512,
         r2Key: info.r2Key,
         fileName: info.fileName,
         version: info.version,
@@ -367,6 +376,7 @@ async function startServer() {
   // partes já usado pro instalador do programa de sincronização acima —
   // reaproveita o mesmo activeMultipartUploads e a mesma limpeza por
   // tempo esgotado.
+  registerDesktopUpdateRoutes(app);
   registerCloudUploadRoutes(app);
 
   // tRPC API
@@ -409,5 +419,6 @@ startServer().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);
 });
+
 
 

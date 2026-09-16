@@ -19,6 +19,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
+const { safeLocalPath, validateComponent } = require("./sync-safety");
 
 // Arquivos que o próprio Windows (ou outros programas) cria sozinho
 // dentro de qualquer pasta — nunca fazem sentido subir pra Nuvem, e
@@ -100,7 +101,7 @@ async function syncFilesInFolder(
   const keyFor = (name) => (relativePrefix ? `${relativePrefix}/${name}` : name);
   const displayFor = (name) => (relativePrefix ? `${relativePrefix}/${name}` : name);
 
-  const cloudByName = new Map(cloudFiles.map((f) => [f.name, f]));
+  const cloudByName = new Map(cloudFiles.map((f) => [validateComponent(f.name), f]));
 
   let localNames;
   try {
@@ -118,7 +119,7 @@ async function syncFilesInFolder(
   // --- 1. Arquivos que só existem na nuvem → baixar ---
   for (const [name, cloudFile] of Array.from(cloudByName)) {
     if (localNameSet.has(name)) continue;
-    const filePath = path.join(localDirPath, name);
+    const filePath = safeLocalPath(localDirPath, name);
     try {
       const buffer = await callbacks.downloadCloudFile(cloudFile.id);
       await fs.writeFile(filePath, buffer);
@@ -137,7 +138,7 @@ async function syncFilesInFolder(
   // --- 2. Arquivos que só existem localmente → enviar ---
   for (const name of localNames) {
     if (cloudByName.has(name)) continue;
-    const filePath = path.join(localDirPath, name);
+    const filePath = safeLocalPath(localDirPath, name);
     try {
       const buffer = await fs.readFile(filePath);
       const result = await callbacks.uploadNewFile(cloudFolderId, name, buffer);
@@ -157,7 +158,7 @@ async function syncFilesInFolder(
   for (const name of localNames) {
     const cloudFile = cloudByName.get(name);
     if (!cloudFile) continue;
-    const filePath = path.join(localDirPath, name);
+    const filePath = safeLocalPath(localDirPath, name);
     const key = keyFor(name);
 
     const known = knownFiles.get(key);
@@ -317,7 +318,7 @@ async function syncFolderTree(
     addLog(`Falha ao ler subpastas de "${relativePrefix || "/"}": ${error instanceof Error ? error.message : "erro"}`, "error");
     return;
   }
-  const localFolderNames = localEntries.filter((e) => e.isDirectory()).map((e) => e.name);
+  const localFolderNames = localEntries.filter((e) => e.isDirectory() && !isIgnoredFileName(e.name)).map((e) => e.name);
   // Comparação sem diferenciar maiúscula/minúscula nem espaço nas pontas —
   // achado real (Gilvando, 11/09): pasta aparecendo duplicada na Nuvem
   // depois de sincronizar. Antes, a chave do mapa usava o nome exato
@@ -339,7 +340,7 @@ async function syncFolderTree(
   // --- Pastas que já existem na Nuvem → garante que existem localmente e desce ---
   for (const folder of cloudFolders) {
     const localName = localNameByNormalized.get(normalizeFolderName(folder.name)) ?? folder.name;
-    const childLocalPath = path.join(localDirPath, localName);
+    const childLocalPath = safeLocalPath(localDirPath, localName);
     const childRelative = relativePrefix ? `${relativePrefix}/${localName}` : localName;
 
     if (folder.hasAccess === false) {
@@ -369,7 +370,7 @@ async function syncFolderTree(
   // --- Pastas novas criadas só localmente → cria na Nuvem e sobe o conteúdo ---
   for (const name of localFolderNames) {
     if (cloudFolderByName.has(normalizeFolderName(name))) continue;
-    const childLocalPath = path.join(localDirPath, name);
+    const childLocalPath = safeLocalPath(localDirPath, name);
     const childRelative = relativePrefix ? `${relativePrefix}/${name}` : name;
     try {
       const created = await callbacks.createRemoteFolder(cloudFolderId, name);
