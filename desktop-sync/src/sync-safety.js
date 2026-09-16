@@ -7,7 +7,7 @@ function validateComponent(name) {
   if (typeof name !== 'string' || !name || name.length > 255 ||
       /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) ||
       /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name) || name === '.' || name === '..') {
-    throw new Error('Nome incompatível com a sincronização Windows.');
+    throw new Error(`Nome incompatível com a sincronização Windows: ${JSON.stringify(name)}.`);
   }
   return name;
 }

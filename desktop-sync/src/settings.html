@@ -95,6 +95,7 @@
   </div>
 
   <div class="body">
+    <div id="sync-error" role="alert" hidden style="background:#fff0ed;color:#9b2424;padding:12px;border-radius:8px;overflow-wrap:anywhere;margin-bottom:12px;"></div>
     <div class="row"><span class="label">Contrato</span><span class="value" id="contract-value">—</span></div>
     <div class="row"><span class="label">Pasta</span><span class="value" id="folder-value">—</span></div>
     <div class="row"><span class="label">Última sincronização</span><span class="value" id="last-sync-value">—</span></div>
@@ -104,7 +105,7 @@
     </div>
 
     <div class="row" style="margin-top:10px;">
-      <span class="label">Sincronização seletiva</span>
+      <span class="label" id="sync-scope">Todas as pastas</span>
       <button id="btn-choose-folders" style="font-size:11px; padding:5px 10px;">Escolher pastas...</button>
     </div>
     <div id="folder-picker" style="display:none; margin-top:8px; max-height:200px; overflow-y:auto; border:1px solid #e2e5ea; border-radius:8px; padding:10px;">
