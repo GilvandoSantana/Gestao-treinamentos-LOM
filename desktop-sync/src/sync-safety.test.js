@@ -50,9 +50,11 @@ describe('sync boundaries', () => {
       expect(() => safeLocalPath(root, 'link/file.txt')).toThrow();
     } finally { fs.rmSync(root, { recursive: true }); fs.rmSync(outside, { recursive: true }); }
   });
-  it('rejects cycles and case-insensitive collisions before writing a manifest', async () => {
+  it('rejects cycles but preserves both IDs in case-insensitive collisions', async () => {
     await expect(generateManifestEntries({ getFullTree: async () => ({ folders: [{id:'a', parentId:'b',name:'A'},{id:'b',parentId:'a',name:'B'}], files:[] }) })).rejects.toThrow('Ciclo');
-    await expect(generateManifestEntries({ getFullTree: async () => ({ folders: [{id:'a',name:'A'},{id:'b',name:'a'}], files:[] }) })).rejects.toThrow('duplicados');
+    const entries = await generateManifestEntries({ getFullTree: async () => ({ folders: [{id:'a',name:'A'},{id:'b',name:'a'}], files:[] }) });
+    expect(new Set(entries.map(e => e.relativePath.toLowerCase())).size).toBe(2);
+    expect(entries.map(e => e.folderId).sort()).toEqual(['a','b']);
   });
   it('detects equal-size edits and simultaneous remote edits', () => {
     expect(decideUploadAction(4, {fileId:'f',fileSize:4,updatedAt:'v1'},'v1',true).action).toBe('update');

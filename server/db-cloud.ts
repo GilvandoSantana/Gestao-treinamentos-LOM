@@ -559,10 +559,16 @@ export async function renameFolder(id: string, contractSlug: string, name: strin
   assertSafeCloudName(name);
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(cloudFolders)
-    .set({ name: name.trim() })
-    .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
+  await withStorageCapacity(contractSlug, 0, async tx => {
+    const [folder] = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug))).for('update');
+    if (!folder || folder.deletedAt) throw new Error('Pasta não encontrada.');
+    const siblings = await tx.select().from(cloudFolders).where(and(eq(cloudFolders.contractSlug, contractSlug),
+      folder.parentId ? eq(cloudFolders.parentId, folder.parentId) : isNull(cloudFolders.parentId), isNull(cloudFolders.deletedAt)));
+    if (siblings.some(f => f.id !== id && f.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+      throw new Error('Já existe uma pasta com esse nome neste local.');
+    }
+    await tx.update(cloudFolders).set({ name: name.trim() }).where(eq(cloudFolders.id, id));
+  });
 }
 
 export async function createFileRecord(input: {

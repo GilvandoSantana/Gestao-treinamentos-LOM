@@ -164,8 +164,12 @@ async function ensureCloudFolder(relativeFolderPath, deps) {
   if (knownCloudFolders.has(relativeFolderPath)) {
     return knownCloudFolders.get(relativeFolderPath);
   }
-  if (inFlight.has(relativeFolderPath)) {
-    return inFlight.get(relativeFolderPath);
+  const windowsKey = relativeFolderPath.toLowerCase();
+  for (const [knownPath, id] of knownCloudFolders) {
+    if (knownPath.toLowerCase() === windowsKey) return id;
+  }
+  if (inFlight.has(windowsKey)) {
+    return inFlight.get(windowsKey);
   }
 
   const parentPath = path.dirname(relativeFolderPath).split(path.sep).join("/");
@@ -179,11 +183,11 @@ async function ensureCloudFolder(relativeFolderPath, deps) {
     return created.id;
   })();
 
-  inFlight.set(relativeFolderPath, creationPromise);
+  inFlight.set(windowsKey, creationPromise);
   try {
     return await creationPromise;
   } finally {
-    inFlight.delete(relativeFolderPath);
+    inFlight.delete(windowsKey);
   }
 }
 

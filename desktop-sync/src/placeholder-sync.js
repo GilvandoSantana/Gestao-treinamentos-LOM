@@ -20,6 +20,8 @@ const os = require("os");
 const { startUploadWatcher } = require("./upload-watcher");
 const { safeLocalPath, safeRelative, validateComponent, RECOVERY_DIRECTORY } = require("./sync-safety");
 const crypto = require("crypto");
+const { assignWindowsNames } = require('./windows-names');
+const { readJson, writeJsonAtomic } = require('./sync-safety');
 let generation = 0;
 const managedPaths = new Map();
 let excludedPaths = [];
@@ -139,8 +141,9 @@ function runOneShotCommand(exePath, args, diagLog) {
  *   seletiva) — a pasta em si e tudo dentro dela (recursivamente) fica de
  *   fora do manifesto, como se nem existisse na Nuvem.
  */
-async function generateManifestEntries(apiClient, excludedFolderIds = new Set()) {
-  const { folders, files } = await apiClient.getFullTree();
+async function generateManifestEntries(apiClient, excludedFolderIds = new Set(), nameRegistry = {}) {
+  const tree = await apiClient.getFullTree();
+  const { folders, files, aliases } = assignWindowsNames(tree.folders, tree.files, nameRegistry);
 
   const folderById = new Map(folders.map((f) => [f.id, f]));
   const pathCache = new Map();
@@ -201,6 +204,7 @@ async function generateManifestEntries(apiClient, excludedFolderIds = new Set())
     seen.add(key);
   }
   Object.defineProperty(entries, 'excludedPaths', { value: folders.filter(f => isExcluded(f.id)).map(f => safeRelative(pathFor(f.id)).toLowerCase()) });
+  Object.defineProperty(entries, 'aliases', { value: aliases });
   return entries;
 }
 
@@ -413,17 +417,21 @@ async function startPlaceholderSync({
   }
 
   onLog("Consultando a Nuvem para montar a lista de pastas e arquivos...", "info");
-  const entries = await generateManifestEntries(apiClient, getExcluded());
+  const { app } = require("electron");
+  const scope = crypto.createHash('sha256').update(JSON.stringify([folderPath.toLowerCase(), serverUrl, apiClient.activeContract, username])).digest('hex');
+  const stateDirectory = path.join(app.getPath('userData'), 'sync-state', scope);
+  await fs.mkdir(stateDirectory, { recursive: true });
+  const namesPath = path.join(stateDirectory, 'windows-names.json');
+  const nameRegistry = readJson(namesPath, {});
+  const entries = await generateManifestEntries(apiClient, getExcluded(), nameRegistry);
   if (sessionGeneration !== generation) return false;
+  writeJsonAtomic(namesPath, nameRegistry);
+  if (entries.aliases.length) onLog(`${entries.aliases.length} item(ns) com nomes repetidos preservado(s) com sufixo nuvem no Windows. Todos continuam incluídos na sincronização.`, 'info');
   excludedPaths = entries.excludedPaths;
   onLog(`${entries.length} arquivo(s) encontrado(s) na Nuvem.`, "info");
   let knownCloudFiles = buildKnownCloudFilesMap(entries);
   let knownCloudFolders = buildKnownCloudFoldersMap(entries);
 
-  const { app } = require("electron");
-  const scope = crypto.createHash('sha256').update(JSON.stringify([folderPath.toLowerCase(), serverUrl, apiClient.activeContract, username])).digest('hex');
-  const stateDirectory = path.join(app.getPath('userData'), 'sync-state', scope);
-  await fs.mkdir(stateDirectory, { recursive: true });
   const manifestPath = path.join(stateDirectory, 'manifest.json');
   const materializedPath = manifestPath + '.materialized.json';
   await writeManifestAtomic(manifestPath, entries);
@@ -456,9 +464,10 @@ async function startPlaceholderSync({
     }
 
     try {
-      const freshEntries = await generateManifestEntries(apiClient, getExcluded());
+      const freshEntries = await generateManifestEntries(apiClient, getExcluded(), nameRegistry);
       excludedPaths = freshEntries.excludedPaths;
       if (sessionGeneration !== generation) return;
+      writeJsonAtomic(namesPath, nameRegistry);
       await writeManifestAtomic(manifestPath, freshEntries);
       if (sessionGeneration !== generation) return;
 
