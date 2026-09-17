@@ -18,10 +18,60 @@ import { getSessionMarker } from './session-marker';
 
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB por pedaço
 const MAX_RETRIES_PER_PART = 2;
+// Achado real (Gilvando, 17/09): "pasta com arquivo dentro só criou a
+// pasta vazia, sem nenhum aviso — nem erro nem sucesso". Sem limite de
+// tempo, um fetch() que trava numa conexão instável (comum com certas
+// redes/proxies — a conexão fica "aberta" mas nunca responde) esperaria
+// pra sempre, sem NUNCA cair no catch nem no toast final — exatamente
+// esse silêncio. Com o limite, uma chamada travada é abortada e cai na
+// nova tentativa já existente (ou no erro final, se as tentativas
+// também travarem), garantindo que algo SEMPRE aparece pra pessoa.
+const FETCH_TIMEOUT_MS = 30_000;
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const marker = getSessionMarker();
   return { ...extra, ...(marker ? { 'x-session-marker': marker } : {}) };
+}
+
+/** fetch() com limite de tempo — sem isso, uma conexão travada (comum em
+ * redes/proxies instáveis) espera pra sempre, sem cair em erro nem sucesso. */
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`A conexão não respondeu em ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Corre uma promessa contra um limite de tempo — sem isso, uma chamada
+ * tRPC travada (achado real, Gilvando 17/09: pasta com arquivo dentro só
+ * criou a pasta vazia, sem nenhum aviso — nem erro nem sucesso) esperaria
+ * pra sempre, sem NUNCA cair no catch nem no toast final. Só cria uma
+ * mensagem de erro clara se o limite bater; não cancela a chamada de
+ * verdade por dentro (o navegador não permite cancelar uma chamada tRPC
+ * assim tão facilmente) — mas pelo menos a PESSOA nunca fica sem
+ * resposta nenhuma. */
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`"${label}" não respondeu em ${Math.round(timeoutMs / 1000)}s.`)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 export interface ChunkedUploadEndpoints {
@@ -48,7 +98,7 @@ export async function uploadFileInChunks<T = unknown>(
   completeBody: Record<string, unknown> = {}
 ): Promise<T> {
   // 1. Inicia o envio em partes.
-  const startRes = await fetch(endpoints.start, {
+  const startRes = await fetchWithTimeout(endpoints.start, {
     method: 'POST',
     credentials: 'include',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -77,14 +127,15 @@ export async function uploadFileInChunks<T = unknown>(
     let etag: string | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES_PER_PART; attempt++) {
       try {
-        const partRes = await fetch(
+        const partRes = await fetchWithTimeout(
           `${endpoints.part}?uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`,
           {
             method: 'POST',
             credentials: 'include',
             headers: authHeaders({ 'Content-Type': 'application/octet-stream' }),
             body: buffer,
-          }
+          },
+          60_000 // pedaço carrega dado de verdade (até 8MB) — numa conexão lenta, 30s pode não bastar
         );
         if (!partRes.ok) {
           const body = await partRes.json().catch(() => null);
@@ -106,12 +157,16 @@ export async function uploadFileInChunks<T = unknown>(
   }
 
   // 3. Junta tudo num arquivo só, de verdade, no destino final.
-  const completeRes = await fetch(endpoints.complete, {
-    method: 'POST',
-    credentials: 'include',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ uploadId, parts, fileSize: file.size, ...completeBody }),
-  });
+  const completeRes = await fetchWithTimeout(
+    endpoints.complete,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ uploadId, parts, fileSize: file.size, ...completeBody }),
+    },
+    60_000 // o servidor pode levar um tempo pra juntar as partes de verdade
+  );
   if (!completeRes.ok) {
     const body = await completeRes.json().catch(() => null);
     throw new Error(body?.error || `Erro ${completeRes.status} ao concluir o envio.`);

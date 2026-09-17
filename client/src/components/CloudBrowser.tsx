@@ -31,7 +31,8 @@ import {
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { formatBytes } from '@shared/cloud';
-import { uploadFileInChunks } from '@/lib/chunked-upload';
+import { uploadFileInChunks, withTimeout } from '@/lib/chunked-upload';
+import { readEntry, type FileWithPath } from '@/lib/cloud-drop-read';
 import CloudShareDialog from '@/components/CloudShareDialog';
 import CloudPreviewModal from '@/components/CloudPreviewModal';
 import CloudMigrationPanel from '@/components/CloudMigrationPanel';
@@ -52,43 +53,6 @@ interface CloudBrowserProps {
 // bem mais alto (o espaço de armazenamento contratado continua sendo a
 // checagem de verdade, feita no servidor).
 const MAX_UPLOAD_MB = 2048;
-
-interface FileWithPath {
-  file: File;
-  relativePath: string;
-}
-
-/** Lê recursivamente uma entrada arrastada (arquivo ou pasta) do navegador,
- * reconstruindo o caminho relativo — usado no arrastar-e-soltar de pastas. */
-function readEntry(entry: FileSystemEntry, basePath: string, results: FileWithPath[]): Promise<void> {
-  return new Promise((resolve) => {
-    if (entry.isFile) {
-      (entry as FileSystemFileEntry).file((file) => {
-        results.push({ file, relativePath: basePath + file.name });
-        resolve();
-      });
-    } else if (entry.isDirectory) {
-      const reader = (entry as FileSystemDirectoryEntry).createReader();
-      const children: FileSystemEntry[] = [];
-      const readBatch = () => {
-        reader.readEntries(async (batch) => {
-          if (batch.length === 0) {
-            for (const child of children) {
-              await readEntry(child, `${basePath}${entry.name}/`, results);
-            }
-            resolve();
-          } else {
-            children.push(...batch);
-            readBatch(); // o navegador pode devolver os itens em várias chamadas
-          }
-        });
-      };
-      readBatch();
-    } else {
-      resolve();
-    }
-  });
-}
 
 export default function CloudBrowser({ canManage, currentFolderId, onNavigate, isMasterAdmin }: CloudBrowserProps) {
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -217,38 +181,44 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     let uploaded = 0;
     let failed = 0;
 
-    for (const { file, relativePath } of valid) {
-      setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent: 0 });
-      try {
-        const parts = relativePath.split('/').filter(Boolean);
-        const fileName = parts.pop() ?? file.name;
-        const targetFolderId = await resolveFolderPath(parts, folderCache);
+    try {
+      for (const { file, relativePath } of valid) {
+        setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent: 0 });
+        try {
+          const parts = relativePath.split('/').filter(Boolean);
+          const fileName = parts.pop() ?? file.name;
+          const targetFolderId = await withTimeout(resolveFolderPath(parts, folderCache), 30_000, 'Criar/verificar pasta');
 
-        await uploadFileInChunks(
-          file,
-          {
-            folderId: targetFolderId,
-            name: fileName,
-            fileName,
-            mimeType: file.type || 'application/octet-stream',
-            fileSize: file.size,
-          },
-          {
-            start: '/api/cloud-upload/start',
-            part: '/api/cloud-upload/part',
-            complete: '/api/cloud-upload/complete',
-          },
-          (percent) => setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent })
-        );
-        uploaded++;
-      } catch (error) {
-        failed++;
-        console.error(`Falha ao enviar "${file.name}":`, error);
+          await uploadFileInChunks(
+            file,
+            {
+              folderId: targetFolderId,
+              name: fileName,
+              fileName,
+              mimeType: file.type || 'application/octet-stream',
+              fileSize: file.size,
+            },
+            {
+              start: '/api/cloud-upload/start',
+              part: '/api/cloud-upload/part',
+              complete: '/api/cloud-upload/complete',
+            },
+            (percent) => setUploadProgress({ name: file.name, done: uploaded, total: valid.length, percent })
+          );
+          uploaded++;
+        } catch (error) {
+          failed++;
+          console.error(`Falha ao enviar "${file.name}":`, error);
+        }
       }
+    } finally {
+      // Achado real (Gilvando, 17/09): garante que a tela NUNCA fica
+      // travada em "Enviando..." pra sempre, mesmo se algo inesperado
+      // (fora do try de cada arquivo) desse errado no meio do caminho.
+      setUploadProgress(null);
+      setIsUploading(false);
     }
 
-    setUploadProgress(null);
-    setIsUploading(false);
     await refresh();
 
     if (failed === 0) {
@@ -278,10 +248,21 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
         }))
       : [];
     if (folderInputRef.current) folderInputRef.current.value = '';
-    if (items.length === 0) return;
-    await uploadMultiple(
-      items
-    );
+    if (items.length === 0) {
+      // Achado real (Gilvando, 17/09): "só passa a pasta vazia, sem
+      // nenhum aviso" — antes, esse caso ficava em silêncio total (nem
+      // erro nem sucesso), o que tornava impossível saber se o problema
+      // era aqui ou em outro lugar. Isso só acontece quando o PRÓPRIO
+      // NAVEGADOR devolve zero arquivos pra pasta escolhida — não é algo
+      // que o código consiga contornar (é o sistema operacional/navegador
+      // decidindo o que existe na pasta, antes até do código rodar).
+      toast.error(
+        'Nenhum arquivo encontrado dentro dessa pasta. Se ela tinha arquivo, tente escolher a pasta de novo — ' +
+          'ou abra ela no Explorador de Arquivos pra confirmar que o arquivo está mesmo visível ali.'
+      );
+      return;
+    }
+    await uploadMultiple(items);
   };
 
   const handleDrop = async (e: React.DragEvent) => {
