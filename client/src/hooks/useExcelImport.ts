@@ -44,6 +44,7 @@ export function useExcelImport(
           if (imported.educationLevel) existing.educationLevel = imported.educationLevel;
           if (imported.phone) existing.phone = imported.phone;
           if (imported.role) existing.role = imported.role;
+          if (imported.leader) existing.leader = imported.leader;
         } else {
           mergedEmployees.push(imported);
         }

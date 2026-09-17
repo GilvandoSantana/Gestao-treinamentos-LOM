@@ -355,6 +355,7 @@ export const employeesRouter = router({
                 birthDate: z.string().nullish(),
                 role: z.string(),
               phone: z.string().nullish(),
+              leader: z.string().nullish(),
               trainings: z.array(
                 z.object({
                   id: z.string(),
@@ -420,6 +421,7 @@ export const employeesRouter = router({
                 birthDate: employee.birthDate,
                 role: employee.role,
                 phone: employee.phone,
+                leader: employee.leader,
                 contract,
               }, tx);
 
