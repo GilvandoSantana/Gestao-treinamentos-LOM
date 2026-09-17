@@ -1,4 +1,4 @@
-import { createFolder, getFolderById, deleteFolderRecursive, restoreFolder, softDeleteFile, getFileById, canAccessFolder, canAccessFile } from "./db-cloud";
+import { createFolder, renameFolder, getFolderById, deleteFolderRecursive, restoreFolder, softDeleteFile, getFileById, canAccessFolder, canAccessFile } from "./db-cloud";
 import { withEmployeeTransaction, upsertEmployee, upsertTraining, deleteTrainingsExcept, getEmployeeById, getTrainingsByEmployeeId, setEmployeeDismissed } from './db-employees';
 import { issueEmployeePortalInvitation, activateEmployeePortal, clearEmployeePortalPin } from './db-employee-portal';
 import { employeePortalInvitations } from '../drizzle/schema';
@@ -189,6 +189,16 @@ describe.runIf(process.env.RUN_DB_INTEGRATION === '1')('MySQL integrity and back
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => createFolder({ id: randomUUID(), contractSlug, parentId: null, name: i % 2 ? 'Documents' : 'documents', createdBy: 'test' })));
     expect(new Set(results.map(r => r.id)).size).toBe(1);
     await expect(createFolder({ id: randomUUID(), contractSlug: 'foreign', parentId: results[0].id, name: 'Child', createdBy: 'test' })).rejects.toThrow();
+  });
+  it('prevents duplicate sibling names when two renames race', async () => {
+    const contractSlug = randomUUID();
+    const a = await createFolder({ id: randomUUID(), contractSlug, parentId: null, name: 'First', createdBy: 'test' });
+    const b = await createFolder({ id: randomUUID(), contractSlug, parentId: null, name: 'Second', createdBy: 'test' });
+    const results = await Promise.allSettled([renameFolder(a.id, contractSlug, 'Duplicate'), renameFolder(b.id, contractSlug, 'duplicate')]);
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
+    const names = [(await getFolderById(a.id))!.name, (await getFolderById(b.id))!.name];
+    expect(new Set(names.map(n => n.toLowerCase())).size).toBe(2);
   });
   it('restores exactly the subtree removed in one operation, preserving previously trashed files', async () => {
     const contractSlug = randomUUID();
