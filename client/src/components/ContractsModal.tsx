@@ -797,6 +797,13 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                               metaIndividual: rqaMetaIndividual,
                             });
                             await activeQuery.refetch();
+                            // Achado real (Gilvando, 17/09): sem isso, o
+                            // cartão do módulo na tela principal continuava
+                            // escondido depois de habilitar — a decisão de
+                            // mostrar o cartão usa a sessão (auth.siteSession),
+                            // não a lista de contratos desta tela, então
+                            // precisa invalidar as duas.
+                            await utils.auth.siteSession.invalidate();
                             toast.success('Configuração de RQA salva.');
                           } catch (error) {
                             toast.error(error instanceof Error ? error.message : 'Erro ao salvar.');
