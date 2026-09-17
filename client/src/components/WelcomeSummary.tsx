@@ -124,17 +124,17 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
                 Próximos aniversários
               </p>
               {birthdays.map((b) => (
-                <p key={`${b.name}-${b.date.toISOString()}`} className="text-sm text-foreground truncate">
-                  <strong>{b.name}</strong>{' '}
-                  <span className="text-muted-foreground font-technical text-xs">
-                    ({formatDayMonth(b.date)}) —{' '}
+                <div key={`${b.name}-${b.date.toISOString()}`} className="text-sm">
+                  <p className="text-foreground font-semibold leading-snug break-words">{b.name}</p>
+                  <p className="text-muted-foreground font-technical text-xs">
+                    {formatDayMonth(b.date)} —{' '}
                     {b.daysUntil === 0
                       ? 'hoje'
                       : b.daysUntil === 1
                         ? 'amanhã'
                         : `em ${b.daysUntil} dias`}
-                  </span>
-                </p>
+                  </p>
+                </div>
               ))}
             </div>
           ) : (
