@@ -36,6 +36,13 @@ function nextOccurrence(month: number, day: number, today: Date): Date {
   return candidate;
 }
 
+/** Formata uma data como DD/MM, pro dia do aniversário ao lado do nome. */
+function formatDayMonth(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+}
+
 export default function WelcomeSummary({ username, employees, onSeeExpiring }: WelcomeSummaryProps) {
   const { expiredCount, expiringThisWeek } = useTrainingAlerts(employees);
 
@@ -120,6 +127,7 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
                 <p key={`${b.name}-${b.date.toISOString()}`} className="text-sm text-foreground truncate">
                   <strong>{b.name}</strong>{' '}
                   <span className="text-muted-foreground font-technical text-xs">
+                    ({formatDayMonth(b.date)}) —{' '}
                     {b.daysUntil === 0
                       ? 'hoje'
                       : b.daysUntil === 1
