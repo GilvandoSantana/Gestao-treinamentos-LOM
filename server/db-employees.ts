@@ -68,6 +68,8 @@ export async function upsertEmployee(employee: InsertEmployee, tx?: EmployeeTran
         admissionDate: employee.admissionDate,
         role: employee.role,
         phone: employee.phone,
+        leader: employee.leader,
+        area: employee.area,
         // Campo "gerencia" não vem mais do formulário de colaborador (virou
         // um campo do contrato) — só inclui na atualização se for
         // explicitamente enviado, pra não apagar o que já estava salvo em
@@ -102,6 +104,26 @@ export async function getAllEmployees(contract?: string) {
     console.error("[Database] Failed to get employees:", error);
     return [];
   }
+}
+
+/** Sugestões de líder e área pra tela de colaborador — vem dos valores JÁ
+ * usados por outros colaboradores do mesmo contrato, nunca uma lista fixa
+ * que precisa ser mantida à mão (era exatamente o problema da planilha
+ * antiga do Gilvando: a lista de líderes ficava desatualizada). */
+export async function getLeaderAreaOptions(contract: string): Promise<{ leaders: string[]; areas: string[] }> {
+  const db = await getDb();
+  if (!db) return { leaders: [], areas: [] };
+  const rows = await db
+    .select({ leader: employees.leader, area: employees.area })
+    .from(employees)
+    .where(eq(employees.contract, contract));
+  const leaders = Array.from(new Set(rows.map((r) => r.leader).filter((v): v is string => !!v))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+  const areas = Array.from(new Set(rows.map((r) => r.area).filter((v): v is string => !!v))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+  return { leaders, areas };
 }
 
 export async function getEmployeeById(id: string) {

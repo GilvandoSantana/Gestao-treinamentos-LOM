@@ -37,6 +37,11 @@ export interface ContractInfo {
   osMedidasAdministrativas: string | null;
   osMedidasEngenharia: string | null;
   osEpisMinimos: string | null;
+  /** Módulo de Lançamentos RQA's habilitado neste contrato — decide se o
+   * cartão aparece na tela principal (ideia do Gilvando, 16/09). */
+  rqaEnabled: boolean;
+  /** Meta de RQA esperada por colaborador ativo, no mês. */
+  rqaMetaIndividual: number;
   deleted: boolean;
   deletedAt: string | null;
   createdAt: string;

@@ -44,6 +44,7 @@ export type ActivityAction =
   | "contract.uploadPgr"
   | "contract.removePgr"
   | "contract.downloadPgr"
+  | "rqa.saveEntries"
   | "cloud.folderCreate"
   | "cloud.folderDelete"
   | "cloud.folderRename"

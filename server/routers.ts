@@ -18,6 +18,7 @@ import { desktopInstallerRouter } from "./routers/desktop-installer";
 import { signupRouter } from "./routers/signup";
 import { employeePortalRouter } from "./routers/employee-portal";
 import { backupRouter } from "./routers/backup";
+import { rqaRouter } from "./routers/rqa";
 
 export const appRouter = router({
   system: systemRouter,
@@ -71,6 +72,10 @@ export const appRouter = router({
 
   // Backup do banco de dados (rodar manualmente, listar) — só admin principal.
   backup: backupRouter,
+
+  // Lançamentos RQA's (ideia do Gilvando, 16/09) — substitui a planilha de
+  // Excel mensal. Habilitado por contrato (contracts.rqaEnabled).
+  rqa: rqaRouter,
 });
 
 export type AppRouter = typeof appRouter;

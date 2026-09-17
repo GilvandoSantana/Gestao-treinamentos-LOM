@@ -64,6 +64,9 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [useFolderTemplate, setUseFolderTemplate] = useState(true);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateText, setTemplateText] = useState('');
+  // Ideia do Gilvando (16/09) — Lançamentos RQA's, habilitado por contrato.
+  const [rqaEnabled, setRqaEnabled] = useState(false);
+  const [rqaMetaIndividual, setRqaMetaIndividual] = useState(2);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const utils = trpc.useUtils();
@@ -91,6 +94,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const folderTemplateQuery = trpc.contracts.getFolderTemplate.useQuery(undefined, { enabled: isOpen });
   const setFolderTemplateMutation = trpc.contracts.setFolderTemplate.useMutation();
   const applyTemplateMutation = trpc.contracts.applyFolderTemplate.useMutation();
+  const setRqaSettingsMutation = trpc.rqa.setSettings.useMutation();
   const updateMutation = trpc.contracts.update.useMutation();
   const deleteMutation = trpc.contracts.delete.useMutation();
   const restoreMutation = trpc.contracts.restore.useMutation();
@@ -220,6 +224,8 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setManagerName(contract.managerName ?? '');
     setCompanyName(contract.companyName ?? '');
     setContractGerencia(contract.gerencia ?? '');
+    setRqaEnabled(contract.rqaEnabled);
+    setRqaMetaIndividual(contract.rqaMetaIndividual || 2);
     setShowForm(true);
   };
 
@@ -752,6 +758,56 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
                       </div>
                     )}
                   </div>
+
+                  {editingId && (
+                    <div className="border-t border-border pt-4">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rqaEnabled}
+                          onChange={(e) => setRqaEnabled(e.target.checked)}
+                          className="mt-0"
+                        />
+                        Habilitar Lançamentos RQA&apos;s neste contrato
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Mostra o módulo "Lançamentos RQA's" na tela principal pra quem tiver permissão,
+                        e libera os campos de líder/área na ficha de colaborador.
+                      </p>
+                      {rqaEnabled && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <label className="text-sm text-foreground">Meta individual por mês</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={rqaMetaIndividual}
+                            onChange={(e) => setRqaMetaIndividual(Number(e.target.value) || 1)}
+                            className="w-20 border-2 border-input rounded-lg p-1.5 text-center bg-background text-foreground focus:border-orange focus:outline-none"
+                          />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        disabled={setRqaSettingsMutation.isPending}
+                        onClick={async () => {
+                          try {
+                            await setRqaSettingsMutation.mutateAsync({
+                              enabled: rqaEnabled,
+                              metaIndividual: rqaMetaIndividual,
+                            });
+                            await activeQuery.refetch();
+                            toast.success('Configuração de RQA salva.');
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : 'Erro ao salvar.');
+                          }
+                        }}
+                        className="mt-2 text-sm font-semibold text-white bg-navy rounded-lg px-3 py-2 hover:opacity-90 disabled:opacity-50 w-full"
+                      >
+                        {setRqaSettingsMutation.isPending ? 'Salvando...' : 'Salvar configuração de RQA'}
+                      </button>
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <button

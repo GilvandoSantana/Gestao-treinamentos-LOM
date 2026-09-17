@@ -38,6 +38,9 @@ interface EmployeeModalProps {
   isAdmin?: boolean;
   /** Só o administrador principal pode reatribuir o colaborador a outro contrato. */
   isMasterAdmin?: boolean;
+  /** Módulo de Lançamentos RQA's habilitado neste contrato — decide se os
+   * campos de líder/área aparecem no formulário. */
+  rqaEnabled?: boolean;
 }
 
 interface PendingCertificate {
@@ -46,7 +49,7 @@ interface PendingCertificate {
   base64: string;
 }
 
-export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, onSave, onClose, isAdmin = false, isMasterAdmin = false }: EmployeeModalProps) {
+export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, onSave, onClose, isAdmin = false, isMasterAdmin = false, rqaEnabled = false }: EmployeeModalProps) {
   const [name, setName] = useState('');
   const [registration, setRegistration] = useState('');
   const [educationLevel, setEducationLevel] = useState('');
@@ -55,6 +58,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   const [admissionDate, setAdmissionDate] = useState('');
   const [role, setRole] = useState('');
   const [phone, setPhone] = useState('');
+  const [leader, setLeader] = useState('');
+  const [area, setArea] = useState('');
   const [cnhNumero, setCnhNumero] = useState('');
   const [cnhValidade, setCnhValidade] = useState('');
   const [cnhCategoria, setCnhCategoria] = useState('');
@@ -65,6 +70,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
   // os campos — só o toque do usuário deve contar.
   const skipDirtyCheck = useRef(true);
   const contractsQuery = trpc.contracts.list.useQuery(undefined, { enabled: isMasterAdmin });
+  const leaderAreaQuery = trpc.employees.getLeaderAreaOptions.useQuery(undefined, { enabled: isOpen && rqaEnabled });
   const changeContractMutation = trpc.employees.changeContract.useMutation();
   const [portalInvitation, setPortalInvitation] = useState<string | null>(null);
   const issuePortalInvitationMutation = trpc.employees.issuePortalInvitation.useMutation();
@@ -119,6 +125,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setAdmissionDate(employee.admissionDate || '');
       setRole(employee.role);
       setPhone(employee.phone || '');
+      setLeader(employee.leader || '');
+      setArea(employee.area || '');
       setCnhNumero(employee.cnhNumero || '');
       setCnhValidade(employee.cnhValidade || '');
       setCnhCategoria(employee.cnhCategoria || '');
@@ -140,6 +148,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       setAdmissionDate('');
       setRole(duplicateFrom?.role || '');
       setPhone('');
+      setLeader(duplicateFrom?.leader || '');
+      setArea(duplicateFrom?.area || '');
       // CNH é dado pessoal, nunca duplica.
       setCnhNumero('');
       setCnhValidade('');
@@ -178,7 +188,7 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
       return;
     }
     setIsDirty(true);
-  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, cnhNumero, cnhValidade, cnhCategoria, cpf, trainings, photoPreview, reassignContract, customFieldValues]);
+  }, [name, registration, educationLevel, age, birthDate, admissionDate, role, phone, leader, area, cnhNumero, cnhValidade, cnhCategoria, cpf, trainings, photoPreview, reassignContract, customFieldValues]);
 
   // Avisa ao fechar/atualizar a aba do navegador com o formulário aberto e
   // não salvo — não só ao usar os botões do próprio modal.
@@ -462,6 +472,8 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
         admissionDate: admissionDate || undefined,
         role: role.trim(),
         phone: phone.trim() || undefined,
+        leader: leader.trim() || undefined,
+        area: area.trim() || undefined,
         cnhNumero: cnhNumero.trim() || undefined,
         cnhValidade: cnhValidade.trim() || undefined,
         cnhCategoria: cnhCategoria.trim() || undefined,
@@ -697,6 +709,42 @@ export default function EmployeeModal({ isOpen, employee, duplicateFrom = null, 
                 placeholder="(XX) XXXXX-XXXX"
               />
             </div>
+            {rqaEnabled && (
+              <>
+                <div>
+                  <label className="block text-foreground font-semibold mb-2 text-sm">Líder</label>
+                  <input
+                    type="text"
+                    list="rqa-leader-options"
+                    value={leader}
+                    onChange={(e) => setLeader(e.target.value)}
+                    className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                    placeholder="Ex: JOSE DANIEL"
+                  />
+                  <datalist id="rqa-leader-options">
+                    {leaderAreaQuery.data?.leaders.map((l) => (
+                      <option key={l} value={l} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-foreground font-semibold mb-2 text-sm">Área</label>
+                  <input
+                    type="text"
+                    list="rqa-area-options"
+                    value={area}
+                    onChange={(e) => setArea(e.target.value)}
+                    className="w-full border-2 border-input rounded-lg p-3 focus:border-orange focus:outline-none bg-background text-foreground transition-colors"
+                    placeholder="Ex: PINTURA"
+                  />
+                  <datalist id="rqa-area-options">
+                    {leaderAreaQuery.data?.areas.map((a) => (
+                      <option key={a} value={a} />
+                    ))}
+                  </datalist>
+                </div>
+              </>
+            )}
             <div className={isMasterAdmin && employee ? '' : 'sm:col-span-2'}>
               <label className="block text-foreground font-semibold mb-2 text-sm">CPF</label>
               <input

@@ -40,6 +40,15 @@ export const employees = mysqlTable("employees", {
   // Data de admissão (formato YYYY-MM-DD) — usada na Ficha de EPI e em
   // outros documentos de admissão gerados automaticamente.
   admissionDate: varchar("admissionDate", { length: 10 }),
+  // Líder e área do colaborador — usados no módulo de Lançamentos RQA's
+  // (ideia do Gilvando, 16/09), pra agrupar o resultado por líder/área
+  // como a planilha de Excel que ele usava fazia. Texto livre (sem lista
+  // fixa) — a lista de opções que aparece na tela vem dos próprios
+  // valores já usados por outros colaboradores do mesmo contrato, nunca
+  // fica desatualizada por conta própria (era exatamente o problema da
+  // planilha antiga).
+  leader: varchar("leader", { length: 120 }),
+  area: varchar("area", { length: 120 }),
   // Gerência/setor do colaborador (ex: "Engª Manutenção") — usado no crachá
   // padrão. Diferente do "Gestor do contrato" (1 nome só, por contrato).
   gerencia: varchar("gerencia", { length: 150 }),
@@ -372,6 +381,12 @@ export const contracts = mysqlTable("contracts", {
   // colaborador). Independente do campo "gerencia" de cada colaborador
   // (usado no crachá).
   gerencia: varchar("gerencia", { length: 150 }),
+  // Lançamentos RQA's (ideia do Gilvando, 16/09) — habilitado por
+  // padrão desligado, já que é um módulo novo e nem todo contrato usa.
+  // Meta individual = quantidade esperada de RQA por colaborador ativo
+  // no mês (2 é o valor que a planilha antiga usava por padrão).
+  rqaEnabled: boolean("rqaEnabled").default(false).notNull(),
+  rqaMetaIndividual: int("rqaMetaIndividual").default(2).notNull(),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -379,6 +394,38 @@ export const contracts = mysqlTable("contracts", {
 
 export type ContractRow = typeof contracts.$inferSelect;
 export type InsertContractRow = typeof contracts.$inferInsert;
+
+/**
+ * Lançamentos mensais de RQA (Registro de Quase Acidente) por colaborador —
+ * substitui a planilha de Excel que o Gilvando usava (ideia dele, 16/09).
+ * Um registro por colaborador por mês; tudo o mais (meta, % alcançada,
+ * status, ranking, resumo por líder/área) é calculado a partir disto,
+ * nunca guardado — igual a planilha fazia com fórmula.
+ */
+export const rqaEntries = mysqlTable(
+  "rqaEntries",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    employeeId: varchar("employeeId", { length: 64 }).notNull(),
+    // Formato "AAAA-MM" (ex: "2026-09") — simples de comparar/ordenar como texto.
+    yearMonth: varchar("yearMonth", { length: 7 }).notNull(),
+    quantidade: int("quantidade").default(0).notNull(),
+    // "ATIVO" | "FERIAS" | "AFASTADO" | "INATIVO" — muda de mês pra mês
+    // (alguém pode estar de férias em setembro e ativo em outubro), por
+    // isso mora no lançamento do mês, não no cadastro fixo do
+    // colaborador. Sem meta/cobrança pra quem não está ATIVO no mês.
+    situacao: varchar("situacao", { length: 20 }).default("ATIVO").notNull(),
+    updatedBy: varchar("updatedBy", { length: 120 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    employeeMonthUnique: uniqueIndex("rqaEntries_employeeId_yearMonth_unique").on(table.employeeId, table.yearMonth),
+  })
+);
+
+export type RqaEntry = typeof rqaEntries.$inferSelect;
+export type InsertRqaEntry = typeof rqaEntries.$inferInsert;
 
 /**
  * Campos personalizados por contrato. Cada contrato pode definir campos

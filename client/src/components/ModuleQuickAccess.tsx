@@ -5,13 +5,14 @@
  * num menu suspenso, merece destaque próprio na tela principal.
  */
 
-import { Cloud, Warehouse, Receipt, CreditCard, ChevronRight } from 'lucide-react';
+import { Cloud, Warehouse, Receipt, CreditCard, ShieldAlert, ChevronRight } from 'lucide-react';
 
 interface ModuleQuickAccessProps {
   onShowCloud?: () => void;
   onShowWarehouse?: () => void;
   onShowInvoices?: () => void;
   onShowBadges?: () => void;
+  onShowRQA?: () => void;
 }
 
 export default function ModuleQuickAccess({
@@ -19,6 +20,7 @@ export default function ModuleQuickAccess({
   onShowWarehouse,
   onShowInvoices,
   onShowBadges,
+  onShowRQA,
 }: ModuleQuickAccessProps) {
   const modules = [
     {
@@ -52,6 +54,14 @@ export default function ModuleQuickAccess({
       Icon: CreditCard,
       onClick: onShowBadges,
       color: 'danger',
+    },
+    {
+      key: 'rqa',
+      label: "RQA's",
+      sub: 'Registro de Quase Acidente',
+      Icon: ShieldAlert,
+      onClick: onShowRQA,
+      color: 'orange',
     },
   ].filter((m) => m.onClick);
 

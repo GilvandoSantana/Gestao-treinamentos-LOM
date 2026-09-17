@@ -19,6 +19,9 @@ export interface Employee {
   admissionDate?: string;
   /** Gerência/setor do colaborador (ex: "Engª Manutenção") — mostrado no crachá padrão. */
   gerencia?: string;
+  /** Líder e área do colaborador — usados no módulo de Lançamentos RQA's. */
+  leader?: string | null;
+  area?: string | null;
   /** Dados de CNH — mostrados no crachá padrão, quando preenchidos. */
   cnhNumero?: string;
   cnhValidade?: string;

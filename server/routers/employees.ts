@@ -8,6 +8,7 @@ import {
   getAllEmployees,
   getDistinctTrainingNames,
   getEmployeeById,
+  getLeaderAreaOptions,
   getTrainingById,
   getEmployeeScoped,
   getTrainingsByEmployeeId,
@@ -37,6 +38,13 @@ async function assertTrainingOwners(employeeId: string, rows: { id: string }[]) 
 }
 
 export const employeesRouter = router({
+    // Sugestões de líder/área pra tela de colaborador (autocompletar, sem
+    // lista fixa) — módulo de Lançamentos RQA's (ideia do Gilvando, 16/09).
+    getLeaderAreaOptions: requirePermission('editEmployees').query(async ({ ctx }) => {
+      if (!ctx.siteContract) return { leaders: [], areas: [] };
+      return getLeaderAreaOptions(ctx.siteContract);
+    }),
+
     issuePortalInvitation: requirePermission('editEmployees')
       .input(z.object({ employeeId: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {
@@ -158,6 +166,8 @@ export const employeesRouter = router({
           role: z.string(),
           phone: z.string().nullish(),
           gerencia: z.string().nullish(),
+          leader: z.string().nullish(),
+          area: z.string().nullish(),
           cnhNumero: z.string().nullish(),
           cnhValidade: z.string().nullish(),
           cnhCategoria: z.string().nullish(),
@@ -232,6 +242,8 @@ export const employeesRouter = router({
               role: input.role,
               phone: input.phone,
               gerencia: input.gerencia,
+              leader: input.leader,
+              area: input.area,
               cnhNumero: input.cnhNumero,
               cnhValidade: input.cnhValidade,
               cnhCategoria: input.cnhCategoria,

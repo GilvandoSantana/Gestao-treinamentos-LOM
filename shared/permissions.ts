@@ -22,6 +22,8 @@ export const PERMISSION_KEYS = [
   'manageInvoices',
   'viewWarehouse',
   'manageWarehouse',
+  'viewRQA',
+  'manageRQA',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -82,6 +84,14 @@ export const PERMISSION_LABELS: Record<PermissionKey, { label: string; descripti
     label: 'Gerenciar almoxarifado',
     description: 'Cadastrar, editar itens e registrar entradas/saídas de estoque',
   },
+  viewRQA: {
+    label: 'Ver lançamentos RQA\'s',
+    description: 'Consultar os lançamentos de RQA do contrato',
+  },
+  manageRQA: {
+    label: 'Gerenciar lançamentos RQA\'s',
+    description: 'Lançar e editar a quantidade de RQA de cada colaborador',
+  },
 };
 
 /** Permissões de um usuário recém-criado: só leitura. */
@@ -99,6 +109,8 @@ export const DEFAULT_USER_PERMISSIONS: Permissions = {
   manageInvoices: false,
   viewWarehouse: false,
   manageWarehouse: false,
+  viewRQA: false,
+  manageRQA: false,
 };
 
 /** O administrador principal sempre tem tudo liberado. */

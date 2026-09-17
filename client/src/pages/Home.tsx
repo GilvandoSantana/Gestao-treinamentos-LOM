@@ -38,6 +38,7 @@ import RenewTrainingModal from '@/components/RenewTrainingModal';
 const CloudModal = lazy(() => import('@/components/CloudModal'));
 const InvoicesModal = lazy(() => import('@/components/InvoicesModal'));
 const RolesTrainingTypesModal = lazy(() => import('@/components/RolesTrainingTypesModal'));
+const RQAModal = lazy(() => import('@/components/RQAModal'));
 const WarehouseModal = lazy(() => import('@/components/WarehouseModal'));
 const ComplianceCharts = lazy(() => import('@/components/ComplianceCharts'));
 const AuditHistory = lazy(() => import('@/components/AuditHistory'));
@@ -82,6 +83,7 @@ export default function Home() {
   const [showDocumentation, setShowDocumentation] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showBadges, setShowBadges] = useState(false);
+  const [showRQA, setShowRQA] = useState(false);
   // Confirmação antes de demitir/readmitir, no mesmo padrão da exclusão.
   const [dismissConfirm, setDismissConfirm] = useState<{ employee: Employee; dismissing: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('colaboradores');
@@ -186,6 +188,8 @@ export default function Home() {
         role: employeeData.role,
         phone: employeeData.phone,
         gerencia: employeeData.gerencia,
+        leader: employeeData.leader,
+        area: employeeData.area,
         cnhNumero: employeeData.cnhNumero,
         cnhValidade: employeeData.cnhValidade,
         cnhCategoria: employeeData.cnhCategoria,
@@ -560,6 +564,9 @@ export default function Home() {
           onShowWarehouse={session.can('viewWarehouse') ? () => setShowWarehouse(true) : undefined}
           onShowInvoices={session.can('viewInvoices') ? () => setShowInvoices(true) : undefined}
           onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
+          onShowRQA={
+            session.can('viewRQA') && session.contract?.rqaEnabled ? () => setShowRQA(true) : undefined
+          }
         />
         {showAdminManagement && (
           <Suspense fallback={null}>
@@ -724,6 +731,7 @@ export default function Home() {
         }}
         isAdmin={session.can('editEmployees')}
         isMasterAdmin={session.isMasterAdmin}
+        rqaEnabled={session.contract?.rqaEnabled ?? false}
       />
 
       <DeleteConfirmModal
@@ -838,6 +846,12 @@ export default function Home() {
             onClose={() => setShowBadges(false)}
             employees={activeEmployees}
           />
+        </Suspense>
+      )}
+
+      {showRQA && (
+        <Suspense fallback={null}>
+          <RQAModal isOpen={showRQA} onClose={() => setShowRQA(false)} canManage={session.can('manageRQA')} />
         </Suspense>
       )}
 
