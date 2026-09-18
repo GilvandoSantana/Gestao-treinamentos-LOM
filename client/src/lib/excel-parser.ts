@@ -21,6 +21,7 @@ export interface ExcelRow {
  * - CNH Validade (opcional, formato: DD/MM/YYYY)
  * - CNH Categoria (opcional)
  * - Líder (opcional)
+ * - Área (opcional)
  * - Treinamento (opcional)
  * - Data de Realização (opcional, formato: DD/MM/YYYY)
  * - Data de Vencimento (opcional, formato: DD/MM/YYYY)
@@ -29,8 +30,9 @@ export interface ExcelRow {
  * repita o nome dela em várias linhas (o modelo baixável já mostra isso).
  *
  * Gerência não entra aqui: é do contrato (cadastrada uma vez em "Gerenciar
- * Contratos"), não de cada colaborador. Líder é sempre opcional — só é
- * usado por quem ativa o módulo de Lançamentos RQA's.
+ * Contratos"), não de cada colaborador. Líder e Área são sempre opcionais —
+ * só usados por quem usa o módulo de Lançamentos RQA's (achado do Gilvando,
+ * 18/09: Área tinha ficado de fora quando Líder foi adicionado).
  */
 export async function parseExcelFile(file: File): Promise<Employee[]> {
   const data = await file.arrayBuffer();
@@ -69,6 +71,7 @@ export async function parseExcelFile(file: File): Promise<Employee[]> {
         cnhValidade,
         cnhCategoria: String(row['CNH Categoria'] || row['cnhCategoria'] || '').trim().toUpperCase() || undefined,
         leader: String(row['Líder'] || row['leader'] || '').trim() || undefined,
+        area: String(row['Área'] || row['area'] || '').trim() || undefined,
         trainings: [],
       };
       employeeMap.set(nome, employee);
@@ -218,6 +221,7 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
         'CNH Validade': toDisplayDate(emp.cnhValidade),
         'CNH Categoria': emp.cnhCategoria || '',
         Líder: emp.leader || '',
+        Área: emp.area || '',
         Treinamento: '',
         'Data de Realização': '',
         'Data de Vencimento': '',
@@ -238,6 +242,7 @@ export function generateEmployeesUpdateSheet(employees: Employee[]): void {
     { wch: 14 }, // CNH Validade
     { wch: 14 }, // CNH Categoria
     { wch: 20 }, // Líder
+    { wch: 18 }, // Área
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento
@@ -260,6 +265,7 @@ export function generateExcelTemplate(): void {
       'CNH Validade': '20/11/2029',
       'CNH Categoria': 'AB',
       Líder: 'Carlos Andrade',
+      Área: 'Transporte',
       Treinamento: 'Direção Defensiva',
       'Data de Realização': '15/06/2025',
       'Data de Vencimento': '15/06/2026',
@@ -277,6 +283,7 @@ export function generateExcelTemplate(): void {
       'CNH Validade': '',
       'CNH Categoria': '',
       Líder: 'Fernanda Lima',
+      Área: 'Caldeiraria',
       Treinamento: 'Proteção de Máquinas',
       'Data de Realização': '10/05/2025',
       'Data de Vencimento': '10/05/2026',
@@ -294,6 +301,7 @@ export function generateExcelTemplate(): void {
       'CNH Validade': '',
       'CNH Categoria': '',
       Líder: 'Fernanda Lima',
+      Área: 'Caldeiraria',
       Treinamento: 'Trabalho a Quente',
       'Data de Realização': '20/07/2025',
       'Data de Vencimento': '20/07/2026',
@@ -314,6 +322,7 @@ export function generateExcelTemplate(): void {
     { wch: 14 }, // CNH Validade
     { wch: 14 }, // CNH Categoria
     { wch: 20 }, // Líder
+    { wch: 18 }, // Área
     { wch: 25 }, // Treinamento
     { wch: 18 }, // Data de Realização
     { wch: 18 }, // Data de Vencimento

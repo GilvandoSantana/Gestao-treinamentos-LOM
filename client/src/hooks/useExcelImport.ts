@@ -45,6 +45,7 @@ export function useExcelImport(
           if (imported.phone) existing.phone = imported.phone;
           if (imported.role) existing.role = imported.role;
           if (imported.leader) existing.leader = imported.leader;
+          if (imported.area) existing.area = imported.area;
         } else {
           mergedEmployees.push(imported);
         }
