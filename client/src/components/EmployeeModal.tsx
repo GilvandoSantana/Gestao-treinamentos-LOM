@@ -38,8 +38,10 @@ interface EmployeeModalProps {
   isAdmin?: boolean;
   /** Só o administrador principal pode reatribuir o colaborador a outro contrato. */
   isMasterAdmin?: boolean;
-  /** Módulo de Lançamentos RQA's habilitado neste contrato — decide se os
-   * campos de líder/área aparecem no formulário. */
+  /** Se a conta que está editando tem permissão de RQA (viewRQA) — decide
+   * se os campos de líder/área aparecem no formulário. Ajuste do
+   * Gilvando (17/09): antes era por contrato, agora é só por permissão
+   * de usuário, igual o resto do sistema. */
   rqaEnabled?: boolean;
 }
 

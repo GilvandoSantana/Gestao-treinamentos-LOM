@@ -64,8 +64,8 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const [useFolderTemplate, setUseFolderTemplate] = useState(true);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateText, setTemplateText] = useState('');
-  // Ideia do Gilvando (16/09) — Lançamentos RQA's, habilitado por contrato.
-  const [rqaEnabled, setRqaEnabled] = useState(false);
+  // Lançamentos RQA's — só a meta individual fica configurável por
+  // contrato (o módulo em si é liberado por permissão de usuário).
   const [rqaMetaIndividual, setRqaMetaIndividual] = useState(2);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
@@ -94,7 +94,7 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
   const folderTemplateQuery = trpc.contracts.getFolderTemplate.useQuery(undefined, { enabled: isOpen });
   const setFolderTemplateMutation = trpc.contracts.setFolderTemplate.useMutation();
   const applyTemplateMutation = trpc.contracts.applyFolderTemplate.useMutation();
-  const setRqaSettingsMutation = trpc.rqa.setSettings.useMutation();
+  const setRqaMetaIndividualMutation = trpc.rqa.setMetaIndividual.useMutation();
   const updateMutation = trpc.contracts.update.useMutation();
   const deleteMutation = trpc.contracts.delete.useMutation();
   const restoreMutation = trpc.contracts.restore.useMutation();
@@ -224,7 +224,6 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
     setManagerName(contract.managerName ?? '');
     setCompanyName(contract.companyName ?? '');
     setContractGerencia(contract.gerencia ?? '');
-    setRqaEnabled(contract.rqaEnabled);
     setRqaMetaIndividual(contract.rqaMetaIndividual || 2);
     setShowForm(true);
   };
@@ -761,57 +760,38 @@ export default function ContractsModal({ isOpen, onClose }: ContractsModalProps)
 
                   {editingId && (
                     <div className="border-t border-border pt-4">
-                      <label className="flex items-center gap-2 text-sm font-semibold text-foreground cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={rqaEnabled}
-                          onChange={(e) => setRqaEnabled(e.target.checked)}
-                          className="mt-0"
-                        />
-                        Habilitar Lançamentos RQA&apos;s neste contrato
-                      </label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Mostra o módulo "Lançamentos RQA's" na tela principal pra quem tiver permissão,
-                        e libera os campos de líder/área na ficha de colaborador.
+                      <p className="text-sm font-semibold text-foreground">Lançamentos RQA&apos;s — meta individual</p>
+                      <p className="text-xs text-muted-foreground mt-1 mb-2">
+                        Quantidade de RQA esperada por colaborador ativo no mês, pra este contrato. O módulo em
+                        si é liberado por permissão de cada conta ("Ver"/"Gerenciar lançamentos RQA's"), não
+                        precisa habilitar nada aqui.
                       </p>
-                      {rqaEnabled && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <label className="text-sm text-foreground">Meta individual por mês</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={rqaMetaIndividual}
-                            onChange={(e) => setRqaMetaIndividual(Number(e.target.value) || 1)}
-                            className="w-20 border-2 border-input rounded-lg p-1.5 text-center bg-background text-foreground focus:border-orange focus:outline-none"
-                          />
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-foreground">Meta individual por mês</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={rqaMetaIndividual}
+                          onChange={(e) => setRqaMetaIndividual(Number(e.target.value) || 1)}
+                          className="w-20 border-2 border-input rounded-lg p-1.5 text-center bg-background text-foreground focus:border-orange focus:outline-none"
+                        />
+                      </div>
                       <button
                         type="button"
-                        disabled={setRqaSettingsMutation.isPending}
+                        disabled={setRqaMetaIndividualMutation.isPending}
                         onClick={async () => {
                           try {
-                            await setRqaSettingsMutation.mutateAsync({
-                              enabled: rqaEnabled,
-                              metaIndividual: rqaMetaIndividual,
-                            });
+                            await setRqaMetaIndividualMutation.mutateAsync({ metaIndividual: rqaMetaIndividual });
                             await activeQuery.refetch();
-                            // Achado real (Gilvando, 17/09): sem isso, o
-                            // cartão do módulo na tela principal continuava
-                            // escondido depois de habilitar — a decisão de
-                            // mostrar o cartão usa a sessão (auth.siteSession),
-                            // não a lista de contratos desta tela, então
-                            // precisa invalidar as duas.
-                            await utils.auth.siteSession.invalidate();
-                            toast.success('Configuração de RQA salva.');
+                            toast.success('Meta de RQA salva.');
                           } catch (error) {
                             toast.error(error instanceof Error ? error.message : 'Erro ao salvar.');
                           }
                         }}
                         className="mt-2 text-sm font-semibold text-white bg-navy rounded-lg px-3 py-2 hover:opacity-90 disabled:opacity-50 w-full"
                       >
-                        {setRqaSettingsMutation.isPending ? 'Salvando...' : 'Salvar configuração de RQA'}
+                        {setRqaMetaIndividualMutation.isPending ? 'Salvando...' : 'Salvar meta de RQA'}
                       </button>
                     </div>
                   )}

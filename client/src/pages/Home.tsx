@@ -564,9 +564,7 @@ export default function Home() {
           onShowWarehouse={session.can('viewWarehouse') ? () => setShowWarehouse(true) : undefined}
           onShowInvoices={session.can('viewInvoices') ? () => setShowInvoices(true) : undefined}
           onShowBadges={session.can('importExport') ? () => setShowBadges(true) : undefined}
-          onShowRQA={
-            session.can('viewRQA') && session.contract?.rqaEnabled ? () => setShowRQA(true) : undefined
-          }
+          onShowRQA={session.can('viewRQA') ? () => setShowRQA(true) : undefined}
         />
         {showAdminManagement && (
           <Suspense fallback={null}>
@@ -731,7 +729,7 @@ export default function Home() {
         }}
         isAdmin={session.can('editEmployees')}
         isMasterAdmin={session.isMasterAdmin}
-        rqaEnabled={session.contract?.rqaEnabled ?? false}
+        rqaEnabled={session.can('viewRQA')}
       />
 
       <DeleteConfirmModal

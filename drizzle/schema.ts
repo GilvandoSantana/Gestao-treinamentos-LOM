@@ -381,11 +381,15 @@ export const contracts = mysqlTable("contracts", {
   // colaborador). Independente do campo "gerencia" de cada colaborador
   // (usado no crachá).
   gerencia: varchar("gerencia", { length: 150 }),
-  // Lançamentos RQA's (ideia do Gilvando, 16/09) — habilitado por
-  // padrão desligado, já que é um módulo novo e nem todo contrato usa.
-  // Meta individual = quantidade esperada de RQA por colaborador ativo
-  // no mês (2 é o valor que a planilha antiga usava por padrão).
+  // Lançamentos RQA's (ideia do Gilvando, 16/09). rqaEnabled: SEM USO
+  // desde 17/09 — o módulo passou a ser liberado por permissão de
+  // usuário (viewRQA/manageRQA), não por contrato. Coluna mantida sem
+  // migração de remoção (nenhum código lê/escreve nela mais), só pra
+  // não mexer em banco de produção sem necessidade real.
   rqaEnabled: boolean("rqaEnabled").default(false).notNull(),
+  // Meta individual = quantidade esperada de RQA por colaborador ativo
+  // no mês (2 é o valor que a planilha antiga usava por padrão) — esta
+  // continua em uso, configurável por contrato.
   rqaMetaIndividual: int("rqaMetaIndividual").default(2).notNull(),
   deleted: boolean("deleted").default(false).notNull(),
   deletedAt: timestamp("deletedAt"),

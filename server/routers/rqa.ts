@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { organizationAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { computeRqaReport, getRqaEmployees, getRqaEntriesForMonth, saveRqaEntries } from "../db-rqa";
-import { getContractBySlug, setRqaSettings } from "../db-contracts";
+import { getContractBySlug, setRqaMetaIndividual } from "../db-contracts";
 import { logActivity } from "../db-activity";
 
 const YEAR_MONTH_REGEX = /^\d{4}-\d{2}$/;
@@ -74,10 +74,11 @@ export const rqaRouter = router({
       return { saved: filtered.length } as const;
     }),
 
-  // Habilita/desabilita o módulo pra este contrato e ajusta a meta
-  // individual — só administrador da organização (não conta comum).
-  setSettings: organizationAdminProcedure
-    .input(z.object({ enabled: z.boolean(), metaIndividual: z.number().int().min(1).max(100) }))
+  // Ajuste do Gilvando (17/09): só ajusta a meta individual agora — o
+  // módulo em si já é liberado por permissão de usuário
+  // (viewRQA/manageRQA), sem precisar de interruptor por contrato.
+  setMetaIndividual: organizationAdminProcedure
+    .input(z.object({ metaIndividual: z.number().int().min(1).max(100) }))
     .mutation(async ({ input, ctx }) => {
       if (!ctx.siteContract) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Escolha um contrato no cabeçalho." });
@@ -86,7 +87,7 @@ export const rqaRouter = router({
       if (!contract) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado." });
       }
-      await setRqaSettings(contract.id, input);
+      await setRqaMetaIndividual(contract.id, input.metaIndividual);
       return { success: true } as const;
     }),
 });

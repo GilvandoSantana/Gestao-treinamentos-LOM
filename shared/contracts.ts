@@ -37,10 +37,10 @@ export interface ContractInfo {
   osMedidasAdministrativas: string | null;
   osMedidasEngenharia: string | null;
   osEpisMinimos: string | null;
-  /** Módulo de Lançamentos RQA's habilitado neste contrato — decide se o
-   * cartão aparece na tela principal (ideia do Gilvando, 16/09). */
-  rqaEnabled: boolean;
-  /** Meta de RQA esperada por colaborador ativo, no mês. */
+  /** Meta de RQA esperada por colaborador ativo, no mês — o módulo em si
+   * é liberado por permissão de usuário (viewRQA/manageRQA), não por
+   * contrato (ajuste do Gilvando, 17/09: o controle por usuário já
+   * bastava, tirou o interruptor extra por contrato). */
   rqaMetaIndividual: number;
   deleted: boolean;
   deletedAt: string | null;

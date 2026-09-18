@@ -74,7 +74,8 @@ export const appRouter = router({
   backup: backupRouter,
 
   // Lançamentos RQA's (ideia do Gilvando, 16/09) — substitui a planilha de
-  // Excel mensal. Habilitado por contrato (contracts.rqaEnabled).
+  // Excel mensal. Liberado por permissão de usuário (viewRQA/manageRQA),
+  // não por contrato (ajuste do Gilvando, 17/09).
   rqa: rqaRouter,
 });
 

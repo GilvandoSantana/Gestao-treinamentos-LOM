@@ -27,7 +27,6 @@ function toInfo(row: typeof contracts.$inferSelect): ContractInfo {
     osMedidasAdministrativas: row.osMedidasAdministrativas || null,
     osMedidasEngenharia: row.osMedidasEngenharia || null,
     osEpisMinimos: row.osEpisMinimos || null,
-    rqaEnabled: row.rqaEnabled,
     rqaMetaIndividual: row.rqaMetaIndividual,
     deleted: row.deleted,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
@@ -114,7 +113,6 @@ export async function createContract(input: {
     osMedidasAdministrativas: null,
     osMedidasEngenharia: null,
     osEpisMinimos: null,
-    rqaEnabled: false,
     rqaMetaIndividual: 2,
     deleted: false,
     deletedAt: null,
@@ -164,15 +162,14 @@ export async function restoreContract(id: string): Promise<void> {
   await db.update(contracts).set({ deleted: false, deletedAt: null }).where(eq(contracts.id, id));
 }
 
-/** Ideia do Gilvando (16/09) — liga/desliga o módulo de Lançamentos RQA's
- * pra este contrato, e ajusta a meta individual esperada por colaborador. */
-export async function setRqaSettings(id: string, input: { enabled: boolean; metaIndividual: number }): Promise<void> {
+/** Ajuste do Gilvando (17/09): tirado o interruptor de habilitar/desabilitar
+ * por contrato — o módulo já é liberado por permissão de usuário
+ * (viewRQA/manageRQA), o controle por contrato era redundante. Só resta a
+ * meta individual, que continua fazendo sentido variar por contrato. */
+export async function setRqaMetaIndividual(id: string, metaIndividual: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db
-    .update(contracts)
-    .set({ rqaEnabled: input.enabled, rqaMetaIndividual: input.metaIndividual })
-    .where(eq(contracts.id, id));
+  await db.update(contracts).set({ rqaMetaIndividual: metaIndividual }).where(eq(contracts.id, id));
 }
 
 /** Anexa (ou substitui) o PGR do contrato — pré-requisito para gerar Ordem de Serviço. */
