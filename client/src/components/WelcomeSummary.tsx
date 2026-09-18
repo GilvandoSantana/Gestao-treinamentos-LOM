@@ -6,8 +6,8 @@
  * consulta extra ao servidor.
  */
 
-import { useMemo } from 'react';
-import { AlertTriangle, Clock, Cake, PartyPopper } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Clock, Cake, PartyPopper, X } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
 
@@ -46,22 +46,24 @@ function formatDayMonth(date: Date): string {
 export default function WelcomeSummary({ username, employees, onSeeExpiring }: WelcomeSummaryProps) {
   const { expiredCount, expiringThisWeek } = useTrainingAlerts(employees);
 
-  const { birthdays } = useMemo(() => {
+  const { birthdays, allBirthdays } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const upcoming: UpcomingBirthday[] = [];
+    const all: UpcomingBirthday[] = [];
     for (const emp of employees) {
       const parsed = parseBirthDate(emp.birthDate);
       if (!parsed) continue;
       const date = nextOccurrence(parsed.month, parsed.day, today);
       const daysUntil = Math.round((date.getTime() - today.getTime()) / (1000 * 3600 * 24));
-      if (daysUntil <= 30) upcoming.push({ name: emp.name, date, daysUntil });
+      all.push({ name: emp.name, date, daysUntil });
     }
-    upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
+    all.sort((a, b) => a.daysUntil - b.daysUntil);
 
-    return { birthdays: upcoming.slice(0, 4) };
+    return { birthdays: all.filter((b) => b.daysUntil <= 30).slice(0, 4), allBirthdays: all };
   }, [employees]);
+
+  const [showAllBirthdays, setShowAllBirthdays] = useState(false);
 
   const firstName = username?.split(/[.\s]/)[0];
   const hasAlerts = expiringThisWeek > 0 || expiredCount > 0;
@@ -115,8 +117,12 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
           )}
         </div>
 
-        {/* Próximos aniversários */}
-        <div className="bg-card rounded-xl border border-border p-4">
+        {/* Próximos aniversários — clicável, abre a lista completa de todos os colaboradores */}
+        <button
+          type="button"
+          onClick={() => setShowAllBirthdays(true)}
+          className="bg-card rounded-xl border border-border p-4 text-left hover:border-orange/50 transition-colors"
+        >
           {birthdays.length > 0 ? (
             <div className="space-y-2">
               <p className="flex items-center gap-2 text-xs font-technical uppercase tracking-wider text-muted-foreground">
@@ -147,8 +153,53 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
               </span>
             </div>
           )}
-        </div>
+        </button>
       </div>
+
+      {showAllBirthdays && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3"
+          onClick={() => setShowAllBirthdays(false)}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <p className="flex items-center gap-2 font-display font-bold text-foreground">
+                <Cake size={18} className="text-orange" />
+                Todos os aniversários
+              </p>
+              <button onClick={() => setShowAllBirthdays(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {allBirthdays.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum colaborador com data de nascimento cadastrada.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {allBirthdays.map((b) => (
+                    <div key={`${b.name}-${b.date.toISOString()}`} className="text-sm border-b border-border/60 pb-2 last:border-0">
+                      <p className="text-foreground font-semibold leading-snug break-words">{b.name}</p>
+                      <p className="text-muted-foreground font-technical text-xs">
+                        {formatDayMonth(b.date)} —{' '}
+                        {b.daysUntil === 0
+                          ? 'hoje'
+                          : b.daysUntil === 1
+                            ? 'amanhã'
+                            : `em ${b.daysUntil} dias`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
