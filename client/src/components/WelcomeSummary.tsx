@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Clock, Cake, PartyPopper, X } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { useTrainingAlerts } from '@/hooks/useTrainingAlerts';
@@ -156,50 +157,52 @@ export default function WelcomeSummary({ username, employees, onSeeExpiring }: W
         </button>
       </div>
 
-      {showAllBirthdays && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3"
-          onClick={() => setShowAllBirthdays(false)}
-        >
+      {showAllBirthdays &&
+        createPortal(
           <div
-            className="bg-card rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3"
+            onClick={() => setShowAllBirthdays(false)}
           >
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <p className="flex items-center gap-2 font-display font-bold text-foreground">
-                <Cake size={18} className="text-orange" />
-                Todos os aniversários
-              </p>
-              <button onClick={() => setShowAllBirthdays(false)} className="text-muted-foreground hover:text-foreground">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {allBirthdays.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nenhum colaborador com data de nascimento cadastrada.
+            <div
+              className="bg-card rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <p className="flex items-center gap-2 font-display font-bold text-foreground">
+                  <Cake size={18} className="text-orange" />
+                  Todos os aniversários
                 </p>
-              ) : (
-                <div className="space-y-3">
-                  {allBirthdays.map((b) => (
-                    <div key={`${b.name}-${b.date.toISOString()}`} className="text-sm border-b border-border/60 pb-2 last:border-0">
-                      <p className="text-foreground font-semibold leading-snug break-words">{b.name}</p>
-                      <p className="text-muted-foreground font-technical text-xs">
-                        {formatDayMonth(b.date)} —{' '}
-                        {b.daysUntil === 0
-                          ? 'hoje'
-                          : b.daysUntil === 1
-                            ? 'amanhã'
-                            : `em ${b.daysUntil} dias`}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+                <button onClick={() => setShowAllBirthdays(false)} className="text-muted-foreground hover:text-foreground">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {allBirthdays.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum colaborador com data de nascimento cadastrada.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {allBirthdays.map((b) => (
+                      <div key={`${b.name}-${b.date.toISOString()}`} className="text-sm border-b border-border/60 pb-2 last:border-0">
+                        <p className="text-foreground font-semibold leading-snug break-words">{b.name}</p>
+                        <p className="text-muted-foreground font-technical text-xs">
+                          {formatDayMonth(b.date)} —{' '}
+                          {b.daysUntil === 0
+                            ? 'hoje'
+                            : b.daysUntil === 1
+                              ? 'amanhã'
+                              : `em ${b.daysUntil} dias`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
