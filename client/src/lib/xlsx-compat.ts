@@ -16,6 +16,25 @@ export interface ColumnWidth {
   wch: number;
 }
 
+// Achado de auditoria de segurança (18/09): célula de texto que começa com
+// =, +, -, @ (ou tab/CR) é interpretada como fórmula por padrão pelo Excel
+// ao abrir o arquivo — um nome de colaborador ou fornecedor digitado como
+// "=HYPERLINK(...)" ou "=cmd|..." executaria ao abrir a planilha exportada
+// (ataque conhecido como "CSV/formula injection"). Só afeta texto (string);
+// número, data e boolean passam direto. Prefixar com apóstrofo é a
+// mitigação padrão (OWASP) — faz o Excel tratar como texto puro, sem
+// mudar o que a pessoa vê na célula.
+const FORMULA_TRIGGER_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
+function sanitizeCellValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const first = value.charAt(0);
+  if (FORMULA_TRIGGER_CHARS.has(first)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 /** Uma planilha em construção — várias abas, depois baixa tudo de uma vez. */
 export class SimpleWorkbook {
   private wb = new ExcelJS.Workbook();
@@ -29,7 +48,7 @@ export class SimpleWorkbook {
       const headers = Object.keys(rows[0]);
       ws.addRow(headers);
       for (const row of rows) {
-        ws.addRow(headers.map((h) => row[h] ?? ''));
+        ws.addRow(headers.map((h) => sanitizeCellValue(row[h] ?? '')));
       }
     }
     if (colWidths) {
@@ -43,7 +62,7 @@ export class SimpleWorkbook {
    * usada pra abas de instrução/texto livre, sem cabeçalho de dados. */
   addAoaSheet(sheetName: string, rows: (string | number)[][]): void {
     const ws = this.wb.addWorksheet(sheetName);
-    for (const row of rows) ws.addRow(row);
+    for (const row of rows) ws.addRow(row.map((cell) => sanitizeCellValue(cell)));
   }
 
   /** Gera o arquivo .xlsx e dispara o download no navegador. */

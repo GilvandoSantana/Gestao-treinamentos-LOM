@@ -26,9 +26,13 @@ const DESKTOP_SYNC_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 dias
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
+  // Achado de auditoria de segurança (18/09): 16 caracteres é pouco para
+  // uma chave HMAC (128 bits só no caso de já ser aleatória de verdade;
+  // bem menos se for uma frase escolhida por humano). 32 caracteres é o
+  // mínimo recomendado para HS256.
+  if (!secret || secret.length < 32) {
     throw new Error(
-      "SESSION_SECRET não configurado (ou muito curto). Defina uma variável de ambiente SESSION_SECRET com pelo menos 16 caracteres."
+      "SESSION_SECRET não configurado (ou muito curto). Defina uma variável de ambiente SESSION_SECRET com pelo menos 32 caracteres aleatórios."
     );
   }
   return new TextEncoder().encode(secret);

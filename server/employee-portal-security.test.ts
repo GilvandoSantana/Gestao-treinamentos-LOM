@@ -9,7 +9,7 @@ const cpf = '00000000000';
 const person = { id: 'test', contract: 'own', name: 'Synthetic', role: 'Test', portalPinHash: 'initial-hash', dismissed: false };
 function context(token = '') { return { user: null, req: { headers: { cookie: `employee_session=${token}` }, ip: 'portal-test', socket: {}, protocol: 'https' }, res: { cookie: vi.fn(), clearCookie: vi.fn() } } as any; }
 beforeEach(() => {
-  vi.clearAllMocks(); process.env.SESSION_SECRET = 'isolated-portal-test-secret';
+  vi.clearAllMocks(); process.env.SESSION_SECRET = 'isolated-portal-test-secret-32chars';
   clearEmployeePortalAttempts('portal-test', cpf);
   m.getEmployeeById.mockResolvedValue(person); m.getEmployeeByCpf.mockResolvedValue(person);
   m.getTrainingsByEmployeeId.mockResolvedValue([]); m.activateEmployeePortal.mockResolvedValue(null);
