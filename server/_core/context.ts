@@ -1,6 +1,5 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
-import { sdk } from "./sdk";
 import { getSiteSession, getRawCookie, IMPERSONATION_BACKUP_COOKIE } from "../site-auth";
 import { getContractBySlug, listContracts } from "../db-contracts";
 import { getAdminById } from "../db-admins";
@@ -29,14 +28,16 @@ export type TrpcContext = {
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
-  let user: User | null = null;
-
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Authentication is optional for public procedures.
-    user = null;
-  }
+  // Achado de auditoria de segurança (20/09): este campo vinha do sistema
+  // de login OAuth da plataforma original (Manus), que nunca foi
+  // realmente usado pelo GesCon — a rota que criava essa sessão
+  // (/api/oauth/callback) foi removida por ser código morto (nunca
+  // funcionava sem OAUTH_SERVER_URL configurado). Nenhuma autorização do
+  // sistema depende de `user`; tudo usa siteRole/sitePermissions/
+  // siteContract, vindos de getSiteSession logo abaixo. Mantido como
+  // `null` só para não quebrar o tipo TrpcContext nem o único lugar que
+  // ainda lê esse campo (auth.me, que sempre devolvia null mesmo antes).
+  const user: User | null = null;
 
   const siteSession = await getSiteSession(opts.req);
 

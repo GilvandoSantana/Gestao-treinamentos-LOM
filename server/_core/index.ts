@@ -6,7 +6,6 @@ import helmet from "helmet";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { timingSafeEqual, createHash } from "crypto";
@@ -172,9 +171,7 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
-  
+
   // Endpoint para disparar a checagem de treinamentos vencendo/vencidos por
   // um agendador externo (GitHub Actions, cron-job.org, etc.), já que o
   // Railway Cron reexecutaria o comando de start inteiro deste serviço (que
