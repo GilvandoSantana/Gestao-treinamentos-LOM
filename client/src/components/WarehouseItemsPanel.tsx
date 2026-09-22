@@ -62,6 +62,7 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
   const itemsQuery = trpc.warehouse.listItems.useQuery();
   const upsertMutation = trpc.warehouse.upsertItem.useMutation();
   const deleteMutation = trpc.warehouse.deleteItem.useMutation();
+  const adjustQuantityMutation = trpc.warehouse.adjustItemQuantity.useMutation();
 
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -134,6 +135,8 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [originalQuantity, setOriginalQuantity] = useState(0);
+  const [quantityAdjustReason, setQuantityAdjustReason] = useState('');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
 
@@ -150,11 +153,15 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
+    setOriginalQuantity(0);
+    setQuantityAdjustReason('');
     setShowForm(false);
   };
 
   const startEdit = (item: WarehouseItemInfo) => {
     setEditingId(item.id);
+    setOriginalQuantity(item.quantity);
+    setQuantityAdjustReason('');
     setForm({
       code: item.code,
       name: item.name,
@@ -229,6 +236,22 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
         precoUnitario: parseFloat(form.precoUnitario) || 0,
         dataValidade: form.dataValidade || null,
       });
+
+      // Ajuste direto de quantidade é só pra ADM, e vira uma movimentação
+      // de verdade (entrada/saída) pra não perder o rastro — por isso é
+      // uma chamada separada do resto do cadastro, feita só quando o
+      // número realmente mudou.
+      if (isMasterAdmin && editingId) {
+        const newQuantity = parseFloat(form.quantity) || 0;
+        if (newQuantity !== originalQuantity) {
+          await adjustQuantityMutation.mutateAsync({
+            id: editingId,
+            newQuantity,
+            reason: quantityAdjustReason.trim() || undefined,
+          });
+        }
+      }
+
       toast.success(editingId ? 'Item atualizado.' : 'Item cadastrado.');
       resetForm();
       await utils.warehouse.listItems.invalidate();
@@ -385,16 +408,43 @@ export default function WarehouseItemsPanel({ canManage, isMasterAdmin }: Wareho
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">{editingId ? "Saldo (altere em Movimentações)" : "Quantidade inicial"}</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                {editingId && !isMasterAdmin
+                  ? 'Saldo (altere em Movimentações)'
+                  : editingId && isMasterAdmin
+                    ? 'Quantidade em estoque (ajuste de ADM)'
+                    : 'Quantidade inicial'}
+              </label>
               <input
                 type="number"
                 step="0.01"
-                disabled={!!editingId}
-                title={editingId ? "Use Movimentações para alterar o saldo." : undefined}
+                disabled={!!editingId && !isMasterAdmin}
+                title={
+                  editingId && !isMasterAdmin
+                    ? 'Use Movimentações para alterar o saldo.'
+                    : editingId && isMasterAdmin
+                      ? 'Mudar esse número gera uma movimentação de ajuste automaticamente, pra manter o histórico.'
+                      : undefined
+                }
                 value={form.quantity}
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground"
               />
+              {editingId && isMasterAdmin && (parseFloat(form.quantity) || 0) !== originalQuantity && (
+                <div className="mt-1.5">
+                  <p className="text-[11px] text-orange mb-1">
+                    Saldo atual: {originalQuantity} → {parseFloat(form.quantity) || 0}. Isso vai gerar uma
+                    movimentação de {parseFloat(form.quantity) > originalQuantity ? 'entrada' : 'saída'} automática
+                    ao salvar.
+                  </p>
+                  <input
+                    value={quantityAdjustReason}
+                    onChange={(e) => setQuantityAdjustReason(e.target.value)}
+                    placeholder="Motivo do ajuste (opcional, ex: contagem física)"
+                    className="w-full px-2.5 py-1.5 text-xs border border-border rounded-lg bg-background text-foreground"
+                  />
+                </div>
+              )}
             </div>
             <div className="col-span-2 sm:col-span-1">
               <label className="block text-xs font-semibold text-foreground mb-1">Categoria</label>
