@@ -151,9 +151,111 @@ export function createBadgeDoc(
   existingDoc?: jsPDF
 ): jsPDF {
   const layout = createBadgeSheet(sourceWidth, sourceHeight, doubleSided, existingDoc);
-  const { doc } = layout;
-
   drawCutMarks(layout, sourceWidth, sourceHeight);
+  return wrapDocWithLayout(layout);
+}
+
+/** Símbolo pra guardar, no próprio documento, qual dos 3 espaços da folha
+ * (0, 1 ou 2) já foi ocupado — usado só pelo layout "3 por folha" abaixo,
+ * pra saber quando começar página nova e em qual coluna desenhar o próximo
+ * crachá do lote. */
+const TRIPLE_SLOT_INDEX = Symbol('tripleSlotIndex');
+
+const A4_LANDSCAPE_WIDTH_MM = 297;
+const A4_LANDSCAPE_HEIGHT_MM = 210;
+
+/** Espaço entre as colunas, e entre a coluna mais à esquerda/direita e a
+ * borda da folha (calculado pra centralizar as 3 colunas juntas). */
+const TRIPLE_COLUMN_GAP_MM = 12;
+
+/**
+ * Ideia do Gilvando (18/09): crachá do Almoxarifado impresso 3 por folha
+ * A4 PAISAGEM, cada colaborador com frente (QR code) em cima e verso (logo)
+ * embaixo, lado a lado com os outros dois — poupa papel num lote grande,
+ * já que o formato de 1 por folha (createBadgeSheet) gastava uma folha
+ * inteira por pessoa.
+ *
+ * O gerador precisa desenhar frente e verso EMPILHADOS no sistema de
+ * coordenadas dele (frente ocupando y:[0,sourceHeight], verso ocupando
+ * y:[sourceHeight+gap, sourceHeight*2+gap] — não lado a lado como no
+ * layout de 1 por folha), passando sourceHeight*2+gap como altura total
+ * pra este layout escalar certo.
+ *
+ * @param sourceWidth  largura do sistema de coordenadas de UMA face
+ * @param sourceTotalHeight altura do sistema de coordenadas do desenho
+ *   INTEIRO (frente + espaço + verso, empilhados)
+ */
+export function createBadgeSheetTripleLandscape(
+  sourceWidth: number,
+  sourceTotalHeight: number,
+  existingDoc?: jsPDF
+): BadgeLayout {
+  const doc = existingDoc
+    ? unwrapBadgeDoc(existingDoc)
+    : new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
+  (doc as any)[RAW_DOC] = doc;
+
+  const slotIndex: number = existingDoc ? ((doc as any)[TRIPLE_SLOT_INDEX] ?? 0) : 0;
+
+  // Só começa página nova quando as 3 colunas da página atual já estão
+  // ocupadas (voltando pro slot 0) — as duas primeiras chamadas de um lote
+  // reaproveitam a MESMA página que a anterior já criou.
+  if (existingDoc && slotIndex === 0) {
+    doc.addPage('a4', 'landscape');
+  }
+  (doc as any)[TRIPLE_SLOT_INDEX] = (slotIndex + 1) % 3;
+
+  const targetWidth = BADGE_MM.singleWidth; // uma coluna = largura de UMA face (54mm)
+  const targetHeight = sourceTotalHeight; // sem redução — a "folha" da coluna já é do tamanho do desenho
+
+  // Mesma lógica de escala única do createBadgeSheet (não estica/achata).
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceTotalHeight);
+  const drawnWidth = sourceWidth * scale;
+  const drawnHeight = sourceTotalHeight * scale;
+
+  const totalColumnsWidth = targetWidth * 3 + TRIPLE_COLUMN_GAP_MM * 2;
+  const leftMargin = (A4_LANDSCAPE_WIDTH_MM - totalColumnsWidth) / 2;
+  const columnX = leftMargin + slotIndex * (targetWidth + TRIPLE_COLUMN_GAP_MM);
+  const columnY = (A4_LANDSCAPE_HEIGHT_MM - targetHeight) / 2;
+
+  const offsetX = columnX + (targetWidth - drawnWidth) / 2;
+  const offsetY = columnY + (targetHeight - drawnHeight) / 2;
+
+  return {
+    doc,
+    x: (value: number) => offsetX + value * scale,
+    y: (value: number) => offsetY + value * scale,
+    w: (value: number) => value * scale,
+    h: (value: number) => value * scale,
+    f: (value: number) => value * scale,
+    card: { x: columnX, y: columnY, width: targetWidth, height: targetHeight },
+  };
+}
+
+/** Mesma ideia de createBadgeDoc, mas pro layout "3 por folha" acima —
+ * devolve o jsPDF adaptado pra o gerador continuar desenhando nas
+ * coordenadas antigas dele. */
+export function createBadgeDocTripleLandscape(
+  sourceWidth: number,
+  sourceTotalHeight: number,
+  existingDoc?: jsPDF
+): jsPDF {
+  const layout = createBadgeSheetTripleLandscape(sourceWidth, sourceTotalHeight, existingDoc);
+  drawCutMarks(layout, sourceWidth, sourceTotalHeight);
+  return wrapDocWithLayout(layout);
+}
+
+/** Cria o Proxy que converte cada chamada de desenho (rect, addImage, text,
+ * etc.) do sistema de coordenadas do gerador pra posição/tamanho reais na
+ * folha — compartilhado pelos dois layouts (1 por folha e 3 por folha),
+ * já que a lógica de conversão em si é idêntica, só o cálculo de x/y/w/h
+ * de cada layout muda. */
+function wrapDocWithLayout(layout: BadgeLayout): jsPDF {
+  const { doc } = layout;
 
   const handler: ProxyHandler<jsPDF> = {
     get(target, prop, receiver) {

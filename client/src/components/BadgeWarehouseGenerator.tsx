@@ -6,9 +6,17 @@
  * função. Verso: só a logo grande da Support Mining.
  *
  * DIMENSÕES: 55mm x 85mm por face — mesmo tamanho padrão dos outros crachás.
+ *
+ * Layout de impressão (ideia do Gilvando, 18/09): 3 colaboradores por folha
+ * A4 PAISAGEM, cada um com a frente em cima e o verso embaixo (empilhados) —
+ * poupa papel num lote grande, já que o formato antigo (1 por folha A4
+ * retrato, frente e verso lado a lado) gastava uma folha inteira por
+ * pessoa. Por isso a frente e o verso são desenhados um embaixo do outro
+ * no sistema de coordenadas deste gerador (não mais lado a lado) — é o que
+ * createBadgeDocTripleLandscape espera.
  */
 
-import { createBadgeDoc, unwrapBadgeDoc } from './badgeLayout';
+import { createBadgeDocTripleLandscape, unwrapBadgeDoc } from './badgeLayout';
 import type { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
@@ -58,11 +66,12 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
   const toastId = toast.loading(`Gerando crachá de Almoxarifado para ${employee.name}...`);
 
   try {
-    // Folha A4 retrato com o cartão em 110 x 85mm (frente + verso lado a
-    // lado) — mesmo tamanho físico final dos outros crachás (55x85mm por
-    // face). O valor aqui é a largura total das DUAS faces desenhadas
-    // lado a lado (a frente ocupa x:0-55, o verso x:55-110 via offset bx).
-    const doc = createBadgeDoc(110, 85, true, sharedDoc);
+    // 3 por folha A4 paisagem — frente (y:0-85) e verso (y:95-180)
+    // empilhados, com 10mm de espaço entre as duas faces. A largura do
+    // desenho é só 55mm (uma face), já que frente e verso não ficam mais
+    // lado a lado.
+    const FACE_GAP = 10;
+    const doc = createBadgeDocTripleLandscape(55, 85 * 2 + FACE_GAP, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -129,25 +138,26 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
     doc.text(splitRole, 6, y + 3.2);
 
     // =====================================================================
-    // VERSO — só a logo grande da Support Mining
+    // VERSO — só a logo grande da Support Mining, empilhado ABAIXO da
+    // frente (by desloca em Y, não em X — antes ficava ao lado, offset bx)
     // =====================================================================
-    const bx = 55; // offset da face de trás
+    const by = 85 + FACE_GAP;
     doc.setFillColor(white);
-    doc.rect(bx, 0, 55, 85, 'F');
+    doc.rect(0, by, 55, 85, 'F');
     doc.setDrawColor(grayBorder);
-    doc.rect(bx + 1, 1, 53, 83, 'S');
+    doc.rect(1, by + 1, 53, 83, 'S');
 
     try {
       const logoBase64 = await loadImage(logoMining);
       // Logo grande, centralizada na face inteira
-      doc.addImage(logoBase64, 'PNG', bx + 9.5, 30, 36, 27.5, undefined, 'FAST');
+      doc.addImage(logoBase64, 'PNG', 9.5, by + 30, 36, 27.5, undefined, 'FAST');
     } catch (error) {
       doc.setTextColor(black);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.text('SUPPORT+MINING', bx + 27.5, 42, { align: 'center' });
+      doc.text('SUPPORT+MINING', 27.5, by + 42, { align: 'center' });
       doc.setFontSize(6);
-      doc.text('ENGENHARIA', bx + 27.5, 47, { align: 'center' });
+      doc.text('ENGENHARIA', 27.5, by + 47, { align: 'center' });
     }
 
     const rawDoc = unwrapBadgeDoc(doc);
