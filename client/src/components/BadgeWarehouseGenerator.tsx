@@ -7,23 +7,30 @@
  *
  * DIMENSÕES: 55mm x 85mm por face — mesmo tamanho padrão dos outros crachás.
  *
- * Layout de impressão (ideia do Gilvando, 18/09): 3 colaboradores por folha
- * A4 PAISAGEM, cada um com a frente em cima e o verso embaixo (empilhados) —
- * poupa papel num lote grande, já que o formato antigo (1 por folha A4
- * retrato, frente e verso lado a lado) gastava uma folha inteira por
- * pessoa. Por isso a frente e o verso são desenhados um embaixo do outro
- * no sistema de coordenadas deste gerador (não mais lado a lado) — é o que
- * createBadgeDocTripleLandscape espera.
+ * Layout de impressão (ideia do Gilvando, 18/09, ajustado no mesmo dia):
+ * 4 colaboradores por folha A4 PAISAGEM, cada um com a frente em cima e o
+ * verso COLADO embaixo (sem espaço entre as duas — pensado pra DOBRAR o
+ * papel ali no meio, não cortar frente e verso separados). Como o verso
+ * fica de cabeça para baixo em relação à frente até a hora de dobrar, a
+ * logo (e o texto de reserva, se a logo não carregar) são desenhados
+ * virados 180° — assim, depois de dobrado, o verso aparece na orientação
+ * certa.
  */
 
-import { createBadgeDocTripleLandscape, unwrapBadgeDoc } from './badgeLayout';
+import { createBadgeDocGridLandscape, unwrapBadgeDoc } from './badgeLayout';
 import type { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import type { Employee } from '@/lib/types';
 import { toast } from 'sonner';
 import logoMining from '@/assets/logo-support-mining.png';
 
-const loadImage = (url: string): Promise<string> => {
+// 4 colaboradores por folha (ideia do Gilvando, 18/09 — "percebi que tem espaço").
+const COLUMNS_PER_PAGE = 4;
+
+/** Carrega a imagem e devolve como data URL — opcionalmente virada 180°
+ * (usada no verso do crachá, que fica de cabeça para baixo até a pessoa
+ * dobrar o papel ao meio). */
+const loadImage = (url: string, rotate180 = false): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -36,6 +43,10 @@ const loadImage = (url: string): Promise<string> => {
         if (!ctx) {
           reject(new Error('Failed to get canvas context'));
           return;
+        }
+        if (rotate180) {
+          ctx.translate(canvas.width, canvas.height);
+          ctx.rotate(Math.PI);
         }
         ctx.drawImage(img, 0, 0);
         resolve(canvas.toDataURL('image/png'));
@@ -66,12 +77,11 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
   const toastId = toast.loading(`Gerando crachá de Almoxarifado para ${employee.name}...`);
 
   try {
-    // 3 por folha A4 paisagem — frente (y:0-85) e verso (y:95-180)
-    // empilhados, com 10mm de espaço entre as duas faces. A largura do
-    // desenho é só 55mm (uma face), já que frente e verso não ficam mais
-    // lado a lado.
-    const FACE_GAP = 10;
-    const doc = createBadgeDocTripleLandscape(55, 85 * 2 + FACE_GAP, sharedDoc);
+    // Frente (y:0-85) e verso (y:85-170) empilhados e COLADOS — sem
+    // espaço entre as duas, já que a ideia é dobrar o papel bem no meio.
+    // A largura do desenho é só 55mm (uma face), já que frente e verso
+    // não ficam mais lado a lado.
+    const doc = createBadgeDocGridLandscape(55, 85 * 2, COLUMNS_PER_PAGE, sharedDoc);
 
     const black = '#000000';
     const white = '#ffffff';
@@ -138,26 +148,38 @@ export const generateBadgeWarehousePDF = async (employee: Employee, sharedDoc?: 
     doc.text(splitRole, 6, y + 3.2);
 
     // =====================================================================
-    // VERSO — só a logo grande da Support Mining, empilhado ABAIXO da
-    // frente (by desloca em Y, não em X — antes ficava ao lado, offset bx)
+    // VERSO — só a logo grande da Support Mining, colada ABAIXO da frente
+    // (by desloca em Y, não em X — antes ficava ao lado, offset bx) e
+    // virada 180°: depois de dobrar o papel ao meio, aparece do jeito
+    // certo (achado do Gilvando, 18/09).
     // =====================================================================
-    const by = 85 + FACE_GAP;
+    const by = 85;
     doc.setFillColor(white);
     doc.rect(0, by, 55, 85, 'F');
     doc.setDrawColor(grayBorder);
     doc.rect(1, by + 1, 53, 83, 'S');
 
     try {
-      const logoBase64 = await loadImage(logoMining);
+      const logoBase64 = await loadImage(logoMining, true);
       // Logo grande, centralizada na face inteira
       doc.addImage(logoBase64, 'PNG', 9.5, by + 30, 36, 27.5, undefined, 'FAST');
     } catch (error) {
+      // Texto de reserva também virado 180° (angle), pelo mesmo motivo da
+      // logo. NÃO uso align:'center' junto com angle — é uma combinação
+      // com bug conhecido no jsPDF (a centralização soma o deslocamento
+      // do jeito errado quando o texto está rotacionado 180°, jogando o
+      // texto pra fora do cartão). Calculo a centralização manualmente
+      // via getTextWidth: texto rotacionado 180° "cresce" da âncora pra
+      // ESQUERDA (o oposto do texto normal), então a âncora precisa ficar
+      // deslocada pra DIREITA em metade da largura do texto.
       doc.setTextColor(black);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.text('SUPPORT+MINING', 27.5, by + 42, { align: 'center' });
+      const titleWidth = doc.getTextWidth('SUPPORT+MINING');
+      doc.text('SUPPORT+MINING', 27.5 + titleWidth / 2, by + 43, { angle: 180 });
       doc.setFontSize(6);
-      doc.text('ENGENHARIA', 27.5, by + 47, { align: 'center' });
+      const subtitleWidth = doc.getTextWidth('ENGENHARIA');
+      doc.text('ENGENHARIA', 27.5 + subtitleWidth / 2, by + 38, { angle: 180 });
     }
 
     const rawDoc = unwrapBadgeDoc(doc);

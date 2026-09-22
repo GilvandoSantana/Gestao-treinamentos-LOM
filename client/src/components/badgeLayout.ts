@@ -155,39 +155,41 @@ export function createBadgeDoc(
   return wrapDocWithLayout(layout);
 }
 
-/** Símbolo pra guardar, no próprio documento, qual dos 3 espaços da folha
- * (0, 1 ou 2) já foi ocupado — usado só pelo layout "3 por folha" abaixo,
- * pra saber quando começar página nova e em qual coluna desenhar o próximo
- * crachá do lote. */
-const TRIPLE_SLOT_INDEX = Symbol('tripleSlotIndex');
+/** Símbolo pra guardar, no próprio documento, qual das colunas da folha já
+ * foi ocupada — usado só pelo layout "N por folha" abaixo, pra saber
+ * quando começar página nova e em qual coluna desenhar o próximo crachá
+ * do lote. */
+const GRID_SLOT_INDEX = Symbol('gridSlotIndex');
 
 const A4_LANDSCAPE_WIDTH_MM = 297;
 const A4_LANDSCAPE_HEIGHT_MM = 210;
 
 /** Espaço entre as colunas, e entre a coluna mais à esquerda/direita e a
- * borda da folha (calculado pra centralizar as 3 colunas juntas). */
-const TRIPLE_COLUMN_GAP_MM = 12;
+ * borda da folha (calculado pra centralizar as colunas juntas). */
+const GRID_COLUMN_GAP_MM = 12;
 
 /**
- * Ideia do Gilvando (18/09): crachá do Almoxarifado impresso 3 por folha
- * A4 PAISAGEM, cada colaborador com frente (QR code) em cima e verso (logo)
- * embaixo, lado a lado com os outros dois — poupa papel num lote grande,
- * já que o formato de 1 por folha (createBadgeSheet) gastava uma folha
- * inteira por pessoa.
+ * Ideia do Gilvando (18/09, ajustado no mesmo dia): crachá do Almoxarifado
+ * impresso em várias colunas numa folha A4 PAISAGEM, cada colaborador com
+ * frente (QR code) em cima e verso (logo) colado embaixo — poupa papel num
+ * lote grande, já que o formato de 1 por folha (createBadgeSheet) gastava
+ * uma folha inteira por pessoa.
  *
- * O gerador precisa desenhar frente e verso EMPILHADOS no sistema de
- * coordenadas dele (frente ocupando y:[0,sourceHeight], verso ocupando
- * y:[sourceHeight+gap, sourceHeight*2+gap] — não lado a lado como no
- * layout de 1 por folha), passando sourceHeight*2+gap como altura total
- * pra este layout escalar certo.
+ * O gerador precisa desenhar frente e verso EMPILHADOS e COLADOS no sistema
+ * de coordenadas dele (frente ocupando y:[0,sourceHeight], verso ocupando
+ * y:[sourceHeight,sourceHeight*2] — sem espaço entre as duas, já que a
+ * ideia é dobrar o papel bem no meio pra virar frente/verso de verdade),
+ * passando sourceHeight*2 como altura total pra este layout escalar certo.
  *
  * @param sourceWidth  largura do sistema de coordenadas de UMA face
  * @param sourceTotalHeight altura do sistema de coordenadas do desenho
- *   INTEIRO (frente + espaço + verso, empilhados)
+ *   INTEIRO (frente + verso, empilhados e colados)
+ * @param columns número de colunas (colaboradores) por folha
  */
-export function createBadgeSheetTripleLandscape(
+export function createBadgeSheetGridLandscape(
   sourceWidth: number,
   sourceTotalHeight: number,
+  columns: number,
   existingDoc?: jsPDF
 ): BadgeLayout {
   const doc = existingDoc
@@ -199,15 +201,15 @@ export function createBadgeSheetTripleLandscape(
       });
   (doc as any)[RAW_DOC] = doc;
 
-  const slotIndex: number = existingDoc ? ((doc as any)[TRIPLE_SLOT_INDEX] ?? 0) : 0;
+  const slotIndex: number = existingDoc ? ((doc as any)[GRID_SLOT_INDEX] ?? 0) : 0;
 
-  // Só começa página nova quando as 3 colunas da página atual já estão
-  // ocupadas (voltando pro slot 0) — as duas primeiras chamadas de um lote
-  // reaproveitam a MESMA página que a anterior já criou.
+  // Só começa página nova quando todas as colunas da página atual já estão
+  // ocupadas (voltando pro slot 0) — as chamadas anteriores de um lote
+  // reaproveitam a MESMA página que a primeira já criou.
   if (existingDoc && slotIndex === 0) {
     doc.addPage('a4', 'landscape');
   }
-  (doc as any)[TRIPLE_SLOT_INDEX] = (slotIndex + 1) % 3;
+  (doc as any)[GRID_SLOT_INDEX] = (slotIndex + 1) % columns;
 
   const targetWidth = BADGE_MM.singleWidth; // uma coluna = largura de UMA face (54mm)
   const targetHeight = sourceTotalHeight; // sem redução — a "folha" da coluna já é do tamanho do desenho
@@ -217,9 +219,9 @@ export function createBadgeSheetTripleLandscape(
   const drawnWidth = sourceWidth * scale;
   const drawnHeight = sourceTotalHeight * scale;
 
-  const totalColumnsWidth = targetWidth * 3 + TRIPLE_COLUMN_GAP_MM * 2;
+  const totalColumnsWidth = targetWidth * columns + GRID_COLUMN_GAP_MM * (columns - 1);
   const leftMargin = (A4_LANDSCAPE_WIDTH_MM - totalColumnsWidth) / 2;
-  const columnX = leftMargin + slotIndex * (targetWidth + TRIPLE_COLUMN_GAP_MM);
+  const columnX = leftMargin + slotIndex * (targetWidth + GRID_COLUMN_GAP_MM);
   const columnY = (A4_LANDSCAPE_HEIGHT_MM - targetHeight) / 2;
 
   const offsetX = columnX + (targetWidth - drawnWidth) / 2;
@@ -236,15 +238,16 @@ export function createBadgeSheetTripleLandscape(
   };
 }
 
-/** Mesma ideia de createBadgeDoc, mas pro layout "3 por folha" acima —
+/** Mesma ideia de createBadgeDoc, mas pro layout "N por folha" acima —
  * devolve o jsPDF adaptado pra o gerador continuar desenhando nas
  * coordenadas antigas dele. */
-export function createBadgeDocTripleLandscape(
+export function createBadgeDocGridLandscape(
   sourceWidth: number,
   sourceTotalHeight: number,
+  columns: number,
   existingDoc?: jsPDF
 ): jsPDF {
-  const layout = createBadgeSheetTripleLandscape(sourceWidth, sourceTotalHeight, existingDoc);
+  const layout = createBadgeSheetGridLandscape(sourceWidth, sourceTotalHeight, columns, existingDoc);
   drawCutMarks(layout, sourceWidth, sourceTotalHeight);
   return wrapDocWithLayout(layout);
 }
