@@ -83,6 +83,7 @@ export type ActivityAction =
   | "warehouse.itemCreate"
   | "warehouse.itemUpdate"
   | "warehouse.itemDelete"
+  | "warehouse.itemQuantityAdjust"
   | "warehouse.stockIn"
   | "warehouse.stockOut"
   | "warehouse.toolDeliver"

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { masterAdminProcedure, requirePermission, router } from "../_core/trpc";
+import { masterAdminProcedure, organizationAdminProcedure, requirePermission, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -147,6 +147,43 @@ export const warehouseRouter = router({
           targetId: input.id,
         });
         return { success: true } as const;
+      }),
+
+    // Só ADM (organizationAdminProcedure) — ajustar a quantidade em estoque
+    // direto, sem passar por Entrada/Saída, pra corrigir divergência de
+    // contagem física. Fica registrado como uma movimentação normal (entrada
+    // ou saída, conforme o sinal do ajuste), então continua tudo rastreável
+    // no histórico — só quem pode fazer é que muda.
+    adjustItemQuantity: organizationAdminProcedure
+      .input(z.object({ id: z.string(), newQuantity: z.number().min(0), reason: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.siteContract) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum contrato selecionado." });
+        }
+        const current = await getWarehouseItemById(input.id);
+        if (!current || current.contract !== ctx.siteContract) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Item não encontrado." });
+        }
+        const delta = Math.round((input.newQuantity - current.quantity) * 100) / 100;
+        if (delta === 0) {
+          return { changed: false, quantity: current.quantity } as const;
+        }
+        await createWarehouseMovement(uuidv4(), ctx.siteContract, {
+          itemId: input.id,
+          movementType: delta > 0 ? "entrada" : "saida",
+          quantity: Math.abs(delta),
+          responsible: ctx.siteAdminUsername ?? null,
+          notes: `Ajuste manual de estoque por administrador${input.reason?.trim() ? " — " + input.reason.trim() : ""} (saldo anterior: ${current.quantity}, novo saldo: ${input.newQuantity})`,
+        });
+        void logActivity({
+          username: ctx.siteAdminUsername,
+          role: ctx.siteRole,
+          action: "warehouse.itemQuantityAdjust",
+          targetType: "warehouseItem",
+          targetId: input.id,
+          details: `${current.quantity} → ${input.newQuantity}${input.reason?.trim() ? " (" + input.reason.trim() + ")" : ""}`,
+        });
+        return { changed: true, quantity: input.newQuantity } as const;
       }),
 
     createMovement: requirePermission('manageWarehouse')
