@@ -222,6 +222,35 @@ async function startServer() {
     res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
+  // ⚠️ TEMPORÁRIO (18/09) — rota só pra buscar a foto dos aniversariantes
+  // do mês, pra colocar no cartaz do Canva. Mesmo esquema das rotas
+  // anteriores (segredo fixo, será REMOVIDA assim que o cartaz estiver
+  // pronto). Achado: as fotos usam URL ASSINADA (getPhotoUrl/
+  // getAllPhotoUrls em supabase-storage.ts), não um campo direto na
+  // tabela — a tentativa anterior buscava um campo que não existe.
+  app.get("/api/temp-birthday-photos", async (req, res) => {
+    const TEMP_SECRET = "fU5KkfeufaptaQLJhnGDcucAOEqEDYme";
+    const provided = typeof req.query.secret === "string" ? req.query.secret : "";
+    if (!timingSafeStringEqual(provided, TEMP_SECRET)) {
+      return res.status(404).end();
+    }
+    const { getAllEmployees } = await import("../db-employees");
+    const { getAllPhotoUrls } = await import("../supabase-storage");
+    const employees = await getAllEmployees();
+    const photoUrls = await getAllPhotoUrls();
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const results = employees
+      .filter((e: any) => !e.dismissed && e.birthDate)
+      .map((e: any) => {
+        const [, month, day] = String(e.birthDate).split("-").map(Number);
+        return { name: e.name, day, month, photoUrl: photoUrls.get(e.id) || null };
+      })
+      .filter((e) => e.month === currentMonth && !Number.isNaN(e.day))
+      .sort((a, b) => a.day - b.day);
+    return res.status(200).json({ month: currentMonth, employees: results });
+  });
+
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e
