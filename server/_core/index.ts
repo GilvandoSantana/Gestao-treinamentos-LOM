@@ -222,33 +222,6 @@ async function startServer() {
     res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
-  // ⚠️ TEMPORÁRIO (18/09) — rota só pra buscar a lista de aniversariantes
-  // do mês atual, pra montar um cartaz no Canva. Protegida por um segredo
-  // fixo (não por sessão de admin), já que é de leitura só e vai ser
-  // REMOVIDA assim que o cartaz estiver pronto — não é pra ficar no
-  // código depois disso. Devolve só nome e dia do aniversário, nada mais
-  // sensível (sem CPF, telefone, matrícula, etc).
-  app.get("/api/temp-birthday-report", async (req, res) => {
-    const TEMP_SECRET = "_F3Y-1XpXnnjIP9D5Q7Joua4Xe9mowvC";
-    const provided = typeof req.query.secret === "string" ? req.query.secret : "";
-    if (!timingSafeStringEqual(provided, TEMP_SECRET)) {
-      return res.status(404).end();
-    }
-    const { getAllEmployees } = await import("../db-employees");
-    const employees = await getAllEmployees();
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const results = employees
-      .filter((e: any) => !e.dismissed && e.birthDate)
-      .map((e: any) => {
-        const [, month, day] = String(e.birthDate).split("-").map(Number);
-        return { name: e.name, day, month };
-      })
-      .filter((e) => e.month === currentMonth && !Number.isNaN(e.day))
-      .sort((a, b) => a.day - b.day);
-    return res.status(200).json({ month: currentMonth, employees: results });
-  });
-
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e
