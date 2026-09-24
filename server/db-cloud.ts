@@ -291,21 +291,24 @@ export async function listFolderContents(
     db.select().from(cloudFiles).where(fileCondition),
   ]);
 
-  const groupNameCache = new Map<string, string | null>();
-  const folders: CloudFolderInfo[] = [];
-  for (const row of folderRows) {
-    let hasAccess = true;
-    let groupName: string | null = null;
-    if (row.restrictedToGroupId) {
-      if (!groupNameCache.has(row.restrictedToGroupId)) {
-        const group = await getGroupById(row.restrictedToGroupId);
-        groupNameCache.set(row.restrictedToGroupId, group?.name ?? null);
-      }
-      groupName = groupNameCache.get(row.restrictedToGroupId) ?? null;
-      hasAccess = ctx ? await canAccessFolder(contractSlug, row.id, ctx) : true;
-    }
-    folders.push(toFolderInfo(row, hasAccess, groupName));
-  }
+  // Nomes de grupo, resolvidos uma vez por grupo (não por pasta) antes de
+  // paralelizar — evita repetir a mesma consulta quando várias pastas
+  // irmãs compartilham a mesma restrição, sem risco de corrida entre
+  // chamadas paralelas checando o cache ao mesmo tempo.
+  const uniqueGroupIds = Array.from(new Set(folderRows.map((r) => r.restrictedToGroupId).filter((id): id is string => !!id)));
+  const groupNameEntries = await Promise.all(
+    uniqueGroupIds.map(async (id) => [id, (await getGroupById(id))?.name ?? null] as const)
+  );
+  const groupNameCache = new Map(groupNameEntries);
+
+  const folders: CloudFolderInfo[] = await Promise.all(
+    folderRows.map(async (row) => {
+      if (!row.restrictedToGroupId) return toFolderInfo(row, true, null);
+      const groupName = groupNameCache.get(row.restrictedToGroupId) ?? null;
+      const hasAccess = ctx ? await canAccessFolder(contractSlug, row.id, ctx) : true;
+      return toFolderInfo(row, hasAccess, groupName);
+    })
+  );
 
   return {
     folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
