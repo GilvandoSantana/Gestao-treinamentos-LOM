@@ -222,6 +222,25 @@ async function startServer() {
     res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
+  // TEMP DIAGNOSTIC — Gilvando contesta com razão: o programa de
+  // sincronização mostra arquivos numa pasta que eu disse estar vazia, e
+  // a barra de espaço usado do site mostra consumo. Verificando direto.
+  app.get("/api/temp-cloud-diag2", async (req, res) => {
+    const secret = "8mZ4vQeYnH2xKpR9tLbW7cJd3sNaXoV6";
+    const provided = req.query.secret;
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+    const namePart = typeof req.query.name === "string" ? req.query.name : "Ademilson";
+    try {
+      const { getCloudDiagByName } = await import("../db-cloud");
+      const data = await getCloudDiagByName(namePart);
+      return res.status(200).json(data);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e

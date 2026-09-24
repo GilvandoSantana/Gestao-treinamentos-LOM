@@ -316,6 +316,51 @@ export async function listFolderContents(
   };
 }
 
+/** TEMP DIAGNOSTIC (remover após uso) — Gilvando contesta com razão: o
+ * programa de sincronização (Windows) mostra arquivos numa pasta que eu
+ * disse estar vazia, e a barra de espaço usado do site também mostra
+ * consumo. Verificando direto, sem adivinhar: pasta por nome (com
+ * arquivos e tamanhos) + total de armazenamento usado no contrato x soma
+ * real dos tamanhos de arquivo no banco. */
+export async function getCloudDiagByName(namePart: string) {
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+
+  const matches = await db.select().from(cloudFolders).where(sql`${cloudFolders.name} LIKE ${`%${namePart}%`}`);
+  const results = await Promise.all(
+    matches.map(async (folder) => {
+      const files = await db
+        .select({ id: cloudFiles.id, name: cloudFiles.name, fileSize: cloudFiles.fileSize, deletedAt: cloudFiles.deletedAt, createdAt: cloudFiles.createdAt, r2Key: cloudFiles.r2Key, fileUrl: cloudFiles.fileUrl })
+        .from(cloudFiles)
+        .where(eq(cloudFiles.folderId, folder.id));
+      const children = await db.select({ id: cloudFolders.id, name: cloudFolders.name, deletedAt: cloudFolders.deletedAt }).from(cloudFolders).where(eq(cloudFolders.parentId, folder.id));
+      return {
+        folderId: folder.id,
+        folderName: folder.name,
+        contractSlug: folder.contractSlug,
+        parentId: folder.parentId,
+        deletedAt: folder.deletedAt?.toISOString() ?? null,
+        directFiles: files.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null, createdAt: f.createdAt?.toISOString() ?? null })),
+        childFolders: children.map((c) => ({ ...c, deletedAt: c.deletedAt?.toISOString() ?? null })),
+      };
+    })
+  );
+
+  const allContracts = Array.from(new Set(matches.map((m) => m.contractSlug)));
+  const storageByContract = await Promise.all(
+    allContracts.map(async (contractSlug) => {
+      const storageRow = await db.select().from(cloudStorageConfig).where(eq(cloudStorageConfig.contractSlug, contractSlug));
+      const realSum = await db
+        .select({ sum: sql<number>`coalesce(sum(${cloudFiles.fileSize}), 0)` })
+        .from(cloudFiles)
+        .where(and(eq(cloudFiles.contractSlug, contractSlug), isNull(cloudFiles.deletedAt)));
+      return { contractSlug, storedUsedBytes: storageRow[0]?.usedBytes ?? null, realSumOfFileSizes: Number(realSum[0]?.sum ?? 0) };
+    })
+  );
+
+  return { matchCount: matches.length, folders: results, storageByContract };
+}
+
 /**
  * Busca a árvore inteira de pastas/arquivos de um contrato de uma vez só
  * — usada pelo programa de sincronização (Windows), que antes fazia uma
