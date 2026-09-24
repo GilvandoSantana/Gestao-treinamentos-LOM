@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst, buildConflictFileName } from "./upload-watcher.js";
+import { decideUploadAction, ensureCloudFolder, performUpload, checkDeletionBurst, countKnownDescendants, buildConflictFileName } from "./upload-watcher.js";
 
 describe("decideUploadAction", () => {
   it("arquivo sem nenhum registro na Nuvem → novo, deve subir", () => {
@@ -222,6 +222,45 @@ describe("checkDeletionBurst", () => {
     // antigas, então esta ainda é permitida.
     const later = checkDeletionBurst(timestamps, windowMs + 100_000, 5, windowMs);
     expect(later.allowed).toBe(true);
+  });
+});
+
+describe("countKnownDescendants", () => {
+  // Achado real (Gilvando, 23/09): renomear uma pasta local derrubou só
+  // UM evento de exclusão pro fs.watch (a pasta de topo "sumiu"), mesmo
+  // ela tendo 145 subpastas e 4.126 arquivos reais dentro — o freio de
+  // rajada (checkDeletionBurst, que conta EVENTOS) nunca via mais que 1 e
+  // deixava passar. Esta função mede o tamanho de verdade do que sumiu.
+
+  it("pasta sem nada conhecido dentro → zero", () => {
+    expect(countKnownDescendants("Colaboradores", ["Colaboradores"], [])).toBe(0);
+  });
+
+  it("não conta a própria pasta, só o que está dentro dela", () => {
+    const folders = ["Colaboradores", "Colaboradores/Ativos"];
+    const files = ["Colaboradores/nota.txt"];
+    expect(countKnownDescendants("Colaboradores", folders, files)).toBe(2);
+  });
+
+  it("soma subpastas e arquivos em vários níveis de profundidade", () => {
+    const folders = [
+      "Colaboradores",
+      "Colaboradores/Ativos",
+      "Colaboradores/Ativos/Fulano - Pintor",
+      "Colaboradores/Demitidos",
+    ];
+    const files = [
+      "Colaboradores/Ativos/Fulano - Pintor/rg.pdf",
+      "Colaboradores/Ativos/Fulano - Pintor/aso.pdf",
+      "Colaboradores/Demitidos/rescisao.pdf",
+    ];
+    expect(countKnownDescendants("Colaboradores", folders, files)).toBe(6);
+  });
+
+  it("não conta pastas/arquivos de fora dessa pasta, mesmo com nome parecido", () => {
+    const folders = ["Colaboradores", "ColaboradoresAntigos"];
+    const files = ["ColaboradoresAntigos/arquivo.pdf"];
+    expect(countKnownDescendants("Colaboradores", folders, files)).toBe(0);
   });
 });
 

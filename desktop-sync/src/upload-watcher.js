@@ -50,6 +50,40 @@ function checkDeletionBurst(recentTimestamps, now, limit = DELETE_BURST_LIMIT, w
   return { allowed, updatedTimestamps: withinWindow };
 }
 
+// Achado real (Gilvando, 23/09): renomear uma pasta local dentro da área
+// sincronizada é lido pelo fs.watch como "a pasta sumiu" — o Node não
+// distingue renomear/mover de excluir de verdade. Como isso derruba só
+// UMA pasta de topo de cada vez (não importa quantos milhares de arquivos
+// tem dentro dela), o freio de rajada acima — pensado pra MUITAS
+// exclusões separadas em pouco tempo — nunca via mais que 1 evento e
+// deixava passar. Foi assim que uma pasta com 145 subpastas e 4.126
+// arquivos reais de colaboradores foi excluída (foi pra Lixeira da Nuvem,
+// recuperável, mas mesmo assim) só porque a pasta tinha sido renomeada no
+// computador. Este limite trava pelo TAMANHO real do que sumiu de uma vez
+// (itens já conhecidos dentro da pasta), não pela quantidade de eventos —
+// cobre exatamente esse caso, que o freio de rajada não cobre.
+const AUTO_DELETE_FOLDER_ITEM_LIMIT = 20;
+
+/**
+ * Quantos itens (pastas + arquivos) já conhecidos na Nuvem estão dentro de
+ * uma pasta — usado pra medir o tamanho real de uma exclusão automática
+ * antes de deixar ela passar. Função pura, só olha pras chaves já
+ * conhecidas (sem tocar disco/rede), pra dar pra testar isolada.
+ * @param {string} parent
+ * @param {Iterable<string>} knownFolderKeys
+ * @param {Iterable<string>} knownFileKeys
+ */
+function countKnownDescendants(parent, knownFolderKeys, knownFileKeys) {
+  let count = 0;
+  for (const key of knownFolderKeys) {
+    if (key !== parent && isWithin(key, parent)) count++;
+  }
+  for (const key of knownFileKeys) {
+    if (isWithin(key, parent)) count++;
+  }
+  return count;
+}
+
 /**
  * Decide o que fazer com um arquivo local que acabou de mudar, a partir
  * do que já se sabe sobre ele na Nuvem. Função pura, sem tocar em disco
@@ -260,6 +294,25 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
       }
     },
   });
+  // Estado do freio de rajada (ver checkDeletionBurst) — mora aqui, não
+  // dentro da função pura, pra dar pra testar a regra isolada da parte com
+  // efeito colateral. "warnedMissingFolders" evita repetir o mesmo aviso a
+  // cada nova varredura enquanto a pasta continuar sumida.
+  let deletionTimestamps = [];
+  const warnedMissingFolders = new Set();
+  function tryEnqueueDeletion(key, id, isFolder) {
+    const result = checkDeletionBurst(deletionTimestamps, Date.now());
+    deletionTimestamps = result.updatedTimestamps;
+    if (!result.allowed) {
+      onLog(
+        `Muitas exclusões seguidas detectadas — pausado por segurança contra exclusão em massa. ` +
+          `Se for mesmo isso, clique em "Sincronizar agora" daqui a pouco pra confirmar.`,
+        'error'
+      );
+      return;
+    }
+    queue.enqueue(key, id, isFolder);
+  }
   function handleDeletion(relativePath) {
     const key = safeRelative(relativePath);
     if (stopped || isSuppressed(key)) return;
@@ -270,13 +323,28 @@ function startUploadWatcher({ folderPath, apiClient, getKnownCloudFiles, getKnow
       try { fs.lstatSync(safeLocalPath(folderPath, parent)); }
       catch (error) {
         if (error.code !== 'ENOENT') throw error;
-        queue.enqueue(parent, getKnownCloudFolders().get(parent), true);
+        const itemCount = countKnownDescendants(parent, getKnownCloudFolders().keys(), getKnownCloudFiles().keys());
+        if (itemCount > AUTO_DELETE_FOLDER_ITEM_LIMIT) {
+          if (!warnedMissingFolders.has(parent)) {
+            warnedMissingFolders.add(parent);
+            onLog(
+              `A pasta "${parent}" sumiu do computador de uma vez, com ${itemCount} itens dentro dela. ` +
+                `Por segurança, isso NÃO foi excluído automaticamente na Nuvem — pode ter sido só um RENOMEAR ou ` +
+                `MOVER local, que este programa não consegue diferenciar de apagar de verdade. Se foi mesmo ` +
+                `apagar, exclua pelo site. Se foi renomear ou mover, desfaça no computador ou refaça pelo site.`,
+              'error'
+            );
+          }
+          return;
+        }
+        warnedMissingFolders.delete(parent);
+        tryEnqueueDeletion(parent, getKnownCloudFolders().get(parent), true);
         return;
       }
     }
     const file = getKnownCloudFiles().get(key);
-    if (file) queue.enqueue(key, file.fileId, false);
-    else if (getKnownCloudFolders().has(key)) queue.enqueue(key, getKnownCloudFolders().get(key), true);
+    if (file) tryEnqueueDeletion(key, file.fileId, false);
+    else if (getKnownCloudFolders().has(key)) tryEnqueueDeletion(key, getKnownCloudFolders().get(key), true);
   }
   const resumeDeletions = () => queue.retry();
   const retryTimer = setInterval(() => queue.drain().catch(e => onLog(e.message, 'error')), 5000);
@@ -500,6 +568,7 @@ module.exports = {
   ensureCloudFolder,
   performUpload,
   checkDeletionBurst,
+  countKnownDescendants,
   startUploadWatcher,
   buildConflictFileName,
   walkLocalTree,
