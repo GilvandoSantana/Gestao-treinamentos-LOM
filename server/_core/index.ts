@@ -263,6 +263,27 @@ async function startServer() {
     }
   });
 
+  // TEMP DIAGNOSTIC — a pasta f1bfc6c6 foi apagada às 17:40:55, exatamente
+  // o mesmo instante dos 27 arquivos do Ademilson. Isso pode ser a pasta
+  // MÃE dele (uma exclusão recursiva que levou junto pastas de vários
+  // outros colaboradores). Sobe a cadeia de pais e desce por todos os
+  // descendentes pra medir o tamanho real do estrago.
+  app.get("/api/temp-cloud-diag5", async (req, res) => {
+    const secret = "Rk3WpN8vLqT5xYbC1mHoZ7dJaU4sEgQi";
+    const provided = req.query.secret;
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+    const folderId = typeof req.query.folderId === "string" ? req.query.folderId : "f1bfc6c6-a292-4f7d-86e0-0b62045d220e";
+    try {
+      const { getFolderSubtreeDiag } = await import("../db-cloud");
+      const data = await getFolderSubtreeDiag(folderId);
+      return res.status(200).json(data);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // TEMP DIAGNOSTIC — Gilvando confirmou direto no painel da Cloudflare
   // que os arquivos ESTÃO no R2. Comparando agora: o que o R2 tem de
   // verdade (prefixo do contrato) x o que o banco (cloudFiles.r2Key)

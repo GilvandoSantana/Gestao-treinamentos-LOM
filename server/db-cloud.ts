@@ -384,6 +384,70 @@ export async function getActivityDiag(startIso: string, endIso: string) {
   };
 }
 
+/** TEMP DIAGNOSTIC (remover após uso) — dado o id de uma pasta que foi
+ * excluída (ex.: f1bfc6c6, apagada às 17:40:55, mesmo instante dos 27
+ * arquivos do Ademilson), sobe a cadeia de pais (pra saber onde ela
+ * ficava) e desce por TODOS os descendentes (pra saber quantas pastas e
+ * arquivos reais foram junto nessa exclusão recursiva) — mesmo estando
+ * tudo na lixeira (deletedAt preenchido), pois é isso que queremos ver. */
+export async function getFolderSubtreeDiag(rootFolderId: string) {
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+
+  const ancestry: Array<{ id: string; name: string; parentId: string | null; deletedAt: string | null; contractSlug: string }> = [];
+  let currentId: string | null = rootFolderId;
+  let guard = 0;
+  while (currentId && guard < 50) {
+    guard++;
+    const rows = await db.select().from(cloudFolders).where(eq(cloudFolders.id, currentId));
+    const f = rows[0];
+    if (!f) break;
+    ancestry.push({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId,
+      deletedAt: f.deletedAt?.toISOString() ?? null,
+      contractSlug: f.contractSlug,
+    });
+    currentId = f.parentId;
+  }
+
+  const allDescendants: Array<{ id: string; name: string; parentId: string | null; deletedAt: string | null }> = [];
+  let frontier = [rootFolderId];
+  let guard2 = 0;
+  while (frontier.length > 0 && guard2 < 500) {
+    guard2++;
+    const children = await db.select().from(cloudFolders).where(inArray(cloudFolders.parentId, frontier));
+    if (children.length === 0) break;
+    allDescendants.push(
+      ...children.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, deletedAt: c.deletedAt?.toISOString() ?? null }))
+    );
+    frontier = children.map((c) => c.id);
+  }
+
+  const allFolderIds = [rootFolderId, ...allDescendants.map((f) => f.id)];
+  const filesAgg = await db
+    .select({ count: sql<number>`count(*)`, sum: sql<number>`coalesce(sum(${cloudFiles.fileSize}), 0)` })
+    .from(cloudFiles)
+    .where(inArray(cloudFiles.folderId, allFolderIds));
+
+  const filesByDeleted = await db
+    .select({ deleted: sql<number>`(${cloudFiles.deletedAt} is not null)`, count: sql<number>`count(*)`, sum: sql<number>`coalesce(sum(${cloudFiles.fileSize}), 0)` })
+    .from(cloudFiles)
+    .where(inArray(cloudFiles.folderId, allFolderIds))
+    .groupBy(sql`(${cloudFiles.deletedAt} is not null)`);
+
+  return {
+    rootFolderId,
+    ancestry,
+    descendantFolderCount: allDescendants.length,
+    totalFilesInSubtree: Number(filesAgg[0]?.count ?? 0),
+    totalBytesInSubtree: Number(filesAgg[0]?.sum ?? 0),
+    filesByDeletedStatus: filesByDeleted.map((r) => ({ deleted: !!r.deleted, count: Number(r.count), sumBytes: Number(r.sum) })),
+    sampleDescendantFolders: allDescendants.slice(0, 40),
+  };
+}
+
 /** TEMP DIAGNOSTIC (remover após uso) — compara o que o R2 (Cloudflare)
  * tem de verdade pra este contrato com o que o banco (cloudFiles.r2Key)
  * conhece. Se sobrar objeto no R2 sem linha correspondente no banco, a
