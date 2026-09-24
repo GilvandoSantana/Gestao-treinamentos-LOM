@@ -222,27 +222,6 @@ async function startServer() {
     res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
-  // TEMP DIAGNOSTIC — investigando relato do Gilvando (24/09): pastas da
-  // Nuvem aparecendo sem arquivos dentro no site, mesmo com o fix de
-  // performance já em produção. Rota somente leitura, protegida por
-  // segredo gerado na hora, pra comparar o que está de fato gravado no
-  // banco (pastas + contagem de arquivos por pasta) com o que a listagem
-  // normal devolve — remove assim que o diagnóstico terminar.
-  app.get("/api/temp-cloud-diag", async (req, res) => {
-    const secret = "QS87RNHZTdrR6b9LPNnWN5nK1KOGkjjQ";
-    const provided = req.query.secret;
-    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
-    try {
-      const { getCloudDiagSummary } = await import("../db-cloud");
-      const data = await getCloudDiagSummary();
-      return res.status(200).json(data);
-    } catch (error) {
-      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e

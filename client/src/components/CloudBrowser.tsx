@@ -179,7 +179,20 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
     setIsUploading(true);
     const folderCache = new Map<string, string | null>();
     let uploaded = 0;
-    let failed = 0;
+    // Achado real (Gilvando, 23-24/09): num lote grande enviado pelo
+    // celular, a pasta é criada (rápido, é só uma linha no banco), mas o
+    // upload do CONTEÚDO em si — que usa fetch() bruto, não tRPC — trava
+    // numa rede móvel instável e todo mundo cai no timeout ou numa falha
+    // de rede, um atrás do outro; o resultado é uma pasta inteira
+    // aparecendo criada, mas sem nenhum arquivo dentro (as pastas nunca
+    // ficam vazias por causa do texto sumir — é porque o arquivo nunca
+    // chegou a ser enviado de verdade). O toast de erro antigo ("X
+    // falharam") sumia da tela em poucos segundos e não dizia QUAIS
+    // arquivos — fácil de não notar, principalmente num lote de 100+
+    // itens. Agora guarda o nome de cada falha e avisa de um jeito que
+    // não desaparece sozinho, pra dar pra saber exatamente o que
+    // reenviar.
+    const failedNames: string[] = [];
 
     try {
       for (const { file, relativePath } of valid) {
@@ -207,7 +220,7 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
           );
           uploaded++;
         } catch (error) {
-          failed++;
+          failedNames.push(relativePath || file.name);
           console.error(`Falha ao enviar "${file.name}":`, error);
         }
       }
@@ -221,10 +234,15 @@ export default function CloudBrowser({ canManage, currentFolderId, onNavigate, i
 
     await refresh();
 
-    if (failed === 0) {
+    if (failedNames.length === 0) {
       toast.success(`${uploaded} arquivo${uploaded !== 1 ? 's' : ''} enviado${uploaded !== 1 ? 's' : ''}.`);
     } else {
-      toast.error(`${uploaded} enviado(s), ${failed} falharam.`);
+      const preview = failedNames.slice(0, 5).join(', ');
+      const rest = failedNames.length > 5 ? ` e mais ${failedNames.length - 5}` : '';
+      toast.error(
+        `${uploaded} enviado(s), ${failedNames.length} falharam (provavelmente a conexão caiu no meio do envio — tente de novo, se possível no Wi-Fi): ${preview}${rest}`,
+        { duration: 30_000 }
+      );
     }
   };
 
