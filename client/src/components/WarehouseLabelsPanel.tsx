@@ -2,6 +2,11 @@
  * Design: Industrial Blueprint — Neo-Industrial
  * WarehouseLabelsPanel: etiquetas com QR code para colaboradores e itens do
  * almoxarifado, prontas para imprimir.
+ *
+ * Etiqueta de ITEM segue um modelo fixo pedido pelo cliente: 130mm × 30mm,
+ * com o logo da Support Mining, código, nome e (pra ferramenta) patrimônio,
+ * e o QR code — ver ITEM_LABEL_WIDTH_MM/HEIGHT_MM abaixo. Etiqueta de
+ * colaborador continua no formato antigo (cartão 3 colunas).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -19,11 +24,20 @@ interface LabelData {
   title: string;
   subtitle: string;
   qrDataUrl: string;
+  /** Só preenchido pra item — usado no layout novo de etiqueta física. */
+  itemCode?: string;
+  patrimonio?: string | null;
 }
 
-// Cada folha impressa leva no máximo 9 QR codes (3 colunas × 3 linhas) —
-// evita etiquetas espremidas ou minúsculas demais pra escanear.
-const LABELS_PER_PAGE = 9;
+// Etiqueta de colaborador: cartão solto, cabem 9 por folha (3×3).
+const EMPLOYEE_LABELS_PER_PAGE = 9;
+
+// Etiqueta de item: tamanho FÍSICO fixo pedido pelo cliente (130mm × 30mm),
+// uma coluna só (130mm não cabe 2 lado a lado numa folha A4/carta) — 8 por
+// folha cabe com folga de sobra pra margem de impressora.
+const ITEM_LABEL_WIDTH_MM = 130;
+const ITEM_LABEL_HEIGHT_MM = 30;
+const ITEM_LABELS_PER_PAGE = 8;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -121,6 +135,8 @@ export default function WarehouseLabelsPanel() {
                 title: item.name,
                 subtitle: `Código: ${item.code} · Patrimônio: ${item.patrimonio}`,
                 qrDataUrl: await generateQR(`MAT:${item.code}|PAT:${item.patrimonio}|NOME:${safeName}`),
+                itemCode: item.code,
+                patrimonio: item.patrimonio,
               },
             ];
           }
@@ -132,6 +148,8 @@ export default function WarehouseLabelsPanel() {
               title: item.name,
               subtitle: `Código: ${item.code}`,
               qrDataUrl: await generateQR(`MAT:${item.code}`),
+              itemCode: item.code,
+              patrimonio: null,
             },
           ];
         })
@@ -144,7 +162,8 @@ export default function WarehouseLabelsPanel() {
 
   const handlePrint = () => window.print();
 
-  const pages = useMemo(() => chunk(labels, LABELS_PER_PAGE), [labels]);
+  const labelsPerPage = kind === 'item' ? ITEM_LABELS_PER_PAGE : EMPLOYEE_LABELS_PER_PAGE;
+  const pages = useMemo(() => chunk(labels, labelsPerPage), [labels, labelsPerPage]);
 
   return (
     <div className="max-w-4xl">
@@ -237,11 +256,12 @@ export default function WarehouseLabelsPanel() {
             Imprimir
           </button>
           <p className="text-xs text-muted-foreground text-center mb-4">
-            {labels.length} etiqueta(s) em {pages.length} folha{pages.length === 1 ? '' : 's'} (até {LABELS_PER_PAGE}{' '}
-            por folha)
+            {labels.length} etiqueta(s) em {pages.length} folha{pages.length === 1 ? '' : 's'} (até {labelsPerPage}{' '}
+            por folha{kind === 'item' ? ` · ${ITEM_LABEL_WIDTH_MM}mm × ${ITEM_LABEL_HEIGHT_MM}mm cada` : ''})
           </p>
 
-          {/* Pré-visualização na tela — usa as cores do tema normalmente */}
+          {/* Pré-visualização na tela — usa as cores do tema normalmente, não
+              precisa ser pixel-perfeita com a impressão física */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {labels.map((label) => (
               <div
@@ -260,24 +280,109 @@ export default function WarehouseLabelsPanel() {
       {labels.length > 0 &&
         createPortal(
           <div id="warehouse-labels-print-portal">
-            {pages.map((page, pageIndex) => (
-              <div
-                key={pageIndex}
-                className="grid grid-cols-3 gap-4 p-8"
-                style={{ pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto' }}
-              >
-                {page.map((label) => (
+            {kind === 'item'
+              ? pages.map((page, pageIndex) => (
                   <div
-                    key={`${label.kind}-${label.id}`}
-                    className="border border-black rounded-lg p-4 flex flex-col items-center text-center bg-white break-inside-avoid"
+                    key={pageIndex}
+                    className="flex flex-col items-center gap-[2mm] p-[4mm]"
+                    style={{ pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto' }}
                   >
-                    {label.qrDataUrl && <img src={label.qrDataUrl} alt="" className="w-28 h-28 mb-2" />}
-                    <p className="text-sm font-semibold text-black leading-tight">{label.title}</p>
-                    <p className="text-xs text-gray-700 leading-tight mt-0.5">{label.subtitle}</p>
+                    {page.map((label) => (
+                      <div
+                        key={`${label.kind}-${label.id}`}
+                        className="flex items-stretch overflow-hidden rounded-[1mm] break-inside-avoid"
+                        style={{
+                          width: `${ITEM_LABEL_WIDTH_MM}mm`,
+                          height: `${ITEM_LABEL_HEIGHT_MM}mm`,
+                          background: '#1c2b3a',
+                          color: '#ffffff',
+                        }}
+                      >
+                        <div className="flex items-center justify-center shrink-0" style={{ width: '42mm', padding: '2mm' }}>
+                          <img
+                            src="/logo-support-mining.png"
+                            alt=""
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          />
+                        </div>
+                        <div
+                          className="flex-1 min-w-0 flex flex-col justify-center"
+                          style={{ padding: '1.5mm 2mm', gap: '0.8mm' }}
+                        >
+                          <p
+                            style={{
+                              fontSize: '4.2mm',
+                              fontWeight: 700,
+                              color: '#cbd5e1',
+                              lineHeight: 1.1,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            CÓDIGO: {label.itemCode}
+                          </p>
+                          <p
+                            style={{
+                              fontSize: '3.8mm',
+                              fontWeight: 700,
+                              lineHeight: 1.15,
+                              textTransform: 'uppercase',
+                              color: '#ffffff',
+                              overflow: 'hidden',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}
+                          >
+                            {label.title}
+                          </p>
+                          {label.patrimonio && (
+                            <p
+                              style={{
+                                fontSize: '3.6mm',
+                                fontWeight: 600,
+                                color: '#cbd5e1',
+                                lineHeight: 1.1,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              PATRIMÔNIO: {label.patrimonio}
+                            </p>
+                          )}
+                        </div>
+                        <div
+                          className="flex items-center justify-center shrink-0"
+                          style={{ width: '24mm', margin: '2mm', background: '#ffffff', borderRadius: '1mm' }}
+                        >
+                          {label.qrDataUrl && (
+                            <img src={label.qrDataUrl} alt="" style={{ width: '90%', height: '90%' }} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              : pages.map((page, pageIndex) => (
+                  <div
+                    key={pageIndex}
+                    className="grid grid-cols-3 gap-4 p-8"
+                    style={{ pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto' }}
+                  >
+                    {page.map((label) => (
+                      <div
+                        key={`${label.kind}-${label.id}`}
+                        className="border border-black rounded-lg p-4 flex flex-col items-center text-center bg-white break-inside-avoid"
+                      >
+                        {label.qrDataUrl && <img src={label.qrDataUrl} alt="" className="w-28 h-28 mb-2" />}
+                        <p className="text-sm font-semibold text-black leading-tight">{label.title}</p>
+                        <p className="text-xs text-gray-700 leading-tight mt-0.5">{label.subtitle}</p>
+                      </div>
+                    ))}
                   </div>
                 ))}
-              </div>
-            ))}
           </div>,
           document.body
         )}
