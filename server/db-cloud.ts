@@ -359,6 +359,45 @@ export async function getCloudDiagSummary() {
       folderContractSlug: folderContractById.get(f.folderId!)!.contractSlug,
     }));
 
+  // Pistas do Gilvando (24/09): SEMPRE que a pasta foi criada pelo botão
+  // "Enviar pasta" (upload em lote, com subpastas), ela aparece vazia -
+  // testando aqui a hipótese de PASTA DUPLICADA: duas linhas de pasta com
+  // o mesmo nome/pai (uma de quando a estrutura foi criada manualmente
+  // ou por sincronização, outra da hora do "Enviar pasta"), e os
+  // arquivos de verdade foram parar na duplicata que NÃO é a que o site
+  // mostra ao navegar (a duplicidade deveria ter sido fechada pelos
+  // commits 9c043cb8/1c097a35/bb2afe45, mas pode ter sobrado caso
+  // anterior a eles, ou um novo caso não coberto).
+  const allFoldersForDup = await db
+    .select({ id: cloudFolders.id, contractSlug: cloudFolders.contractSlug, name: cloudFolders.name, parentId: cloudFolders.parentId, createdAt: cloudFolders.createdAt, deletedAt: cloudFolders.deletedAt })
+    .from(cloudFolders);
+  const dupKey = (f: { contractSlug: string; parentId: string | null; name: string }) =>
+    `${f.contractSlug}::${f.parentId ?? "root"}::${f.name.trim().toLowerCase()}`;
+  const groups = new Map<string, typeof allFoldersForDup>();
+  for (const f of allFoldersForDup) {
+    const k = dupKey(f);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(f);
+  }
+  const fileCountByFolderId = new Map<string, number>();
+  for (const f of filesWithFolder) {
+    if (!f.folderId) continue;
+    fileCountByFolderId.set(f.folderId, (fileCountByFolderId.get(f.folderId) ?? 0) + 1);
+  }
+  const duplicateGroups = Array.from(groups.values())
+    .filter((g) => g.length > 1)
+    .map((g) => ({
+      name: g[0].name,
+      contractSlug: g[0].contractSlug,
+      parentId: g[0].parentId,
+      copies: g.map((f) => ({
+        id: f.id,
+        createdAt: f.createdAt?.toISOString() ?? null,
+        deletedAt: f.deletedAt?.toISOString() ?? null,
+        fileCount: fileCountByFolderId.get(f.id) ?? 0,
+      })),
+    }));
+
   return {
     totalFoldersNotDeleted: totalFolders[0]?.count ?? 0,
     totalFilesNotDeleted: totalFiles[0]?.count ?? 0,
@@ -367,6 +406,8 @@ export async function getCloudDiagSummary() {
     orphanFilesSample: orphanFiles.slice(0, 10),
     contractMismatchCount: mismatched.length,
     contractMismatchSample: mismatched.slice(0, 15),
+    duplicateFolderGroupsCount: duplicateGroups.length,
+    duplicateFolderGroupsSample: duplicateGroups.slice(0, 20),
   };
 }
 
