@@ -398,6 +398,30 @@ export async function getCloudDiagSummary() {
       })),
     }));
 
+  // As 3 hipóteses anteriores (órfão, contractSlug errado, duplicata) não
+  // bateram (0, 0 e só 1 grupo irrelevante). Testando agora a hipótese
+  // mais provável que sobrou: upload em lote MUITO grande, pelo celular
+  // (webkitdirectory), interrompido no meio - a pasta é criada primeiro
+  // (resolveFolderPath), o arquivo só é enviado DEPOIS, um de cada vez,
+  // em sequência; se o navegador jogar a aba pra segundo plano ou a
+  // conexão cair no meio de centenas de arquivos, sobra uma pasta criada
+  // com zero arquivo dentro - exatamente o sintoma. Aqui: todas as
+  // pastas SEM nenhum arquivo direto dentro, agrupadas por hora de
+  // criação, pra ver se existe um "corte" no tempo (uploads OK até certa
+  // hora, depois só pasta vazia).
+  const nonDeletedFolders = allFoldersForDup.filter((f) => !f.deletedAt);
+  const emptyFolders = nonDeletedFolders.filter((f) => (fileCountByFolderId.get(f.id) ?? 0) === 0);
+  const emptyByHour = new Map<string, number>();
+  const filledByHour = new Map<string, number>();
+  for (const f of nonDeletedFolders) {
+    const hour = f.createdAt?.toISOString().slice(0, 13) ?? "?";
+    const isEmpty = (fileCountByFolderId.get(f.id) ?? 0) === 0;
+    const map = isEmpty ? emptyByHour : filledByHour;
+    map.set(hour, (map.get(hour) ?? 0) + 1);
+  }
+  const allHours = Array.from(new Set([...Array.from(emptyByHour.keys()), ...Array.from(filledByHour.keys())])).sort();
+  const timelineByHour = allHours.map((h) => ({ hour: h, emptyFolders: emptyByHour.get(h) ?? 0, filledFolders: filledByHour.get(h) ?? 0 }));
+
   return {
     totalFoldersNotDeleted: totalFolders[0]?.count ?? 0,
     totalFilesNotDeleted: totalFiles[0]?.count ?? 0,
@@ -408,6 +432,9 @@ export async function getCloudDiagSummary() {
     contractMismatchSample: mismatched.slice(0, 15),
     duplicateFolderGroupsCount: duplicateGroups.length,
     duplicateFolderGroupsSample: duplicateGroups.slice(0, 20),
+    emptyFoldersCount: emptyFolders.length,
+    filledFoldersCount: nonDeletedFolders.length - emptyFolders.length,
+    timelineByHour,
   };
 }
 
