@@ -316,26 +316,57 @@ export async function listFolderContents(
   };
 }
 
-/** TEMP DIAGNOSTIC (remover após uso) — raw counts por contrato/pasta,
- * direto do banco, sem passar pela lógica de acesso/permissão, pra
- * comparar com o que listFolderContents devolve. */
+/** TEMP DIAGNOSTIC (remover após uso) — resumo compacto e já analisado
+ * (não um dump bruto — o banco tem centenas de pastas), direto do banco,
+ * sem passar pela lógica de acesso/permissão do listFolderContents.
+ * Hipótese específica testada: arquivo com folderId certo, mas
+ * contractSlug diferente do da pasta que ele está dentro — nesse caso
+ * listFolderContents nunca devolveria ele (o fileCondition filtra por
+ * contractSlug E folderId ao mesmo tempo), mesmo a pasta aparecendo
+ * normalmente (ela é buscada só pelo próprio contractSlug dela). */
 export async function getCloudDiagSummary() {
   const db = await getDb();
   if (!db) return { error: "sem conexão com o banco" };
 
-  const folderRows = await db
-    .select({ id: cloudFolders.id, contractSlug: cloudFolders.contractSlug, name: cloudFolders.name, parentId: cloudFolders.parentId, deletedAt: cloudFolders.deletedAt, restrictedToGroupId: cloudFolders.restrictedToGroupId })
-    .from(cloudFolders);
+  const totalFolders = await db.select({ count: sql<number>`count(*)` }).from(cloudFolders).where(isNull(cloudFolders.deletedAt));
+  const totalFiles = await db.select({ count: sql<number>`count(*)` }).from(cloudFiles).where(isNull(cloudFiles.deletedAt));
+  const filesInFolders = await db.select({ count: sql<number>`count(*)` }).from(cloudFiles).where(and(isNull(cloudFiles.deletedAt), isNotNull(cloudFiles.folderId)));
 
-  const fileCounts = await db
-    .select({ contractSlug: cloudFiles.contractSlug, folderId: cloudFiles.folderId, deletedAt: cloudFiles.deletedAt, count: sql<number>`count(*)` })
+  // Arquivos cujo folderId não bate com NENHUMA pasta existente (órfãos).
+  const allFolderIds = new Set((await db.select({ id: cloudFolders.id }).from(cloudFolders)).map((f) => f.id));
+  const filesWithFolder = await db
+    .select({ id: cloudFiles.id, name: cloudFiles.name, contractSlug: cloudFiles.contractSlug, folderId: cloudFiles.folderId })
     .from(cloudFiles)
-    .groupBy(cloudFiles.contractSlug, cloudFiles.folderId, cloudFiles.deletedAt);
+    .where(and(isNull(cloudFiles.deletedAt), isNotNull(cloudFiles.folderId)));
+
+  const orphanFiles = filesWithFolder.filter((f) => f.folderId && !allFolderIds.has(f.folderId));
+
+  // Arquivos cujo contractSlug é diferente do contractSlug da pasta em
+  // que estão de fato (a hipótese principal).
+  const folderContractById = new Map(
+    (await db.select({ id: cloudFolders.id, contractSlug: cloudFolders.contractSlug, name: cloudFolders.name }).from(cloudFolders)).map(
+      (f) => [f.id, { contractSlug: f.contractSlug, name: f.name }]
+    )
+  );
+  const mismatched = filesWithFolder
+    .filter((f) => f.folderId && folderContractById.has(f.folderId) && folderContractById.get(f.folderId)!.contractSlug !== f.contractSlug)
+    .map((f) => ({
+      fileId: f.id,
+      fileName: f.name,
+      fileContractSlug: f.contractSlug,
+      folderId: f.folderId,
+      folderName: folderContractById.get(f.folderId!)!.name,
+      folderContractSlug: folderContractById.get(f.folderId!)!.contractSlug,
+    }));
 
   return {
-    totalFolders: folderRows.length,
-    folders: folderRows.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
-    fileCountsByFolder: fileCounts.map((c) => ({ ...c, count: Number(c.count) })),
+    totalFoldersNotDeleted: totalFolders[0]?.count ?? 0,
+    totalFilesNotDeleted: totalFiles[0]?.count ?? 0,
+    filesInsideAnyFolder: filesInFolders[0]?.count ?? 0,
+    orphanFilesCount: orphanFiles.length,
+    orphanFilesSample: orphanFiles.slice(0, 10),
+    contractMismatchCount: mismatched.length,
+    contractMismatchSample: mismatched.slice(0, 15),
   };
 }
 
