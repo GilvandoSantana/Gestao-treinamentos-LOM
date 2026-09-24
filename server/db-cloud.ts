@@ -316,6 +316,29 @@ export async function listFolderContents(
   };
 }
 
+/** TEMP DIAGNOSTIC (remover após uso) — raw counts por contrato/pasta,
+ * direto do banco, sem passar pela lógica de acesso/permissão, pra
+ * comparar com o que listFolderContents devolve. */
+export async function getCloudDiagSummary() {
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+
+  const folderRows = await db
+    .select({ id: cloudFolders.id, contractSlug: cloudFolders.contractSlug, name: cloudFolders.name, parentId: cloudFolders.parentId, deletedAt: cloudFolders.deletedAt, restrictedToGroupId: cloudFolders.restrictedToGroupId })
+    .from(cloudFolders);
+
+  const fileCounts = await db
+    .select({ contractSlug: cloudFiles.contractSlug, folderId: cloudFiles.folderId, deletedAt: cloudFiles.deletedAt, count: sql<number>`count(*)` })
+    .from(cloudFiles)
+    .groupBy(cloudFiles.contractSlug, cloudFiles.folderId, cloudFiles.deletedAt);
+
+  return {
+    totalFolders: folderRows.length,
+    folders: folderRows.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
+    fileCountsByFolder: fileCounts.map((c) => ({ ...c, count: Number(c.count) })),
+  };
+}
+
 /**
  * Busca a árvore inteira de pastas/arquivos de um contrato de uma vez só
  * — usada pelo programa de sincronização (Windows), que antes fazia uma
