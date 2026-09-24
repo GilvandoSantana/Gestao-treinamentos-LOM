@@ -361,6 +361,35 @@ export async function getCloudDiagByName(namePart: string) {
   return { matchCount: matches.length, folders: results, storageByContract };
 }
 
+/** TEMP DIAGNOSTIC (remover após uso) — compara o que o R2 (Cloudflare)
+ * tem de verdade pra este contrato com o que o banco (cloudFiles.r2Key)
+ * conhece. Se sobrar objeto no R2 sem linha correspondente no banco, a
+ * etapa que quebrou foi o registro final (createFileRecord, no
+ * /complete do upload em partes) — o conteúdo chegou no destino, só não
+ * virou "arquivo" pro site. */
+export async function compareR2WithDb(contractSlug: string) {
+  const { listObjectsInR2 } = await import("./r2-storage");
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+
+  const r2Objects = await listObjectsInR2(`${contractSlug}/`);
+  const dbFiles = await db
+    .select({ id: cloudFiles.id, name: cloudFiles.name, r2Key: cloudFiles.r2Key, fileSize: cloudFiles.fileSize, deletedAt: cloudFiles.deletedAt })
+    .from(cloudFiles)
+    .where(eq(cloudFiles.contractSlug, contractSlug));
+
+  const knownKeys = new Set(dbFiles.map((f) => f.r2Key).filter((k): k is string => !!k));
+  const orphanedInR2 = r2Objects.filter((o) => !knownKeys.has(o.key));
+
+  return {
+    r2ObjectCount: r2Objects.length,
+    dbFileRowCount: dbFiles.length,
+    orphanedInR2Count: orphanedInR2.length,
+    orphanedInR2Sample: orphanedInR2.slice(0, 20).map((o) => ({ key: o.key, size: o.size, lastModified: o.lastModified?.toISOString() ?? null })),
+    totalR2Bytes: r2Objects.reduce((sum, o) => sum + o.size, 0),
+  };
+}
+
 /**
  * Busca a árvore inteira de pastas/arquivos de um contrato de uma vez só
  * — usada pelo programa de sincronização (Windows), que antes fazia uma

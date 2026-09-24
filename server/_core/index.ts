@@ -241,6 +241,28 @@ async function startServer() {
     }
   });
 
+  // TEMP DIAGNOSTIC — Gilvando confirmou direto no painel da Cloudflare
+  // que os arquivos ESTÃO no R2. Comparando agora: o que o R2 tem de
+  // verdade (prefixo do contrato) x o que o banco (cloudFiles.r2Key)
+  // registra — se o R2 tiver MAIS objetos do que o banco conhece, a
+  // etapa que falhou foi o registro final no banco (/complete), não o
+  // envio em si.
+  app.get("/api/temp-cloud-diag3", async (req, res) => {
+    const secret = "Fj9RtY2mWpQ6zXbN4cLdK8vHaSoE1uGr";
+    const provided = req.query.secret;
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+    const contractSlug = typeof req.query.contract === "string" ? req.query.contract : "integridade-estrutural";
+    try {
+      const { compareR2WithDb } = await import("../db-cloud");
+      const data = await compareR2WithDb(contractSlug);
+      return res.status(200).json(data);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e
