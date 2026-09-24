@@ -361,6 +361,29 @@ export async function getCloudDiagByName(namePart: string) {
   return { matchCount: matches.length, folders: results, storageByContract };
 }
 
+/** TEMP DIAGNOSTIC (remover após uso) — os arquivos do Ademilson não
+ * sumiram: estão na Lixeira, numa pasta antiga (deletedAt igual ao dos
+ * 27 arquivos dela, ao mesmo tempo que uma pasta NOVA e vazia com o
+ * mesmo nome foi criada num pai diferente). Isso cheira a alguma ação
+ * de reorganização/limpeza de duplicatas em massa, não upload
+ * falhando. Aqui: o log de atividade (quem fez o quê) na janela exata
+ * do dia 23/09, pra achar a ação e o usuário responsável. */
+export async function getActivityDiag(startIso: string, endIso: string) {
+  const { activityLogs } = await import("../drizzle/schema");
+  const { and: andOp, gte, lte } = await import("drizzle-orm");
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+  const rows = await db
+    .select()
+    .from(activityLogs)
+    .where(andOp(gte(activityLogs.createdAt, new Date(startIso)), lte(activityLogs.createdAt, new Date(endIso))))
+    .orderBy(activityLogs.createdAt);
+  return {
+    count: rows.length,
+    rows: rows.map((r) => ({ ...r, createdAt: r.createdAt?.toISOString() ?? null })),
+  };
+}
+
 /** TEMP DIAGNOSTIC (remover após uso) — compara o que o R2 (Cloudflare)
  * tem de verdade pra este contrato com o que o banco (cloudFiles.r2Key)
  * conhece. Se sobrar objeto no R2 sem linha correspondente no banco, a

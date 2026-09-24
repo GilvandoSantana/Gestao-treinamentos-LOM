@@ -241,6 +241,28 @@ async function startServer() {
     }
   });
 
+  // TEMP DIAGNOSTIC — achado novo: os arquivos do Ademilson não
+  // desapareceram, estão na Lixeira (pasta antiga deletada ao mesmo
+  // tempo que uma pasta nova e vazia com o mesmo nome foi criada num
+  // pai diferente). Log de atividade da janela exata, pra achar quem/o
+  // que fez essa reorganização.
+  app.get("/api/temp-cloud-diag4", async (req, res) => {
+    const secret = "Nm7QrT3vXpL9zFcW2bYoK8sHjEaD5uGi";
+    const provided = req.query.secret;
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+    const start = typeof req.query.start === "string" ? req.query.start : "2026-09-23T17:00:00Z";
+    const end = typeof req.query.end === "string" ? req.query.end : "2026-09-23T19:00:00Z";
+    try {
+      const { getActivityDiag } = await import("../db-cloud");
+      const data = await getActivityDiag(start, end);
+      return res.status(200).json(data);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // TEMP DIAGNOSTIC — Gilvando confirmou direto no painel da Cloudflare
   // que os arquivos ESTÃO no R2. Comparando agora: o que o R2 tem de
   // verdade (prefixo do contrato) x o que o banco (cloudFiles.r2Key)
