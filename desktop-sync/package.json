@@ -1,6 +1,6 @@
 {
   "name": "gestao-nuvem-sync",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "Sincronizador de pasta local com a Nuvem do sistema de Gestão de Controle dos Contratos",
   "main": "src/main.js",
   "scripts": {
@@ -58,8 +58,7 @@
     },
     "artifactName": "GesCon-Nuvem-Setup.${ext}",
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Sincronização com a Nuvem"

@@ -20,6 +20,17 @@
  *
  * Só funciona no programa JÁ INSTALADO (empacotado) — rodando via
  * "npm start" em desenvolvimento, a checagem é pulada de propósito.
+ *
+ * Achado real (Gilvando, 24/09): o instalador precisa ser gerado com
+ * "oneClick": true no nsis (package.json, build.nsis) — só esse tipo de
+ * instalador do NSIS aceita rodar silencioso/sem clique nenhum, que é
+ * exatamente o que quitAndInstall() faz ao reiniciar sozinho. Com
+ * "oneClick": false (que também é a única forma de ligar
+ * "allowToChangeInstallationDirectory" — as duas opções são
+ * incompatíveis no electron-builder), o instalador abre um assistente
+ * que precisa de cliques, e como o reinício automático não interage com
+ * ele, a instalação nunca terminava de verdade: o programa reabria na
+ * versão antiga, via o mesmo "tem atualização" de novo, para sempre.
  */
 
 function setupAutoUpdater({ onLog, onUpdateReadyToInstall, getApiClient }) {
