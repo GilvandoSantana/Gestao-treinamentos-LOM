@@ -1514,3 +1514,25 @@ export async function releaseStorageReservation(id: string): Promise<void> {
   if (!db) throw new Error("Database not available");
   await db.delete(cloudStorageReservations).where(eq(cloudStorageReservations.id, id));
 }
+
+/** TEMP DIAGNOSTIC (remover após uso) — Gilvando apagou o conteúdo local
+ * da pasta sincronizada de propósito (recomeço), e o programa de
+ * sincronização refletiu isso como exclusão na Nuvem antes do freio de
+ * segurança pausar. Confere o que está mesmo na lixeira agora (nome,
+ * quem apagou, quando) pra confirmar o alcance exato do estrago. */
+export async function getTrashDiag(contractSlug?: string) {
+  const db = await getDb();
+  if (!db) return { error: "sem conexão com o banco" };
+  const folderWhere = contractSlug ? and(eq(cloudFolders.contractSlug, contractSlug), isNotNull(cloudFolders.deletedAt)) : isNotNull(cloudFolders.deletedAt);
+  const fileWhere = contractSlug ? and(eq(cloudFiles.contractSlug, contractSlug), isNotNull(cloudFiles.deletedAt)) : isNotNull(cloudFiles.deletedAt);
+  const [folders, files] = await Promise.all([
+    db.select({ id: cloudFolders.id, name: cloudFolders.name, parentId: cloudFolders.parentId, contractSlug: cloudFolders.contractSlug, deletedBy: cloudFolders.deletedBy, deletedAt: cloudFolders.deletedAt })
+      .from(cloudFolders).where(folderWhere).orderBy(desc(cloudFolders.deletedAt)),
+    db.select({ id: cloudFiles.id, name: cloudFiles.name, folderId: cloudFiles.folderId, contractSlug: cloudFiles.contractSlug, deletedBy: cloudFiles.deletedBy, deletedAt: cloudFiles.deletedAt })
+      .from(cloudFiles).where(fileWhere).orderBy(desc(cloudFiles.deletedAt)),
+  ]);
+  return {
+    folders: folders.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
+    files: files.map((f) => ({ ...f, deletedAt: f.deletedAt?.toISOString() ?? null })),
+  };
+}

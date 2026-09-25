@@ -222,6 +222,26 @@ async function startServer() {
     res.status(410).json({ error: "Esta operação não está disponível." });
   });
 
+  // TEMP DIAGNOSTIC (remover após uso) — Gilvando apagou o conteúdo local
+  // da pasta sincronizada de propósito e o programa de sincronização
+  // refletiu isso como exclusão na Nuvem antes do freio de segurança
+  // pausar. Confere o que está mesmo na lixeira agora.
+  app.get("/api/temp-trash-diag", async (req, res) => {
+    const secret = "c14b2OrPrW95bkvxNK27mr98CZ3gXbIJ";
+    const provided = req.query.secret;
+    if (typeof provided !== "string" || !timingSafeStringEqual(provided, secret)) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+    const contractSlug = typeof req.query.contract === "string" ? req.query.contract : undefined;
+    try {
+      const { getTrashDiag } = await import("../db-cloud");
+      const data = await getTrashDiag(contractSlug);
+      return res.status(200).json(data);
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Upload do instalador do programa de sincronização com a Nuvem
   // (Windows) — em PARTES (multipart), não numa requisição só: a Railway
   // tem um limite rígido de 5 minutos por requisição HTTP, sem exceção, e
