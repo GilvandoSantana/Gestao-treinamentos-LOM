@@ -33,6 +33,7 @@ vi.mock("./db-cloud-dedup", () => ({
 
 vi.mock("./r2-storage", () => ({
   deleteFromR2: vi.fn(),
+  deleteManyFromR2: vi.fn(),
   isR2Configured: false,
 }));
 

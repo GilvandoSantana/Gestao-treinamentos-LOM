@@ -12,6 +12,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -127,6 +128,35 @@ export async function deleteFromR2(key: string): Promise<void> {
     await requireClient().send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
   } catch (error) {
     console.error(`[R2] Falha ao excluir "${key}":`, error);
+  }
+}
+
+/** Achado real (Gilvando, 24/09): "Esvaziar lixeira" e "Excluir
+ * selecionados" às vezes falhavam sem explicação — a causa era apagar
+ * do R2 UMA CHAVE DE CADA VEZ, esperando cada uma responder antes de
+ * pedir a próxima. Com uma lixeira grande (milhares de arquivos, como a
+ * de uma restauração recente), isso significa milhares de idas-e-voltas
+ * sequenciais numa ÚNICA requisição HTTP — fácil passar do limite fixo
+ * de 5 minutos por requisição da Railway (o mesmo tipo de limite que já
+ * tinha nos forçado a dividir o upload em partes). A API do S3 (que o R2
+ * também fala) aceita apagar até 1000 chaves de uma vez, numa única
+ * chamada — usa isso aqui, em lotes, bem mais rápido que um por um. */
+export async function deleteManyFromR2(keys: string[]): Promise<void> {
+  const uniqueKeys = Array.from(new Set(keys)).filter(Boolean);
+  if (uniqueKeys.length === 0) return;
+  const S3_BATCH_DELETE_LIMIT = 1000;
+  for (let i = 0; i < uniqueKeys.length; i += S3_BATCH_DELETE_LIMIT) {
+    const batch = uniqueKeys.slice(i, i + S3_BATCH_DELETE_LIMIT);
+    try {
+      await requireClient().send(
+        new DeleteObjectsCommand({
+          Bucket: R2_BUCKET_NAME,
+          Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
+        })
+      );
+    } catch (error) {
+      console.error(`[R2] Falha ao excluir lote de ${batch.length} chave(s):`, error);
+    }
   }
 }
 

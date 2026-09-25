@@ -61,7 +61,7 @@ import {
   uploadNewVersion,
 } from "../db-cloud";
 import { findDuplicateFolderGroups, mergeFolderInto } from "../db-cloud-dedup";
-import { deleteFromR2, getR2DownloadUrl, getR2PreviewUrl, isR2Configured, uploadToR2 } from "../r2-storage";
+import { deleteFromR2, deleteManyFromR2, getR2DownloadUrl, getR2PreviewUrl, isR2Configured, uploadToR2 } from "../r2-storage";
 import { logActivity } from "../db-activity";
 
 export const cloudRouter = router({
@@ -798,9 +798,9 @@ export const cloudRouter = router({
         }
         const removed = await deleteFolderRecursive(input.id, ctx.siteContract, ctx.siteAdminUsername, true);
         let freedBytes = 0;
-        for (const key of removed.r2Keys) {
-          await deleteFromR2(key);
-        }
+        // Um lote por chamada (até 1000 chaves), não uma chamada por
+        // arquivo — ver comentário de deleteManyFromR2.
+        await deleteManyFromR2(removed.r2Keys);
         for (const url of removed.fileUrls) {
           await deleteCloudFileFromSupabase(url);
         }
@@ -841,9 +841,14 @@ export const cloudRouter = router({
       }
       const { folders, files } = await listTrash(ctx.siteContract);
 
+      // Junta as chaves do R2 de TODAS as pastas antes de apagar, pra
+      // apagar tudo em poucos lotes no final (deleteManyFromR2) em vez
+      // de um lote pequeno por pasta — com muitas pastas na lixeira,
+      // isso evita centenas de chamadas separadas ao R2.
+      const allR2Keys: string[] = [];
       for (const folder of folders) {
         const removed = await deleteFolderRecursive(folder.id, ctx.siteContract, ctx.siteAdminUsername, true);
-        for (const key of removed.r2Keys) await deleteFromR2(key);
+        allR2Keys.push(...removed.r2Keys);
         for (const url of removed.fileUrls) await deleteCloudFileFromSupabase(url);
       }
 
@@ -851,14 +856,15 @@ export const cloudRouter = router({
         const result = await permanentlyDeleteFile(file.id, ctx.siteContract);
         if (result) {
           const { file: deletedFile, versions } = result;
-          if (deletedFile.r2Key) await deleteFromR2(deletedFile.r2Key);
+          if (deletedFile.r2Key) allR2Keys.push(deletedFile.r2Key);
           else if (deletedFile.fileUrl) await deleteCloudFileFromSupabase(deletedFile.fileUrl);
           for (const v of versions) {
-            if (v.r2Key) await deleteFromR2(v.r2Key);
+            if (v.r2Key) allR2Keys.push(v.r2Key);
             else if (v.fileUrl) await deleteCloudFileFromSupabase(v.fileUrl);
           }
         }
       }
+      await deleteManyFromR2(allR2Keys);
 
       await recalculateStorageUsed(ctx.siteContract);
       void logActivity({

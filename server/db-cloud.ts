@@ -950,51 +950,69 @@ export async function deleteFolderRecursive(
     });
   }
 
+  // Daqui pra baixo é sempre exclusão DEFINITIVA — o caso "mover pra
+  // lixeira" já voltou lá em cima. Achado real (Gilvando, 24/09):
+  // "Esvaziar lixeira" e "Excluir selecionados" às vezes falhavam sem
+  // explicação — a causa era buscar a árvore e apagar item por item, uma
+  // consulta/exclusão por pasta e por arquivo (o mesmo tipo de N+1 já
+  // corrigido antes em listFolderContents). Numa pasta grande (milhares
+  // de arquivos, como a de uma restauração recente), isso vira milhares
+  // de idas-e-voltas sequenciais dentro de UMA requisição — fácil passar
+  // do limite fixo de 5 minutos por requisição da Railway. Aqui, a
+  // árvore inteira é buscada em poucas consultas em lote (uma por nível
+  // de profundidade, não uma por pasta) e apagada com poucos
+  // DELETE/SELECT com IN(...), em vez de um por item.
   const removed = { r2Keys: [] as string[], fileUrls: [] as string[] };
+  const CHUNK_SIZE = 500;
+  const chunks = <T,>(arr: T[]): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += CHUNK_SIZE) out.push(arr.slice(i, i + CHUNK_SIZE));
+    return out;
+  };
 
-  const subfolders = await db
-    .select()
-    .from(cloudFolders)
-    .where(and(eq(cloudFolders.parentId, id), eq(cloudFolders.contractSlug, contractSlug)));
-  for (const sub of subfolders) {
-    const inner = await deleteFolderRecursive(sub.id, contractSlug, username, permanent);
-    removed.r2Keys.push(...inner.r2Keys);
-    removed.fileUrls.push(...inner.fileUrls);
+  const allFolderIds = [id];
+  let frontier = [id];
+  while (frontier.length > 0) {
+    const children = await db
+      .select({ id: cloudFolders.id })
+      .from(cloudFolders)
+      .where(and(eq(cloudFolders.contractSlug, contractSlug), inArray(cloudFolders.parentId, frontier)));
+    if (children.length === 0) break;
+    frontier = children.map((c) => c.id);
+    allFolderIds.push(...frontier);
   }
 
-  const files = await db
-    .select()
-    .from(cloudFiles)
-    .where(and(eq(cloudFiles.folderId, id), eq(cloudFiles.contractSlug, contractSlug)));
+  const files: (typeof cloudFiles.$inferSelect)[] = [];
+  for (const folderIdChunk of chunks(allFolderIds)) {
+    files.push(
+      ...(await db
+        .select()
+        .from(cloudFiles)
+        .where(and(eq(cloudFiles.contractSlug, contractSlug), inArray(cloudFiles.folderId, folderIdChunk))))
+    );
+  }
+  for (const f of files) {
+    if (f.r2Key) removed.r2Keys.push(f.r2Key);
+    else if (f.fileUrl) removed.fileUrls.push(f.fileUrl);
+  }
 
-  if (permanent) {
-    for (const f of files) {
-      if (f.r2Key) removed.r2Keys.push(f.r2Key);
-      else if (f.fileUrl) removed.fileUrls.push(f.fileUrl);
-
-      const versions = await db.select().from(cloudFileVersions).where(eq(cloudFileVersions.fileId, f.id));
+  if (files.length > 0) {
+    const fileIds = files.map((f) => f.id);
+    for (const fileIdChunk of chunks(fileIds)) {
+      const versions = await db.select().from(cloudFileVersions).where(inArray(cloudFileVersions.fileId, fileIdChunk));
       for (const v of versions) {
         if (v.r2Key) removed.r2Keys.push(v.r2Key);
         else if (v.fileUrl) removed.fileUrls.push(v.fileUrl);
       }
-      await db.delete(cloudFileVersions).where(eq(cloudFileVersions.fileId, f.id));
+      await db.delete(cloudFileVersions).where(inArray(cloudFileVersions.fileId, fileIdChunk));
     }
-    if (files.length > 0) {
-      await db.delete(cloudFiles).where(and(eq(cloudFiles.folderId, id), eq(cloudFiles.contractSlug, contractSlug)));
+    for (const folderIdChunk of chunks(allFolderIds)) {
+      await db.delete(cloudFiles).where(and(eq(cloudFiles.contractSlug, contractSlug), inArray(cloudFiles.folderId, folderIdChunk)));
     }
-    await db.delete(cloudFolders).where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
-  } else {
-    const now = new Date();
-    if (files.length > 0) {
-      await db
-        .update(cloudFiles)
-        .set({ deletedAt: now, deletedBy: username })
-        .where(and(eq(cloudFiles.folderId, id), eq(cloudFiles.contractSlug, contractSlug)));
-    }
-    await db
-      .update(cloudFolders)
-      .set({ deletedAt: now, deletedBy: username })
-      .where(and(eq(cloudFolders.id, id), eq(cloudFolders.contractSlug, contractSlug)));
+  }
+
+  for (const folderIdChunk of chunks(allFolderIds)) {
+    await db.delete(cloudFolders).where(and(eq(cloudFolders.contractSlug, contractSlug), inArray(cloudFolders.id, folderIdChunk)));
   }
 
   return removed;
